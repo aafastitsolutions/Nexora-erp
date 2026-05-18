@@ -1,3 +1,4 @@
+import { renderNexoraClientDetailPage } from "../src/ui/nexora-client-detail-page.js";
 import { renderNexoraClientsPage, renderNexoraClientNewPage } from "../src/ui/nexora-clients-page.js";
 import { formatInvoiceDisplayNumber } from "../lib/invoice-numbering.js";
 
@@ -559,6 +560,89 @@ ${crmShellEnd()}
       console.error("clients/add-by-cui failed:", e);
       return res.redirect("/clients?err=save_failed");
     }
+  });
+
+  app.get("/nexora/clients/:id", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).send("Bad id");
+
+    const client = db.prepare(`
+      SELECT id, cui, name, address, reg_com, caen, vat, inactive, created_at,
+             email, phone, client_status, notes
+      FROM clients
+      WHERE id=? AND company_id=?
+    `).get(id, companyId);
+
+    if (!client) return res.status(404).send("Client not found");
+
+    const contacts = db.prepare(`
+      SELECT id, name, email, phone, position, is_primary, created_at
+      FROM contacts
+      WHERE client_id=? AND company_id=?
+      ORDER BY is_primary DESC, id DESC
+      LIMIT 200
+    `).all(id, companyId);
+
+    const activities = db.prepare(`
+      SELECT a.id, a.type, a.subject, a.note, a.due_at, a.done, a.created_at,
+             c.name AS contact_name
+      FROM activities a
+      LEFT JOIN contacts c ON c.id = a.contact_id
+      WHERE a.client_id=? AND a.company_id=?
+      ORDER BY a.id DESC
+      LIMIT 200
+    `).all(id, companyId);
+
+    const contracts = db.prepare(`
+      SELECT id, contract_number, created_at, price, duration, pdf_path
+      FROM contracts
+      WHERE client_id=? AND company_id=?
+      ORDER BY id DESC
+      LIMIT 200
+    `).all(id, companyId);
+
+    const quotes = db.prepare(`
+      SELECT id, quote_number, status, total, currency, created_at, pdf_path
+      FROM quotes
+      WHERE client_id=? AND company_id=?
+      ORDER BY id DESC
+      LIMIT 200
+    `).all(id, companyId);
+
+    const facturi = db.prepare(`
+      SELECT id, factura_nr, status, total, moneda, created_at, pdf_path
+      FROM facturi
+      WHERE client_id=? AND company_id=?
+      ORDER BY id DESC
+      LIMIT 200
+    `).all(id, companyId);
+
+    const timeline = [];
+    activities.forEach((a) => {
+      timeline.push({ type: "activity", date: a.created_at, subject: a.subject, note: a.note });
+    });
+    quotes.forEach((q) => {
+      timeline.push({ type: "quote", date: q.created_at, number: q.quote_number, total: q.total, currency: q.currency, status: q.status });
+    });
+    contracts.forEach((c) => {
+      timeline.push({ type: "contract", date: c.created_at, number: c.contract_number, total: c.price });
+    });
+    facturi.forEach((f) => {
+      timeline.push({ type: "invoice", date: f.created_at, number: formatInvoiceDisplayNumber(f), total: f.total, currency: f.moneda, status: f.status });
+    });
+    timeline.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+
+    res.send(renderNexoraClientDetailPage({
+      user: req.session.user,
+      client,
+      contacts,
+      activities,
+      contracts,
+      quotes,
+      facturi,
+      timeline
+    }));
   });
 
   app.get("/client/:id", requireAuth, (req, res) => {

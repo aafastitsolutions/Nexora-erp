@@ -25,7 +25,7 @@ function renderNexoraClientsPage(options = {}) {
     ? clients.map((client) => `
       <tr>
         <td>
-          <a class="nx-table-main-link" href="/clients/${escapeHtml(client.id)}">
+          <a class="nx-table-main-link" href="/nexora/clients/${escapeHtml(client.id)}">
             ${escapeHtml(client.name || "Client fără nume")}
           </a>
           <div class="nx-table-sub">${escapeHtml(client.address || "")}</div>
@@ -34,7 +34,7 @@ function renderNexoraClientsPage(options = {}) {
         <td>${escapeHtml(client.reg_com || "-")}</td>
         <td>${escapeHtml(client.created_at || "-")}</td>
         <td class="nx-table-actions">
-          <a class="nx-btn" href="/clients/${escapeHtml(client.id)}">Deschide</a>
+          <a class="nx-btn" href="/nexora/clients/${escapeHtml(client.id)}">Deschide</a>
         </td>
       </tr>
     `).join("")
