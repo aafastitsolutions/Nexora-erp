@@ -1,0 +1,166 @@
+          <cbc:ID>VAT</cbc:ID>
+        </cac:TaxScheme>
+      </cac:TaxCategory>
+    </cac:TaxSubtotal>
+  </cac:TaxTotal>
+
+  <cac:LegalMonetaryTotal>
+    <cbc:LineExtensionAmount currencyID="${esc(f.moneda || "RON")}">${Number(totals.subtotal || 0).toFixed(2)}</cbc:LineExtensionAmount>
+    <cbc:TaxExclusiveAmount currencyID="${esc(f.moneda || "RON")}">${Number(totals.subtotal || 0).toFixed(2)}</cbc:TaxExclusiveAmount>
+    <cbc:TaxInclusiveAmount currencyID="${esc(f.moneda || "RON")}">${Number(totals.total || 0).toFixed(2)}</cbc:TaxInclusiveAmount>
+    <cbc:PayableAmount currencyID="${esc(f.moneda || "RON")}">${Number(totals.total || 0).toFixed(2)}</cbc:PayableAmount>
+  </cac:LegalMonetaryTotal>
+
+  ${linesXml}
+
+</Invoice>`;
+
+  return { f, lines, totals, xml };
+}
+
+function ensureFacturaXmlGenerated(id){
+  const built = buildFacturaXmlContent(id);
+  if(built.error) return built;
+
+  const xmlDir = path.join(__dirname, "efactura_xml");
+  fs.mkdirSync(xmlDir, { recursive:true });
+
+  const xmlFile = `${built.f.factura_nr}.xml`;
+  const absPath = path.join(xmlDir, xmlFile);
+  fs.writeFileSync(absPath, built.xml);
+
+  db.prepare(`
+    UPDATE facturi
+    SET efactura_xml_path=?,
+        efactura_status=CASE
+          WHEN efactura_status='PREGATIT_PENTRU_TRIMITERE' THEN efactura_status
+          ELSE 'GENERAT'
+        END
+    WHERE id=?
+  `).run(`efactura_xml/${xmlFile}`, id);
+
+  return {
+    ok: true,
+    xmlFile,
+    absPath,
+    xmlPath: `efactura_xml/${xmlFile}`,
+    xml: built.xml,
+    f: built.f
+  };
+}
+
+app.get("/factura/:id/preview-pdf", requireAuth, async (req,res)=>{
+  const id = Number(req.params.id);
+  if(!Number.isFinite(id)) return res.status(400).send("Bad id");
+
+  const embed = String(req.query?.embed || "") === "1";
+
+  const f = db.prepare(`
+    SELECT f.*, c.name AS client, c.address AS client_address, c.cui AS client_cui, c.reg_com AS client_reg_com
+    FROM facturi f
+    JOIN clients c ON c.id = f.client_id
+    WHERE f.id=?
+  `).get(id);
+
+  if(!f) return res.status(404).send("Factura nu exista");
+
+  const lines = db.prepare(`
+    SELECT denumire, cantitate, unitate, pret_unitar, total_linie
+    FROM facturi_linii
+    WHERE factura_id=?
+    ORDER BY sort_order ASC, id ASC
+  `).all(id);
+
+  const totals = recalcFacturaTotals(id);
+
+  const company = {
+    name: getSetting("company_name", COMPANY.name),
+    cui: getSetting("company_cui", COMPANY.cui),
+    rc: getSetting("company_rc", COMPANY.rc),
+    address: getSetting("company_address", COMPANY.address),
+    iban: getSetting("company_iban", COMPANY.iban),
+    bank: getSetting("company_bank", COMPANY.bank),
+    rep: getSetting("company_rep", COMPANY.rep)
+  };
+
+  const rowsHtml = (lines || []).map((l, idx) => `
+    <tr>
+      <td style="padding:10px;border-bottom:1px solid #e5e7eb">${idx + 1}</td>
+      <td style="padding:10px;border-bottom:1px solid #e5e7eb">${escapeHtml(l.denumire || "")}</td>
+      <td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right">${escapeHtml(String(l.cantitate || ""))}</td>
+      <td style="padding:10px;border-bottom:1px solid #e5e7eb">${escapeHtml(l.unitate || "")}</td>
+      <td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right">${escapeHtml(fmtMoney(l.pret_unitar))}</td>
+      <td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right">${escapeHtml(fmtMoney(l.total_linie))}</td>
+    </tr>
+  `).join("");
+
+  res.type("html").send(`<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Preview PDF ${escapeHtml(f.factura_nr || "")}</title>
+<style>
+body{font-family:Arial,sans-serif;background:${embed ? "#ffffff" : "#f8fafc"};color:#0f172a;margin:0;padding:${embed ? "12px" : "24px"}}
+.wrap{max-width:${embed ? "100%" : "1100px"};margin:0 auto}
+.card{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:24px;box-shadow:${embed ? "none" : "0 8px 24px rgba(15,23,42,.06)"}}
+.top{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:24px}
+.muted{color:#64748b}
+.kv div{margin-bottom:8px}
+h1,h2,h3{margin:0}
+table{width:100%;border-collapse:collapse}
+.totalbox{margin-left:auto;max-width:360px;width:100%;margin-top:18px}
+.totalbox td,.totalbox th{padding:10px;border-bottom:1px solid #e5e7eb}
+.actions{display:${embed ? "none" : "flex"};gap:10px;flex-wrap:wrap;margin-bottom:18px}
+.btn{display:inline-block;padding:10px 14px;border-radius:10px;border:1px solid #cbd5e1;text-decoration:none;color:#0f172a;background:white;font-weight:700}
+.btn-primary{background:#0f172a;color:white;border-color:#0f172a}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="actions">
+    <a class="btn" href="/factura/${id}">Înapoi la factură</a>
+    <form method="post" action="/factura/${id}/genereaza-pdf" style="margin:0">
+      <button class="btn btn-primary" type="submit">Generează PDF</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="top">
+      <div>
+        <h1>Factură ${escapeHtml(f.factura_nr || "")}</h1>
+        <div class="muted" style="margin-top:8px">Preview înainte de generarea PDF-ului.</div>
+      </div>
+      <div class="kv">
+        <div><b>Data emitere:</b> ${escapeHtml(String(f.data_emitere || "").slice(0,10))}</div>
+        <div><b>Scadență:</b> ${escapeHtml(String(f.scadenta || "").slice(0,10)) || "—"}</div>
+        <div><b>Monedă:</b> ${escapeHtml(f.moneda || "RON")}</div>
+      </div>
+    </div>
+
+    <div class="top">
+      <div style="min-width:320px;flex:1">
+        <h3>Furnizor</h3>
+        <div style="margin-top:10px;line-height:1.7">
+          <div><b>${escapeHtml(company.name || "")}</b></div>
+          <div>CUI: ${escapeHtml(company.cui || "")}</div>
+          <div>RC: ${escapeHtml(company.rc || "")}</div>
+          <div>${escapeHtml(company.address || "")}</div>
+          <div>IBAN: ${escapeHtml(company.iban || "")}</div>
+          <div>Banca: ${escapeHtml(company.bank || "")}</div>
+          <div>Reprezentant: ${escapeHtml(company.rep || "")}</div>
+        </div>
+      </div>
+
+      <div style="min-width:320px;flex:1">
+        <h3>Client</h3>
+        <div style="margin-top:10px;line-height:1.7">
+          <div><b>${escapeHtml(f.client || "")}</b></div>
+          <div>CUI: ${escapeHtml(f.client_cui || "")}</div>
+          <div>Reg. com.: ${escapeHtml(f.client_reg_com || "")}</div>
+          <div>${escapeHtml(f.client_address || "")}</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:18px">
+      <table>

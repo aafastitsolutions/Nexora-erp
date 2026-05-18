@@ -1,0 +1,40 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="104" y1="74" x2="1492" y2="824" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#022C22"/>
+      <stop offset="0.5" stop-color="#0F766E"/>
+      <stop offset="1" stop-color="#67E8F9"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="260" y1="174" x2="1368" y2="725" gradientUnits="userSpaceOnUse">
+      <stop stop-color="white" stop-opacity="0.98"/>
+      <stop offset="1" stop-color="#ECFEFF" stop-opacity="0.96"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="900" rx="48" fill="url(#bg)"/>
+  <path d="M0 678C169 581 346 541 534 560C747 581 914 691 1112 702C1266 710 1427 663 1600 562V900H0V678Z" fill="white" fill-opacity="0.08"/>
+  <rect x="188" y="128" width="1224" height="644" rx="44" fill="url(#panel)"/>
+  <rect x="248" y="188" width="318" height="250" rx="30" fill="#0F172A"/>
+  <rect x="594" y="188" width="330" height="250" rx="30" fill="#FFFFFF"/>
+  <rect x="952" y="188" width="400" height="250" rx="30" fill="#CCFBF1"/>
+  <rect x="248" y="466" width="676" height="246" rx="30" fill="#F8FAFC"/>
+  <rect x="952" y="466" width="400" height="246" rx="30" fill="#0F172A"/>
+  <rect x="300" y="240" width="156" height="20" rx="10" fill="#99F6E4"/>
+  <rect x="300" y="278" width="222" height="38" rx="14" fill="#FFFFFF"/>
+  <rect x="300" y="336" width="110" height="110" rx="24" fill="#134E4A"/>
+  <rect x="430" y="336" width="92" height="110" rx="24" fill="#14B8A6"/>
+  <rect x="646" y="240" width="112" height="18" rx="9" fill="#BFDBFE"/>
+  <rect x="646" y="275" width="220" height="26" rx="13" fill="#0F172A"/>
+  <rect x="646" y="332" width="226" height="18" rx="9" fill="#94A3B8"/>
+  <rect x="646" y="366" width="198" height="18" rx="9" fill="#94A3B8"/>
+  <rect x="1006" y="240" width="160" height="18" rx="9" fill="#0F766E"/>
+  <rect x="1006" y="274" width="268" height="34" rx="16" fill="#022C22"/>
+  <rect x="1006" y="340" width="298" height="56" rx="22" fill="#14B8A6"/>
+  <rect x="300" y="520" width="270" height="24" rx="12" fill="#CBD5E1"/>
+  <rect x="300" y="564" width="562" height="116" rx="24" fill="#E2E8F0"/>
+  <path d="M1006 650C1048 589 1100 544 1168 536C1225 528 1278 558 1316 616" stroke="#67E8F9" stroke-width="30" stroke-linecap="round"/>
+  <circle cx="1088" cy="574" r="32" fill="#67E8F9"/>
+  <circle cx="1240" cy="550" r="32" fill="#14B8A6"/>
+  <circle cx="1318" cy="638" r="32" fill="#CCFBF1"/>
+  <text x="300" y="118" fill="white" font-family="Arial, sans-serif" font-size="44" font-weight="700">Business</text>
+  <text x="300" y="824" fill="white" fill-opacity="0.82" font-family="Arial, sans-serif" font-size="28">Pana la 5 utilizatori, cost clar per user si control pe accesul operational</text>
+</svg>

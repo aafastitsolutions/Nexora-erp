@@ -1,0 +1,1546 @@
+
+// Datele prestatorului (completate automat in contract)
+const COMPANY = {
+  name: "QR-LAB SRL",
+  cui: "47446760",
+  rc: "J29/XXXX/2023",
+  address: "Prahova, Bucov, Chitorani",
+  iban: "ROXXBANKXXXXXXXXXXXX",
+  bank: "Banca Transilvania",
+  representative: "Pita Valentin"
+};
+
+import express from "express";
+import session from "express-session";
+import connectSqlite3 from "connect-sqlite3";
+import Mustache from "mustache";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+import { renderPdfBuffer } from "./pdf.js";
+
+import { db, migrate } from "./db.js";
+import { requireAuth, seedAdminFromEnv, verifyUser } from "./auth.js";
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const app = express();
+// MiniCRM bootstrap
+migrate();
+const __seed = seedAdminFromEnv();
+if (!__seed.ok) console.warn("Admin seed skipped:", __seed.reason);
+const SQLiteStore = connectSqlite3(session);
+
+app.use(session({
+  store: new SQLiteStore({
+    db: "sessions.db",
+    dir: __dirname
+  }),
+  secret: process.env.SESSION_SECRET || "dev-secret-change-me",
+  resave: false,
+  saveUninitialized: false,
+  cookie: { httpOnly: true, sameSite: "lax" }
+}));
+app.use("/contracts", express.static(path.join(__dirname, "contracts")));
+app.use(express.static(path.join(__dirname, "public")));
+
+app.use(express.json({ limit: "2mb" }));
+app.use(express.urlencoded({ extended: true }));
+
+const templateHtml = fs.readFileSync(path.join(__dirname, "template.html"), "utf8");
+const quoteTemplateHtml = fs.readFileSync(path.join(__dirname, "quote_template.html"), "utf8");
+const uiHtml = fs.readFileSync(path.join(__dirname, "ui.html"), "utf8");
+
+function normalizeCui(input = "") {
+  return String(input).toUpperCase().replace(/^RO/, "").replace(/\D/g, "");
+}
+
+
+function nextQuoteNumber(){
+  const year = new Date().getFullYear();
+
+  const row = db.prepare(`
+    SELECT seq
+    FROM quotes
+    WHERE year=?
+    ORDER BY seq DESC
+    LIMIT 1
+  `).get(year);
+
+  const seq = (row?.seq || 0) + 1;
+  const num = "Q-" + year + "-" + String(seq).padStart(4,"0");
+
+  return { year, seq, quote_number:num };
+}
+
+
+function nextFacturaNumber(){
+  const an = new Date().getFullYear();
+
+  const row = db.prepare(`
+    SELECT seq
+    FROM facturi
+    WHERE an=?
+    ORDER BY seq DESC
+    LIMIT 1
+  `).get(an);
+
+  const seq = (row?.seq || 0) + 1;
+  const factura_nr = "INV-" + an + "-" + String(seq).padStart(4,"0");
+
+  return { an, seq, factura_nr };
+}
+
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// ANAF TVA webservice v7: https://webservicesp.anaf.ro/PlatitorTvaRest/api/v6/ws/tva
+app.get("/api/company", async (req, res) => {
+  try {
+    const cui = normalizeCui(req.query.cui);
+    if (!cui) return res.status(400).json({ error: "CUI invalid" });
+
+    const payload = [{ cui: Number(cui), data: todayISO() }];
+
+    const endpoints = [
+      "https://webservicesp.anaf.ro/api/PlatitorTvaRest/v9/tva",
+      "https://webservicesp.anaf.ro/api/PlatitorTvaRest/v8/tva",
+      "https://webservicesp.anaf.ro/api/PlatitorTvaRest/v7/tva",
+      "https://webservicesp.anaf.ro/api/PlatitorTvaRest/v6/tva"
+    ];
+
+    let lastErr = null;
+
+    for (const url of endpoints) {
+      const r = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          // uneori ajută la WAF/redirect-uri care returnează HTML
+          "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) contracts-app/1.0"
+        },
+        body: JSON.stringify(payload),
+        redirect: "follow",
+      });
+
+      const ct = (r.headers.get("content-type") || "").toLowerCase();
+      const txt = await r.text();
+
+      // dacă ANAF ne dă HTML (mentenanță / redirect / 404), încercăm următorul endpoint
+      if (!ct.includes("application/json")) {
+        lastErr = { url, status: r.status, details: txt.slice(0, 300) };
+        continue;
+      }
+
+      if (!r.ok) {
+        lastErr = { url, status: r.status, details: txt.slice(0, 300) };
+        continue;
+      }
+
+      const data = JSON.parse(txt);
+      const found = data?.found?.[0];
+      if (!found?.date_generale) {
+        return res.status(404).json({ error: "CUI negăsit în răspunsul ANAF", source_url: url });
+      }
+
+      const dg = found.date_generale;
+      return res.json({
+        normalized_cui: String(dg.cui ?? cui),
+        legal_name: dg.denumire ?? "",
+        address: dg.adresa ?? "",
+        reg_com: dg.nrRegCom ?? "",
+        caen: dg.cod_CAEN ?? "",
+        vat: found?.inregistrare_scop_Tva?.scpTVA ?? null,
+        inactive: found?.stare_inactiv?.statusInactivi ?? null,
+        source_url: url,
+        fetched_at: new Date().toISOString()
+      });
+    }
+
+    return res.status(502).json({
+      error: "ANAF unavailable / returned non-JSON",
+      tried: endpoints,
+      last: lastErr
+    });
+
+  } catch (e) {
+    return res.status(500).json({ error: "Server error", details: String(e?.message ?? e) });
+  }
+});
+
+// MiniCRM routes
+app.get("/login", (req, res) => {
+  if (req.session?.user) return res.redirect("/dashboard");
+  res.type("html").send(`
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Login</title>
+<style>
+  body{font-family:system-ui,Arial;margin:40px;max-width:520px}
+  input{width:100%;padding:10px;margin:6px 0}
+  button{padding:10px 14px}
+  .box{border:1px solid #ddd;border-radius:10px;padding:18px}
+</style></head>
+<body>
+  <h2>MiniCRM Login</h2>
+  <div class="box">
+    <form method="post" action="/login">
+      <label>Email</label>
+      <input name="email" type="email" required />
+      <label>Password</label>
+      <input name="password" type="password" required />
+      <button type="submit">Login</button>
+    </form>
+  </div>
+</body></html>`);
+});
+
+app.post("/login", (req, res) => {
+  const email = String(req.body?.email || "").trim().toLowerCase();
+  const password = String(req.body?.password || "");
+  const u = verifyUser(email, password);
+  if (!u) return res.status(401).type("html").send("<p style='font-family:system-ui'>Login invalid. <a href='/login'>Înapoi</a></p>");
+  req.session.user = { id: u.id, email: u.email, role: u.role };
+  return res.redirect("/dashboard");
+});
+
+app.post("/logout", (req, res) => {
+  req.session?.destroy(() => res.redirect("/login"));
+});
+
+app.get("/dashboard", requireAuth, (req, res) => {
+  const rows = db.prepare(`
+    SELECT c.id, c.contract_number, c.created_at, c.price, c.duration,
+           cl.name AS client_name, cl.cui AS client_cui,
+           c.pdf_path
+    FROM contracts c
+    JOIN clients cl ON cl.id = c.client_id
+    WHERE IFNULL(c.origin,'DIRECT') <> 'QUOTE'
+    ORDER BY c.id DESC
+    LIMIT 200
+  `).all();
+
+  const tasks = db.prepare(`
+    SELECT a.id, a.subject, a.note, a.due_at, a.created_at,
+           cl.id AS client_id, cl.name AS client_name
+    FROM activities a
+    JOIN clients cl ON cl.id = a.client_id
+    WHERE a.type='task' AND a.done=0
+    ORDER BY (a.due_at IS NULL) ASC, a.due_at ASC, a.id DESC
+    LIMIT 20
+  `).all();
+
+  const today = todayISO();
+  const overdue = tasks.filter(t => (t.due_at && String(t.due_at) < today)).length;
+
+  const htmlTasks = tasks.map(t => `
+    <tr>
+      <td>${t.due_at ? escapeHtml(t.due_at) : ""} ${t.due_at && String(t.due_at) < today ? "<b style='color:#b00020'>(overdue)</b>" : ""}</td>
+      <td><a href="/client/${t.client_id}">${escapeHtml(t.client_name || "")}</a></td>
+      <td>${escapeHtml(t.subject || "")}<br><small style="opacity:.75">${escapeHtml(t.note || "")}</small></td>
+      <td><a href="/client/${t.client_id}">Open</a></td>
+    </tr>
+  `).join("");
+
+  const userEmail = req.session.user.email;
+  const htmlRows = rows.map(r => `
+    <tr>
+      <td><a href="/contract/${r.id}">${escapeHtml(r.contract_number)}</a></td>
+      <td>${escapeHtml(r.client_name)}<br><small>${escapeHtml(r.client_cui || "")}</small></td>
+      <td>${escapeHtml(String(r.price ?? ""))}</td>
+      <td>${escapeHtml(r.duration || "")}</td>
+      <td>${escapeHtml(r.created_at || "")}</td>
+      <td>${r.pdf_path ? `<a href="/${encodeURI(r.pdf_path)}" target="_blank">PDF</a>` : ""}</td>
+    </tr>`).join("");
+
+  res.type("html").send(`
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Dashboard</title>
+<style>
+  body{font-family:system-ui,Arial;margin:30px}
+  table{border-collapse:collapse;width:100%}
+  th,td{border:1px solid #ddd;padding:8px;vertical-align:top}
+  th{background:#f6f6f6;text-align:left}
+  .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+  form{margin:0}
+  button{padding:8px 12px}
+  a{color:#0b57d0;text-decoration:none}
+  a:hover{text-decoration:underline}
+</style></head>
+<body>
+  <div class="top">
+    <div>
+      <h2 style="margin:0">MiniCRM Dashboard</h2>
+      <div style="opacity:.7">Logat: ${escapeHtml(userEmail)}</div>
+    </div>
+    <form method="post" action="/logout"><button type="submit">Logout</button></form>
+  </div>
+  ${topMenu("dashboard")}
+  <div style="margin:14px 0 18px 0;border:1px solid #ddd;border-radius:12px;padding:12px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap">
+      <div>
+        <h3 style="margin:0">Open Tasks</h3>
+        <div style="opacity:.75">Total: ${tasks.length} · Overdue: <b style="color:#b00020">${overdue}</b></div>
+      </div>
+      <div style="opacity:.75;font-size:13px">Tip: tasks se adaugă din Client → Activities (type=task)</div>
+    </div>
+    <table style="margin-top:10px">
+      <thead><tr>
+        <th>Due</th><th>Client</th><th>Task</th><th></th>
+      </tr></thead>
+      <tbody>${htmlTasks || "<tr><td colspan=4><em>Nu există task-uri deschise.</em></td></tr>"}</tbody>
+    </table>
+  </div>
+  <div style="margin-top:20px;opacity:.7">
+    Dashboard va fi folosit pentru statistici și activități.
+  </div>
+</body></html>`);
+});
+
+
+
+
+
+app.get("/contract/:id", requireAuth, (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).send("Bad id");
+
+  const row = db.prepare(`
+    SELECT c.*, cl.name AS client_name, cl.cui AS client_cui, cl.address AS client_address, cl.reg_com AS client_reg_com
+    FROM contracts c
+    JOIN clients cl ON cl.id = c.client_id
+    WHERE c.id=?
+  `).get(id);
+
+  if (!row) return res.status(404).send("Not found");
+
+  res.type("html").send(`
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Contract ${escapeHtml(row.contract_number)}</title>
+<style>
+  body{font-family:system-ui,Arial;margin:30px;max-width:900px}
+  .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+  a{color:#0b57d0;text-decoration:none}
+  a:hover{text-decoration:underline}
+  .card{border:1px solid #ddd;border-radius:12px;padding:16px;margin:12px 0}
+  label{display:block;margin-top:10px;font-weight:600}
+  input,textarea{width:100%;padding:10px;margin-top:6px}
+  button{padding:10px 14px;margin-top:12px}
+  small{opacity:.75}
+</style></head><body>
+  <div class="top">
+    <div>
+      <h2 style="margin:0">Contract ${escapeHtml(row.contract_number)}</h2>
+      <small>ID: ${row.id} · Creat: ${escapeHtml(row.created_at || "")}</small>
+    </div>
+    <form method="post" action="/logout"><button type="submit">Logout</button></form>
+  </div>
+
+  ${topMenu("dashboard")}
+
+  <div class="card">
+    <h3 style="margin-top:0">Client</h3>
+    <div><b>${escapeHtml(row.client_name || "")}</b></div>
+    <div>CUI: ${escapeHtml(row.client_cui || "")}</div>
+    <div>RC: ${escapeHtml(row.client_reg_com || "")}</div>
+    <div>Adresă: ${escapeHtml(row.client_address || "")}</div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">PDF</h3>
+    ${row.pdf_path ? `<a href="/${encodeURI(row.pdf_path)}" target="_blank">Deschide PDF</a>` : "<em>Fără PDF</em>"}
+    <div style="margin-top:10px">
+      <form method="post" action="/contract/${row.id}/regenerate-pdf">
+        <button type="submit">Regenerate PDF</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Edit (basic)</h3>
+    <form method="post" action="/contract/${row.id}/edit">
+      <label>Descriere servicii</label>
+      <textarea name="service_description" rows="4">${escapeHtml(row.service_description || "")}</textarea>
+
+      <label>Preț</label>
+      <input name="price" value="${escapeHtml(String(row.price ?? ""))}" />
+
+      <label>Durată</label>
+      <input name="duration" value="${escapeHtml(row.duration || "")}" />
+
+      <button type="submit">Salvează</button>
+    </form>
+    <small>Note: pentru v1 edităm doar datele din CRM. PDF-ul existent rămâne neschimbat.</small>
+  </div>
+</body></html>`);
+});
+
+
+
+app.post("/contract/:id/edit", requireAuth, (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).send("Bad id");
+
+  const service_description = String(req.body?.service_description || "").trim();
+  const duration = String(req.body?.duration || "").trim();
+  const priceNum = Number(String(req.body?.price || "").replace(",", "."));
+
+  if (!service_description) return res.status(400).send("service_description required");
+  if (!duration) return res.status(400).send("duration required");
+  if (!Number.isFinite(priceNum)) return res.status(400).send("price invalid");
+
+  const info = db.prepare(`
+    UPDATE contracts
+    SET service_description=?, price=?, duration=?
+    WHERE id=?
+  `).run(service_description, priceNum, duration, id);
+
+  if (info.changes === 0) return res.status(404).send("Not found");
+  return res.redirect(`/contract/${id}`);
+});
+
+
+
+app.post("/contract/:id/regenerate-pdf", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).send("Bad id");
+
+  const row = db.prepare(`
+    SELECT c.*, cl.cui AS client_cui, cl.name AS client_name, cl.address AS client_address, cl.reg_com AS client_reg_com
+    FROM contracts c
+    JOIN clients cl ON cl.id = c.client_id
+    WHERE c.id=?
+  `).get(id);
+
+  if (!row) return res.status(404).send("Not found");
+
+  // rebuild a minimal VM for template (match your current template variables)
+  const is_company = !String(row.client_cui || "").startsWith("PF-");
+
+  const vm = {
+    contract_number: row.contract_number,
+    contract_date: row.created_at ? String(row.created_at).slice(0,10) : todayISO(),
+    is_company,
+
+    pj_cui: is_company ? (row.client_cui || "") : "",
+    pj_legal_name: is_company ? (row.client_name || "") : "",
+    pj_address: is_company ? (row.client_address || "") : "",
+    pj_reg_com: is_company ? (row.client_reg_com || "") : "",
+    pj_representative_name: "",
+
+    pf_full_name: !is_company ? (row.client_name || "") : "",
+    pf_address: !is_company ? (row.client_address || "") : "",
+
+    service_description: row.service_description || "",
+    price_amount: String(row.price ?? ""),
+    price_currency: "RON",
+    payment_terms: "15 zile",
+    start_date: todayISO(),
+    duration: row.duration || "",
+    termination_notice_days: "30",
+    jurisdiction_city: "București",
+    privacy_policy_url: "https://qr-lab.ro",
+
+    client_signer_name: is_company ? "" : (row.client_name || ""),
+    provider_signer_name: "",
+  };
+
+  const html = Mustache.render(templateHtml, { ...vm, company: COMPANY });
+  const pdf = await renderPdfBuffer(html);
+
+  // overwrite existing PDF path if present; otherwise create it
+  const year = row.year || new Date().getFullYear();
+  const yearDir = path.join(__dirname, "contracts", String(year));
+  fs.mkdirSync(yearDir, { recursive: true });
+
+  const fileName = `${row.contract_number}.pdf`;
+  const absPath = path.join(yearDir, fileName);
+  fs.writeFileSync(absPath, pdf);
+
+  const pdf_path = `contracts/${year}/${fileName}`;
+  db.prepare("UPDATE contracts SET pdf_path=? WHERE id=?").run(pdf_path, id);
+
+  return res.redirect(`/contract/${id}`);
+});
+
+app.get("/clients", requireAuth, (req, res) => {
+  const q = String(req.query?.q || "").trim();
+  let rows = [];
+  if (q) {
+    const like = `%${q}%`;
+    rows = db.prepare(`
+      SELECT DISTINCT cl.id, cl.cui, cl.name, cl.address, cl.reg_com, cl.created_at
+      FROM clients cl
+      LEFT JOIN contacts ct ON ct.client_id = cl.id
+      WHERE
+        cl.cui LIKE ? OR cl.name LIKE ?
+        OR ct.name LIKE ? OR ct.email LIKE ? OR ct.phone LIKE ?
+      ORDER BY cl.id DESC
+      LIMIT 300
+    `).all(like, like, like, like, like);
+  } else {
+    rows = db.prepare(`
+      SELECT id, cui, name, address, reg_com, created_at
+      FROM clients
+      ORDER BY id DESC
+      LIMIT 300
+    `).all();
+  }
+
+  const userEmail = req.session.user.email;
+  const htmlRows = rows.map(r => `
+    <tr>
+      <td><a href="/dashboard?q=${encodeURIComponent(r.cui || "")}">${escapeHtml(r.cui || "")}</a></td>
+      <td><a href="/client/${r.id}">${escapeHtml(r.name || "")}</a></td>
+      <td>${escapeHtml(r.reg_com || "")}</td>
+      <td>${escapeHtml(r.address || "")}</td>
+      <td>${escapeHtml(r.created_at || "")}</td>
+    </tr>`).join("");
+
+  res.type("html").send(`
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Clients</title>
+<style>
+  body{font-family:system-ui,Arial;margin:30px}
+  table{border-collapse:collapse;width:100%}
+  th,td{border:1px solid #ddd;padding:8px;vertical-align:top}
+  th{background:#f6f6f6;text-align:left}
+  .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+  form{margin:0}
+  button{padding:8px 12px}
+  a{color:#0b57d0;text-decoration:none}
+  a:hover{text-decoration:underline}
+  input{padding:8px 10px;min-width:260px}
+</style></head><body>
+  <div class="top">
+    <div>
+      <h2 style="margin:0">Clients</h2>
+      <div style="opacity:.7">Logat: ${escapeHtml(userEmail)}</div>
+    </div>
+    <form method="post" action="/logout"><button type="submit">Logout</button></form>
+  </div>
+
+  ${topMenu("clients")}
+
+  <form method="get" action="/clients" style="margin:10px 0 18px 0;">
+    <input name="q" value="${escapeHtml(q)}" placeholder="Caută după CUI sau nume..." />
+    <button type="submit">Caută</button>
+  </form>
+
+  <table>
+    <thead><tr>
+      <th>CUI</th><th>Nume</th><th>RC</th><th>Adresă</th><th>Creat</th>
+    </tr></thead>
+    <tbody>${htmlRows || "<tr><td colspan=5><em>Nu există clienți în DB.</em></td></tr>"}</tbody>
+  </table>
+</body></html>`);
+});
+
+
+
+// =========================
+// Client details (Contacts + Activities)
+// =========================
+
+app.get("/client/:id", requireAuth, (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).send("Bad id");
+
+  const client = db.prepare(`
+    SELECT id, cui, name, address, reg_com, caen, vat, inactive, created_at
+    FROM clients
+    WHERE id=?
+  `).get(id);
+
+  if (!client) return res.status(404).send("Client not found");
+
+  const contacts = db.prepare(`
+    SELECT id, name, email, phone, position, is_primary, created_at
+    FROM contacts
+    WHERE client_id=?
+    ORDER BY is_primary DESC, id DESC
+    LIMIT 200
+  `).all(id);
+
+  const activities = db.prepare(`
+    SELECT a.id, a.type, a.subject, a.note, a.due_at, a.done, a.created_at,
+           c.name AS contact_name
+    FROM activities a
+    LEFT JOIN contacts c ON c.id = a.contact_id
+    WHERE a.client_id=?
+    ORDER BY a.id DESC
+    LIMIT 200
+  `).all(id);
+
+  const contracts = db.prepare(`
+    SELECT id, contract_number, created_at, price, duration, pdf_path
+    FROM contracts
+    WHERE client_id=?
+    ORDER BY id DESC
+    LIMIT 200
+  `).all(id);
+
+  const userEmail = req.session.user.email;
+
+  const htmlContacts = contacts.map(x => `
+    <tr>
+      <td>${escapeHtml(x.name || "")} ${x.is_primary ? "<small>(principal)</small>" : ""}</td>
+      <td>${escapeHtml(x.position || "")}</td>
+      <td>${escapeHtml(x.email || "")}</td>
+      <td>${escapeHtml(x.phone || "")}</td>
+      <td>${escapeHtml(x.created_at || "")}</td>
+    </tr>
+  `).join("");
+
+  const htmlActivities = activities.map(a => `
+    <tr>
+      <td>${escapeHtml(a.type || "")}</td>
+      <td>${escapeHtml(a.subject || "")}<br><small style="opacity:.75">${escapeHtml(a.contact_name || "")}</small></td>
+      <td>${escapeHtml(a.note || "")}</td>
+      <td>${escapeHtml(a.due_at || "")}</td>
+      <td>${a.done ? "✔" : ""}</td>
+      <td>${escapeHtml(a.created_at || "")}</td>
+      <td>
+        <form method="post" action="/client/${id}/activities/${a.id}/toggle" style="margin:0">
+          <button type="submit">${a.done ? "Reopen" : "Done"}</button>
+        </form>
+      </td>
+    </tr>
+  `).join("");
+
+  const htmlContracts = contracts.map(c => `
+    <tr>
+      <td><a href="/contract/${c.id}">${escapeHtml(c.contract_number || "")}</a></td>
+      <td>${escapeHtml(c.created_at || "")}</td>
+      <td>${escapeHtml(String(c.price ?? ""))}</td>
+      <td>${escapeHtml(c.duration || "")}</td>
+      <td>${c.pdf_path ? `<a href="/${encodeURI(c.pdf_path)}" target="_blank">PDF</a>` : ""}</td>
+    </tr>
+  `).join("");
+
+  res.type("html").send(`
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Client ${escapeHtml(client.name)}</title>
+<style>
+  body{font-family:system-ui,Arial;margin:30px}
+  table{border-collapse:collapse;width:100%}
+  th,td{border:1px solid #ddd;padding:8px;vertical-align:top}
+  th{background:#f6f6f6;text-align:left}
+  .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+  a{color:#0b57d0;text-decoration:none}
+  a:hover{text-decoration:underline}
+  .grid{display:grid;grid-template-columns:1fr;gap:12px}
+  .card{border:1px solid #ddd;border-radius:12px;padding:14px}
+  label{display:block;margin-top:10px;font-weight:600}
+  input,textarea,select{width:100%;padding:10px;margin-top:6px}
+  button{padding:8px 12px}
+  small{opacity:.75}
+  @media(min-width:980px){ .grid{grid-template-columns:1fr 1fr} }
+</style></head><body>
+  <div class="top">
+    <div>
+      <h2 style="margin:0">Client: ${escapeHtml(client.name || "")}</h2>
+      <div style="opacity:.7">Logat: ${escapeHtml(userEmail)}</div>
+    </div>
+    <form method="post" action="/logout"><button type="submit">Logout</button></form>
+  </div>
+
+  ${topMenu("clients")}
+
+  <div class="card">
+    <h3 style="margin-top:0">Date client</h3>
+    <div><b>${escapeHtml(client.name || "")}</b></div>
+    <div>CUI: <a href="/dashboard?q=${encodeURIComponent(client.cui || "")}">${escapeHtml(client.cui || "")}</a></div>
+    <div>RC: ${escapeHtml(client.reg_com || "")}</div>
+    <div>CAEN: ${escapeHtml(client.caen || "")}</div>
+    <div>TVA: ${client.vat ? "DA" : "NU"} · Inactiv: ${client.inactive ? "DA" : "NU"}</div>
+    <div>Adresă: ${escapeHtml(client.address || "")}</div>
+    <div><small>Creat: ${escapeHtml(client.created_at || "")}</small></div>
+  </div>
+
+  <div class="grid">
+
+    <div class="card">
+      <h3 style="margin-top:0">Contacts</h3>
+
+      <form method="post" action="/client/${id}/contacts/add">
+        <label>Nume</label>
+        <input name="name" required />
+        <label>Funcție</label>
+        <input name="position" />
+        <label>Email</label>
+        <input name="email" type="email" />
+        <label>Telefon</label>
+        <input name="phone" />
+        <label><input type="checkbox" name="is_primary" value="1" /> Contact principal</label>
+        <button type="submit" style="margin-top:10px">Adaugă contact</button>
+      </form>
+
+      <div style="margin-top:14px">
+        <table>
+          <thead><tr><th>Nume</th><th>Funcție</th><th>Email</th><th>Telefon</th><th>Creat</th></tr></thead>
+          <tbody>${htmlContacts || "<tr><td colspan=5><em>Nu există contacte.</em></td></tr>"}</tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">Activities</h3>
+
+      <form method="post" action="/client/${id}/activities/add">
+        <label>Tip</label>
+        <select name="type" required>
+          <option value="call">call</option>
+          <option value="meeting">meeting</option>
+          <option value="email">email</option>
+          <option value="note" selected>note</option>
+          <option value="task">task</option>
+        </select>
+
+        <label>Contact (opțional)</label>
+        <select name="contact_id">
+          <option value="">—</option>
+          ${contacts.map(c => `<option value="${c.id}">${escapeHtml(c.name || "")}</option>`).join("")}
+        </select>
+
+        <label>Subject</label>
+        <input name="subject" />
+
+        <label>Note</label>
+        <textarea name="note" rows="3"></textarea>
+
+        <label>Due at (YYYY-MM-DD) (opțional)</label>
+        <input name="due_at" placeholder="2026-03-10" />
+
+        <button type="submit" style="margin-top:10px">Adaugă activity</button>
+      </form>
+
+      <div style="margin-top:14px">
+        <table>
+          <thead><tr><th>Tip</th><th>Subject</th><th>Note</th><th>Due</th><th>Done</th><th>Creat</th><th></th></tr></thead>
+          <tbody>${htmlActivities || "<tr><td colspan=7><em>Nu există activități.</em></td></tr>"}</tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Contracts</h3>
+    <table>
+      <thead><tr><th>Contract</th><th>Creat</th><th>Preț</th><th>Durată</th><th>PDF</th></tr></thead>
+      <tbody>${htmlContracts || "<tr><td colspan=5><em>Nu există contracte pentru acest client.</em></td></tr>"}</tbody>
+    </table>
+  </div>
+
+</body></html>`);
+});
+
+app.post("/client/:id/contacts/add", requireAuth, (req, res) => {
+  const client_id = Number(req.params.id);
+  if (!Number.isFinite(client_id)) return res.status(400).send("Bad id");
+
+  const name = String(req.body?.name || "").trim();
+  const email = String(req.body?.email || "").trim();
+  const phone = String(req.body?.phone || "").trim();
+  const position = String(req.body?.position || "").trim();
+  const is_primary = req.body?.is_primary ? 1 : 0;
+
+  if (!name) return res.status(400).send("name required");
+
+  const tx = db.transaction(() => {
+    if (is_primary) db.prepare("UPDATE contacts SET is_primary=0 WHERE client_id=?").run(client_id);
+    db.prepare(`
+      INSERT INTO contacts (client_id, name, email, phone, position, is_primary)
+      VALUES (?,?,?,?,?,?)
+    `).run(client_id, name, email || null, phone || null, position || null, is_primary);
+  });
+
+  tx();
+  return res.redirect("/client/" + client_id);
+});
+
+app.post("/client/:id/activities/add", requireAuth, (req, res) => {
+  const client_id = Number(req.params.id);
+  if (!Number.isFinite(client_id)) return res.status(400).send("Bad id");
+
+  const type = String(req.body?.type || "").trim().toLowerCase();
+  const subject = String(req.body?.subject || "").trim();
+  const note = String(req.body?.note || "").trim();
+  const due_at = String(req.body?.due_at || "").trim();
+  const contact_id_raw = String(req.body?.contact_id || "").trim();
+  const contact_id = contact_id_raw ? Number(contact_id_raw) : null;
+
+  const allowed = new Set(["call","meeting","email","note","task"]);
+  if (!allowed.has(type)) return res.status(400).send("type invalid");
+  if (contact_id_raw && !Number.isFinite(contact_id)) return res.status(400).send("contact_id invalid");
+
+  db.prepare(`
+    INSERT INTO activities (client_id, contact_id, type, subject, note, due_at)
+    VALUES (?,?,?,?,?,?)
+  `).run(client_id, contact_id, type, subject || null, note || null, due_at || null);
+
+  return res.redirect("/client/" + client_id);
+});
+
+app.post("/client/:id/activities/:aid/toggle", requireAuth, (req, res) => {
+  const client_id = Number(req.params.id);
+  const aid = Number(req.params.aid);
+  if (!Number.isFinite(client_id) || !Number.isFinite(aid)) return res.status(400).send("Bad id");
+
+  const row = db.prepare("SELECT done FROM activities WHERE id=? AND client_id=?").get(aid, client_id);
+  if (!row) return res.status(404).send("Not found");
+
+  const next = row.done ? 0 : 1;
+  db.prepare("UPDATE activities SET done=? WHERE id=? AND client_id=?").run(next, aid, client_id);
+
+  return res.redirect("/client/" + client_id);
+});
+
+
+
+// =========================
+// Quotes / Offers (v1)
+// =========================
+
+function recalcQuoteTotals(quote_id){
+  const items = db.prepare(`
+    SELECT id, qty, unit_price
+    FROM quote_items
+    WHERE quote_id=?
+  `).all(quote_id);
+
+  let subtotal = 0;
+  for (const it of items) {
+    const q = Number(it.qty ?? 0);
+    const p = Number(it.unit_price ?? 0);
+    const line = (Number.isFinite(q) ? q : 0) * (Number.isFinite(p) ? p : 0);
+    subtotal += line;
+    db.prepare("UPDATE quote_items SET line_total=? WHERE id=?").run(line, it.id);
+  }
+
+  const qrow = db.prepare("SELECT vat_rate FROM quotes WHERE id=?").get(quote_id);
+  const vat_rate = Number(qrow?.vat_rate ?? 0);
+  const vat_amount = subtotal * (Number.isFinite(vat_rate) ? vat_rate : 0);
+  const total = subtotal + vat_amount;
+
+  db.prepare(`
+    UPDATE quotes
+    SET subtotal=?, vat_amount=?, total=?
+    WHERE id=?
+  `).run(subtotal, vat_amount, total, quote_id);
+
+  return { subtotal, vat_rate, vat_amount, total };
+}
+
+app.get("/quotes", requireAuth, (req, res) => {
+  const q = String(req.query?.q || "").trim();
+
+  const quotes = db.prepare(`
+    SELECT q.id, q.quote_number, q.created_at, q.status, q.total, q.valid_until,
+           cl.id AS client_id, cl.name AS client_name, cl.cui AS client_cui
+    FROM quotes q
+    JOIN clients cl ON cl.id = q.client_id
+    WHERE (? = '' OR q.quote_number LIKE ? OR cl.name LIKE ? OR cl.cui LIKE ?)
+    ORDER BY q.id DESC
+    LIMIT 300
+  `).all(q, `%${q}%`, `%${q}%`, `%${q}%`);
+
+  const clients = db.prepare(`
+    SELECT id, name, cui
+    FROM clients
+    ORDER BY id DESC
+    LIMIT 300
+  `).all();
+
+  const userEmail = req.session.user.email;
+
+  const htmlRows = quotes.map(x => `
+    <tr>
+      <td><a href="/quote/${x.id}">${escapeHtml(x.quote_number || "")}</a></td>
+      <td><a href="/client/${x.client_id}">${escapeHtml(x.client_name || "")}</a><br><small>${escapeHtml(x.client_cui || "")}</small></td>
+      <td>${escapeHtml(x.status || "")}</td>
+      <td>${escapeHtml(String(x.total ?? ""))}</td>
+      <td>${escapeHtml(x.valid_until || "")}</td>
+      <td>${escapeHtml(x.created_at || "")}</td>
+    </tr>
+  `).join("");
+
+  res.type("html").send(`
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Quotes</title>
+<style>
+  body{font-family:system-ui,Arial;margin:30px}
+  table{border-collapse:collapse;width:100%}
+  th,td{border:1px solid #ddd;padding:8px;vertical-align:top}
+  th{background:#f6f6f6;text-align:left}
+  .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+  form{margin:0}
+  button{padding:8px 12px}
+  a{color:#0b57d0;text-decoration:none}
+  a:hover{text-decoration:underline}
+  input,select,textarea{padding:8px 10px}
+  .card{border:1px solid #ddd;border-radius:12px;padding:14px;margin:12px 0}
+  .grid{display:grid;grid-template-columns:1fr;gap:12px}
+  @media(min-width:980px){ .grid{grid-template-columns:1fr 1fr} }
+</style></head><body>
+  <div class="top">
+    <div>
+      <h2 style="margin:0">Quotes / Offers</h2>
+      <div style="opacity:.7">Logat: ${escapeHtml(userEmail)}</div>
+    </div>
+    <form method="post" action="/logout"><button type="submit">Logout</button></form>
+  </div>
+
+  ${topMenu("quotes")}
+
+  <div class="grid">
+    <div class="card">
+      <h3 style="margin-top:0">Create quote</h3>
+      <form method="post" action="/quotes/create">
+        <label style="display:block;font-weight:600">Client</label>
+        <select name="client_id" required style="width:100%;margin-top:6px">
+          ${clients.map(c => `<option value="${c.id}">${escapeHtml(c.name || "")} (${escapeHtml(c.cui || "")})</option>`).join("")}
+        </select>
+
+        <label style="display:block;margin-top:10px;font-weight:600">Titlu</label>
+        <input name="title" style="width:100%;margin-top:6px" placeholder="Ex: Oferta servicii QR-LAB" />
+
+        <label style="display:block;margin-top:10px;font-weight:600">TVA rate</label>
+        <select name="vat_rate" style="width:100%;margin-top:6px">
+          <option value="0">0%</option>
+          <option value="0.19" selected>19%</option>
+        </select>
+
+        <label style="display:block;margin-top:10px;font-weight:600">Valabil până la (YYYY-MM-DD)</label>
+        <input name="valid_until" style="width:100%;margin-top:6px" placeholder="2026-03-31" />
+
+        <label style="display:block;margin-top:10px;font-weight:600">Note</label>
+        <textarea name="notes" rows="3" style="width:100%;margin-top:6px"></textarea>
+
+        <button type="submit" style="margin-top:10px">Create</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">Search quotes</h3>
+      <form method="get" action="/quotes" style="margin-top:8px">
+        <input name="q" value="${escapeHtml(q)}" placeholder="Caută după Q-..., client, CUI" style="width:100%" />
+        <button type="submit" style="margin-top:10px">Search</button>
+      </form>
+    </div>
+  </div>
+
+  <table>
+    <thead><tr>
+      <th>Quote</th><th>Client</th><th>Status</th><th>Total</th><th>Valid until</th><th>Created</th>
+    </tr></thead>
+    <tbody>${htmlRows || "<tr><td colspan=6><em>Nu există quotes încă.</em></td></tr>"}</tbody>
+  </table>
+</body></html>`);
+});
+
+app.post("/quotes/create", requireAuth, (req, res) => {
+  const client_id = Number(req.body?.client_id);
+  if (!Number.isFinite(client_id)) return res.status(400).send("client_id invalid");
+
+  const title = String(req.body?.title || "").trim();
+  const notes = String(req.body?.notes || "").trim();
+  const valid_until = String(req.body?.valid_until || "").trim();
+
+  const vat_rate = Number(String(req.body?.vat_rate || "0").replace(",", "."));
+  if (!Number.isFinite(vat_rate)) return res.status(400).send("vat_rate invalid");
+
+  const n = nextQuoteNumber();
+
+  const info = db.prepare(`
+    INSERT INTO quotes (quote_number, year, seq, client_id, status, title, notes, vat_rate, valid_until)
+    VALUES (?,?,?,?, 'DRAFT', ?, ?, ?, ?)
+  `).run(n.quote_number, n.year, n.seq, client_id, title || null, notes || null, vat_rate, valid_until || null);
+
+  return res.redirect("/quote/" + info.lastInsertRowid);
+});
+
+app.get("/quote/:id", requireAuth, (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).send("Bad id");
+
+  const quote = db.prepare(`
+    SELECT q.*, cl.name AS client_name, cl.cui AS client_cui
+    FROM quotes q
+    JOIN clients cl ON cl.id=q.client_id
+    WHERE q.id=?
+  `).get(id);
+
+  if (!quote) return res.status(404).send("Quote not found");
+
+  const items = db.prepare(`
+    SELECT id, name, qty, unit, unit_price, line_total
+    FROM quote_items
+    WHERE quote_id=?
+    ORDER BY sort_order ASC, id ASC
+  `).all(id);
+
+  // ensure totals are consistent
+  recalcQuoteTotals(id);
+  const q2 = db.prepare("SELECT subtotal, vat_rate, vat_amount, total FROM quotes WHERE id=?").get(id);
+
+  const userEmail = req.session.user.email;
+
+  const htmlItems = items.map(it => `
+    <tr>
+      <td>${escapeHtml(it.name || "")}</td>
+      <td>${escapeHtml(String(it.qty ?? ""))}</td>
+      <td>${escapeHtml(it.unit || "")}</td>
+      <td>${escapeHtml(String(it.unit_price ?? ""))}</td>
+      <td>${escapeHtml(String(it.line_total ?? ""))}</td>
+    </tr>
+  `).join("");
+
+  res.type("html").send(`
+<!doctype html>
+<html><head><meta charset="utf-8"><title>${escapeHtml(quote.quote_number)}</title>
+<style>
+  body{font-family:system-ui,Arial;margin:30px;max-width:1100px}
+  table{border-collapse:collapse;width:100%}
+  th,td{border:1px solid #ddd;padding:8px;vertical-align:top}
+  th{background:#f6f6f6;text-align:left}
+  .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+  a{color:#0b57d0;text-decoration:none}
+  a:hover{text-decoration:underline}
+  .card{border:1px solid #ddd;border-radius:12px;padding:14px;margin:12px 0}
+  label{display:block;margin-top:10px;font-weight:600}
+  input,textarea,select{width:100%;padding:10px;margin-top:6px}
+  button{padding:8px 12px;margin-top:10px}
+  .row{display:grid;grid-template-columns:1fr;gap:12px}
+  @media(min-width:980px){ .row{grid-template-columns:1fr 1fr} }
+</style></head><body>
+
+  <div class="top">
+    <div>
+      <h2 style="margin:0">Quote: ${escapeHtml(quote.quote_number || "")}</h2>
+      <div style="opacity:.7">Logat: ${escapeHtml(userEmail)}</div>
+    </div>
+    <form method="post" action="/logout"><button type="submit">Logout</button></form>
+  </div>
+
+  ${topMenu("quotes")}
+
+  <div class="card">
+    <div><b>Client:</b> <a href="/client/${quote.client_id}">${escapeHtml(quote.client_name || "")}</a> <small>(${escapeHtml(quote.client_cui || "")})</small></div>
+    <div><b>Status:</b> ${escapeHtml(quote.status || "")}</div>
+    <div><b>Valid until:</b> ${escapeHtml(quote.valid_until || "")}</div>
+    <div><b>Title:</b> ${escapeHtml(quote.title || "")}</div>
+    <div><b>Notes:</b><br><small>${escapeHtml(quote.notes || "")}</small></div>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">PDF</h3>
+    ${quote.pdf_path ? `<a href="/${encodeURI(quote.pdf_path)}" target="_blank">Deschide PDF</a>` : "<em>Fără PDF</em>"}
+    <div style="margin-top:10px">
+      <form method="post" action="/quote/${id}/generate-pdf" style="margin:0">
+        <button type="submit">Generate PDF</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="card">
+      <h3 style="margin-top:0">Add item</h3>
+      <form method="post" action="/quote/${id}/items/add">
+        <label>Denumire</label>
+        <input name="name" required placeholder="Ex: Servicii implementare / consultanță" />
+        <label>Cantitate</label>
+        <input name="qty" value="1" />
+        <label>Unitate</label>
+        <input name="unit" placeholder="buc / ore / luni" />
+        <label>Preț unitar</label>
+        <input name="unit_price" value="0" />
+        <button type="submit">Add</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">Status</h3>
+      <form method="post" action="/quote/${id}/status">
+        <label>Set status</label>
+        <select name="status">
+          ${["DRAFT","SENT","ACCEPTED","REJECTED"].map(st => `<option value="${st}" ${String(quote.status||"")===st?"selected":""}>${st}</option>`).join("")}
+        </select>
+        <button type="submit">Save</button>
+      </form>
+
+      <form method="post" action="/quote/${id}/convert-to-contract" style="margin-top:10px">
+        <button type="submit" ${String(quote.status||"").toUpperCase()==="ACCEPTED" ? "" : "disabled"}>Convert → Contract</button>
+      </form>
+      <div style="opacity:.75;font-size:13px;margin-top:6px">
+        Creează contract + PDF din quote (items → descriere, total → preț).
+        ${String(quote.status||"").toUpperCase()==="ACCEPTED" ? "" : " (setează status = ACCEPTED ca să activezi)"}
+      </div>
+
+
+      <div style="margin-top:14px">
+        <div><b>Subtotal:</b> ${escapeHtml(String(q2.subtotal ?? ""))} ${escapeHtml(quote.currency || "RON")}</div>
+        <div><b>VAT:</b> ${escapeHtml(String(q2.vat_amount ?? ""))} (rate ${escapeHtml(String(q2.vat_rate ?? ""))})</div>
+        <div><b>Total:</b> ${escapeHtml(String(q2.total ?? ""))}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Items</h3>
+    <table>
+      <thead><tr>
+        <th>Name</th><th>Qty</th><th>Unit</th><th>Unit price</th><th>Line total</th>
+      </tr></thead>
+      <tbody>${htmlItems || "<tr><td colspan=5><em>No items yet.</em></td></tr>"}</tbody>
+    </table>
+  </div>
+
+</body></html>`);
+});
+
+app.post("/quote/:id/items/add", requireAuth, (req, res) => {
+  const quote_id = Number(req.params.id);
+  if (!Number.isFinite(quote_id)) return res.status(400).send("Bad id");
+
+  const name = String(req.body?.name || "").trim();
+  if (!name) return res.status(400).send("name required");
+
+  const qty = Number(String(req.body?.qty || "1").replace(",", "."));
+  const unit_price = Number(String(req.body?.unit_price || "0").replace(",", "."));
+  const unit = String(req.body?.unit || "").trim();
+
+  if (!Number.isFinite(qty)) return res.status(400).send("qty invalid");
+  if (!Number.isFinite(unit_price)) return res.status(400).send("unit_price invalid");
+
+  const line_total = qty * unit_price;
+
+  db.prepare(`
+    INSERT INTO quote_items (quote_id, name, qty, unit, unit_price, line_total, sort_order)
+    VALUES (?,?,?,?,?,?,0)
+  `).run(quote_id, name, qty, unit || null, unit_price, line_total);
+
+  recalcQuoteTotals(quote_id);
+
+  return res.redirect("/quote/" + quote_id);
+});
+
+app.post("/quote/:id/status", requireAuth, (req, res) => {
+  const quote_id = Number(req.params.id);
+  if (!Number.isFinite(quote_id)) return res.status(400).send("Bad id");
+
+  const status = String(req.body?.status || "").trim().toUpperCase();
+  const allowed = new Set(["DRAFT","SENT","ACCEPTED","REJECTED"]);
+  if (!allowed.has(status)) return res.status(400).send("status invalid");
+
+  db.prepare("UPDATE quotes SET status=? WHERE id=?").run(status, quote_id);
+  return res.redirect("/quote/" + quote_id);
+});
+
+app.post("/quote/:id/generate-pdf", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).send("Bad id");
+
+  const quote = db.prepare(`
+    SELECT q.*, cl.name AS client_name, cl.cui AS client_cui, cl.address AS client_address
+    FROM quotes q
+    JOIN clients cl ON cl.id=q.client_id
+    WHERE q.id=?
+  `).get(id);
+
+  if (!quote) return res.status(404).send("Quote not found");
+
+  const items = db.prepare(`
+    SELECT name, qty, unit, unit_price, line_total
+    FROM quote_items
+    WHERE quote_id=?
+    ORDER BY sort_order ASC, id ASC
+  `).all(id);
+
+  // ensure totals
+  recalcQuoteTotals(id);
+  const totals = db.prepare("SELECT subtotal, vat_rate, vat_amount, total, currency FROM quotes WHERE id=?").get(id);
+
+  const vm = {
+    quote_number: quote.quote_number,
+    quote_date: (quote.created_at ? String(quote.created_at).slice(0,10) : todayISO()),
+    valid_until: quote.valid_until || "",
+    title: quote.title || "",
+    notes: quote.notes || "",
+
+    client_name: quote.client_name || "",
+    client_cui: quote.client_cui || "",
+    client_address: quote.client_address || "",
+
+    items: (items || []).map(it => ({
+      name: it.name || "",
+      qty: String(it.qty ?? ""),
+      unit: it.unit || "",
+      unit_price: String(it.unit_price ?? ""),
+      line_total: String(it.line_total ?? ""),
+    })),
+
+    subtotal: String(totals?.subtotal ?? ""),
+    vat_percent: String(Math.round((Number(totals?.vat_rate ?? 0) * 100) * 100) / 100),
+    vat_amount: String(totals?.vat_amount ?? ""),
+    total: String(totals?.total ?? ""),
+    currency: String(totals?.currency ?? "RON"),
+    company: COMPANY
+  };
+
+  const html = Mustache.render(quoteTemplateHtml, vm);
+  const pdf = await renderPdfBuffer(html);
+
+  const year = quote.year || new Date().getFullYear();
+  const yearDir = new URL("./contracts/quotes/" + String(year) + "/", import.meta.url);
+  fs.mkdirSync(yearDir, { recursive: true });
+
+  const fileName = `${quote.quote_number}.pdf`;
+  const absPath = new URL("./contracts/quotes/" + String(year) + "/" + fileName, import.meta.url);
+  fs.writeFileSync(absPath, pdf);
+
+  const pdf_path = `contracts/quotes/${year}/${fileName}`;
+  db.prepare("UPDATE quotes SET pdf_path=? WHERE id=?").run(pdf_path, id);
+
+  return res.redirect("/quote/" + id);
+});
+
+app.post("/quote/:id/convert-to-contract", requireAuth, async (req, res) => {
+  const quote_id = Number(req.params.id);
+  if (!Number.isFinite(quote_id)) return res.status(400).send("Bad id");
+
+  const quote = db.prepare(`
+    SELECT q.*, cl.id AS client_id, cl.cui AS client_cui, cl.name AS client_name,
+           cl.address AS client_address, cl.reg_com AS client_reg_com
+    FROM quotes q
+    JOIN clients cl ON cl.id=q.client_id
+    WHERE q.id=?
+  `).get(quote_id);
+
+  if (!quote) return res.status(404).send("Quote not found");
+
+  // allow convert only if ACCEPTED
+  const st = String(quote.status || "").toUpperCase();
+  if (st !== "ACCEPTED") return res.status(400).send("Quote must be ACCEPTED to convert.");
+
+  const items = db.prepare(`
+    SELECT name, qty, unit, unit_price, line_total
+    FROM quote_items
+    WHERE quote_id=?
+    ORDER BY sort_order ASC, id ASC
+  `).all(quote_id);
+
+  // ensure totals are correct
+  recalcQuoteTotals(quote_id);
+  const totals = db.prepare("SELECT subtotal, vat_rate, vat_amount, total, currency FROM quotes WHERE id=?").get(quote_id);
+
+  // Build service description from items
+  const lines = (items || []).map(it => {
+    const qty = (it.qty ?? "");
+    const unit = (it.unit ?? "");
+    const price = (it.unit_price ?? "");
+    return `• ${it.name || ""} — ${qty}${unit ? " " + unit : ""} × ${price}`;
+  });
+  const service_description = [
+    quote.title ? quote.title : "Servicii conform ofertă",
+    "",
+    ...lines,
+    quote.notes ? ("\nNote: " + quote.notes) : ""
+  ].filter(Boolean).join("\n");
+
+  const year = new Date().getFullYear();
+
+  // contract numbering (same logic as existing code)
+  const row = db.prepare("SELECT MAX(seq) AS maxSeq FROM contracts WHERE year=?").get(year);
+  const nextSeq = (row?.maxSeq || 0) + 1;
+  const contract_number = `QR-${year}-${String(nextSeq).padStart(4, "0")}`;
+
+  // price = quote total
+  const priceNum = Number(totals?.total ?? 0);
+  const duration = quote.valid_until ? `Valabil până la ${quote.valid_until}` : "Conform ofertă";
+
+  // Generate contract PDF using existing contract template.html
+  const is_company = !String(quote.client_cui || "").startsWith("PF-");
+
+  const vm = {
+    contract_number,
+    contract_date: todayISO(),
+    is_company,
+
+    pj_cui: is_company ? (quote.client_cui || "") : "",
+    pj_legal_name: is_company ? (quote.client_name || "") : "",
+    pj_address: is_company ? (quote.client_address || "") : "",
+    pj_reg_com: is_company ? (quote.client_reg_com || "") : "",
+    pj_representative_name: "",
+
+    pf_full_name: !is_company ? (quote.client_name || "") : "",
+    pf_address: !is_company ? (quote.client_address || "") : "",
+
+    service_description,
+    price_amount: String(Number.isFinite(priceNum) ? priceNum : 0),
+    price_currency: String(totals?.currency || "RON"),
+    payment_terms: "15 zile",
+    start_date: todayISO(),
+    duration,
+    termination_notice_days: "30",
+    jurisdiction_city: "București",
+    privacy_policy_url: "https://qr-lab.ro",
+
+    client_signer_name: is_company ? "" : (quote.client_name || ""),
+    provider_signer_name: "",
+  };
+
+  const html = Mustache.render(templateHtml, { ...vm, company: COMPANY });
+  const pdf = await renderPdfBuffer(html);
+
+  // write PDF to contracts/YYYY/
+  const yearDir = path.join(__dirname, "contracts", String(year));
+  fs.mkdirSync(yearDir, { recursive: true });
+  const fileName = `${contract_number}.pdf`;
+  const absPath = path.join(yearDir, fileName);
+  fs.writeFileSync(absPath, pdf);
+  const pdf_path = `contracts/${year}/${fileName}`;
+
+  // Transaction: insert contract + link quote
+  const tx = db.transaction(() => {
+    const info = db.prepare(`
+      INSERT INTO contracts (contract_number, year, seq, client_id, service_description, price, duration, pdf_path, origin)
+      VALUES (?,?,?,?,?,?,?,?,?)
+    `).run(
+      contract_number, year, nextSeq, quote.client_id,
+      service_description, (Number.isFinite(priceNum) ? priceNum : 0), duration, pdf_path, "QUOTE"
+    );
+
+    const contract_id = info.lastInsertRowid;
+
+    db.prepare("UPDATE quotes SET contract_id=? WHERE id=?").run(contract_id, quote_id);
+
+    return contract_id;
+  });
+
+  const contract_id = tx();
+
+  const c = db.prepare("SELECT pdf_path FROM contracts WHERE id=?").get(contract_id);
+  if (c?.pdf_path) return res.redirect("/" + encodeURI(c.pdf_path));
+
+  return res.redirect("/contract/" + contract_id);
+});
+
+
+
+
+app.get("/export/contracts.csv", requireAuth, (req, res) => {
+  const rows = db.prepare(`
+    SELECT c.id, c.contract_number, c.created_at, c.year, c.seq,
+           c.service_description, c.price, c.duration, c.pdf_path,
+           cl.cui AS client_cui, cl.name AS client_name
+    FROM contracts c
+    JOIN clients cl ON cl.id = c.client_id
+    ORDER BY c.id DESC
+    LIMIT 5000
+  `).all();
+
+  function csvEscape(v){
+    const s = String(v ?? "");
+    if (/[",\n\r;]/.test(s)) return '"' + s.replaceAll('"','""') + '"';
+    return s;
+  }
+
+  const header = [
+    "id","contract_number","created_at","year","seq",
+    "client_cui","client_name",
+    "service_description","price","duration","pdf_path"
+  ].join(",");
+
+  const lines = rows.map(r => [
+    r.id, r.contract_number, r.created_at, r.year, r.seq,
+    r.client_cui, r.client_name,
+    r.service_description, r.price, r.duration, r.pdf_path
+  ].map(csvEscape).join(","));
+
+  const csv = [header, ...lines].join("\n");
+
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", "attachment; filename=contracts.csv");
+  res.send(csv);
+});
+
+
+function topMenu(active){
+  function link(href, label, key){
+    const isActive = String(active||"") === String(key||"");
+    const style = isActive ? "font-weight:700;text-decoration:underline" : "";
+    return `<a href="${href}" style="${style}">${label}</a>`;
+  }
+  return `
+  <div style="margin:10px 0 18px 0;display:flex;gap:14px;flex-wrap:wrap">
+    ${link("/dashboard","Dashboard","dashboard")}
+    ${link("/clients","Clients","clients")}
+    ${link("/quotes","Quotes","quotes")}
+    ${link("/","Form contract","form")}
+  </div>`;
+}
+
+function escapeHtml(x){
+  return String(x ?? "")
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#39;");
+}
+
+
+app.get("/", (req, res) => res.type("html").send(uiHtml));
+
+
+app.post("/api/contract/pdf", async (req, res) => {
+  try {
+    const body = req.body || {};
+
+    const provider = {
+      provider_legal_name: "QR-LAB SRL",
+      provider_address: "Completează adresa prestatorului",
+      provider_cui: "ROXXXXXXX",
+      provider_reg_com: "Jxx/xxxx/xxxx",
+      provider_iban: "ROxxBANKxxxxxxxxxxxxxx",
+      provider_bank: "Banca",
+      provider_representative_name: "Nume Reprezentant",
+      provider_representative_role: "Administrator",
+    };
+
+    const is_company = body.is_company === "true" || body.is_company === true;
+    const year = new Date().getFullYear();
+
+    function normCui(cui) {
+      return String(cui || "").toUpperCase().replace(/^RO/, "").replace(/\D/g, "");
+    }
+    function makePfKey(name, addr) {
+      const raw = (String(name || "") + "|" + String(addr || "")).trim().toLowerCase();
+      let h = 0;
+      for (let k = 0; k < raw.length; k++) h = ((h << 5) - h + raw.charCodeAt(k)) | 0;
+      return "PF-" + String(Math.abs(h));
+    }
+
+    let client_cui = "";
+    let client_name = "";
+    let client_addr = "";
+    let client_reg = "";
+    let client_caen = "";
+
+    const pj_cui = normCui(body.pj_cui);
+    const pj_name = String(body.pj_legal_name || "").trim();
+    const pj_address = String(body.pj_address || "").trim();
+    const pj_reg_com = String(body.pj_reg_com || "").trim();
+
+    const pf_name = String(body.pf_full_name || "").trim();
+    const pf_address = String(body.pf_address || "").trim();
+
+    if (is_company) {
+      client_cui = pj_cui;
+      client_name = pj_name;
+      client_addr = pj_address;
+      client_reg = pj_reg_com;
+      client_caen = String(body.caen || "").trim();
+      if (!client_cui) return res.status(400).json({ error: "CUI lipsă/invalid" });
+      if (!client_name) return res.status(400).json({ error: "Denumire firmă lipsă" });
+    } else {
+      client_cui = makePfKey(pf_name, pf_address);
+      client_name = pf_name;
+      client_addr = pf_address;
+      client_reg = "";
+      client_caen = "";
+      if (!client_name) return res.status(400).json({ error: "Nume PF lipsă" });
+    }
+
+    const vat = body.vat ? 1 : 0;
+    const inactive = body.inactive ? 1 : 0;
+
+    const existingClient = db.prepare("SELECT id FROM clients WHERE cui=?").get(client_cui);
+    let client_id;
+    if (existingClient?.id) {
+      client_id = existingClient.id;
+      db.prepare(`
+        UPDATE clients
+        SET name=?, address=?, reg_com=?, caen=?, vat=?, inactive=?
+        WHERE id=?
+      `).run(client_name, client_addr, client_reg, client_caen, vat, inactive, client_id);
+    } else {
+      const r = db.prepare(`
+        INSERT INTO clients (cui, name, address, reg_com, caen, vat, inactive)
+        VALUES (?,?,?,?,?,?,?)
+      `).run(client_cui, client_name, client_addr, client_reg, client_caen, vat, inactive);
+      client_id = r.lastInsertRowid;
+    }
+
+    const row = db.prepare("SELECT MAX(seq) AS maxSeq FROM contracts WHERE year=?").get(year);
+    const nextSeq = (row?.maxSeq || 0) + 1;
+    const contract_number = `QR-${year}-${String(nextSeq).padStart(4, "0")}`;
+
+    const vm = {
+      ...provider,
+      contract_number,
+      contract_date: body.contract_date || todayISO(),
+      is_company,
+
+      contact_email: body.contact_email || "",
+      contact_phone: body.contact_phone || "",
+
+      pj_cui: is_company ? (client_cui || "") : "",
+      pj_legal_name: is_company ? (client_name || "") : "",
+      pj_address: is_company ? (client_addr || "") : "",
+      pj_reg_com: is_company ? (client_reg || "") : "",
+      pj_representative_name: body.pj_representative_name || "",
+      pj_representative_role: body.pj_representative_role || "Administrator",
+
+      pf_full_name: !is_company ? (client_name || "") : "",
+      pf_address: !is_company ? (client_addr || "") : "",
+
+      service_description: body.service_description || "",
+      price_amount: body.price_amount || "",
+      price_currency: body.price_currency || "RON",
+      payment_terms: body.payment_terms || "15 zile",
+      start_date: body.start_date || todayISO(),
+      duration: body.duration || "12 luni",
+      termination_notice_days: body.termination_notice_days || "30",
+      jurisdiction_city: body.jurisdiction_city || "București",
+      privacy_policy_url: body.privacy_policy_url || "https://qr-lab.ro",
+
+      client_signer_name: is_company ? (body.pj_representative_name || "") : (client_name || ""),
+      provider_signer_name: provider.provider_representative_name,
+    };
+
+    const html = Mustache.render(templateHtml, { ...vm, company: COMPANY });
+    const pdf = await renderPdfBuffer(html);
+
+    const yearDir = path.join(__dirname, "contracts", String(year));
+    fs.mkdirSync(yearDir, { recursive: true });
+    const fileName = `${contract_number}.pdf`;
+    const absPath = path.join(yearDir, fileName);
+    fs.writeFileSync(absPath, pdf);
+    const pdf_path = `contracts/${year}/${fileName}`;
+
+    const priceNum = Number(String(body.price_amount || "").replace(",", "."));
+    db.prepare(`
+      INSERT INTO contracts (contract_number, year, seq, client_id, service_description, price, duration, pdf_path)
+      VALUES (?,?,?,?,?,?,?,?)
+    `).run(
+      contract_number,
+      year,
+      nextSeq,
+      client_id,
+      String(body.service_description || ""),
+      Number.isFinite(priceNum) ? priceNum : 0,
+      String(body.duration || "12 luni"),
+      pdf_path
+    );
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+    res.send(pdf);
+  } catch (e) {
+    res.status(500).json({ error: "PDF/CRM error", details: String(e?.message ?? e) });
+  }
+});
+app.listen(3000, "0.0.0.0", () => console.log("Contracts app running on :3000"));

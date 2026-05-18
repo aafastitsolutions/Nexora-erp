@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?><Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2" xmlns:ccts="urn:un:unece:uncefact:documentation:2" xmlns:qdt="urn:oasis:names:specification:ubl:schema:xsd:QualifiedDataTypes-2" xmlns:udt="urn:oasis:names:specification:ubl:schema:xsd:UnqualifiedDataTypes-2">
+    <cbc:UBLVersionID xmlns="">2.1</cbc:UBLVersionID>
+    <cbc:CustomizationID xmlns="">urn:cen.eu:en16931:2017#compliant#urn:efactura.mfinante.ro:CIUS-RO:1.0.1</cbc:CustomizationID>
+    <cbc:ID xmlns="">EMGSIKS220168</cbc:ID><!--BT-1-->
+    <cbc:IssueDate xmlns="">2026-05-11</cbc:IssueDate><!--BT-2-->
+    <cbc:DueDate xmlns="">2026-05-11</cbc:DueDate><!--BT-9-->
+    <cbc:InvoiceTypeCode xmlns="">380</cbc:InvoiceTypeCode><!--BT-3-->
+    <cbc:Note xmlns="">Emag487777511</cbc:Note><!--BT-22-->
+    <cbc:TaxPointDate xmlns="">2026-05-11</cbc:TaxPointDate><!--BT-7-->
+    <cbc:DocumentCurrencyCode xmlns="">RON</cbc:DocumentCurrencyCode><!--BT-5-->
+    <cac:AccountingSupplierParty xmlns=""><!--BG-4-->
+        <cac:Party>
+            <cac:PostalAddress><!--BG-5-->
+                <cbc:StreetName>Str. George Georgescu, Nr.40, Birou 2, Et.2</cbc:StreetName><!--BT-35-->
+                <cbc:CityName>SECTOR4</cbc:CityName><!--BT-37-->
+                <cbc:CountrySubentity>RO-B</cbc:CountrySubentity><!--BT-39-->
+                <cac:Country>
+                    <cbc:IdentificationCode>RO</cbc:IdentificationCode><!--BT-40-->
+                </cac:Country>
+            </cac:PostalAddress>
+            <cac:PartyTaxScheme>
+                <cbc:CompanyID>RO48345691</cbc:CompanyID><!--BT-31-->
+                <cac:TaxScheme>
+                    <cbc:ID>VAT</cbc:ID>
+                </cac:TaxScheme>
+            </cac:PartyTaxScheme>
+            <cac:PartyLegalEntity>
+                <cbc:RegistrationName>SIKS ONLINE SRL</cbc:RegistrationName><!--BT-27-->
+                <cbc:CompanyID>J2023011221402</cbc:CompanyID><!--BT-30-->
+                <cbc:CompanyLegalForm>Capital social: 200 lei</cbc:CompanyLegalForm><!--BT-33-->
+            </cac:PartyLegalEntity>
+        </cac:Party>
+    </cac:AccountingSupplierParty>
+    <cac:AccountingCustomerParty xmlns=""><!--BG-7-->
+        <cac:Party>
+            <cac:PartyIdentification>
+                <cbc:ID>J2023000076295</cbc:ID><!--BT-46-->
+            </cac:PartyIdentification>
+            <cac:PostalAddress><!--BG-8-->
+                <cbc:StreetName>Chitorani.str Gheorghe I Sisesti n8 bl 1 ap 4</cbc:StreetName><!--BT-50-->
+                <cbc:CityName>Chitorani</cbc:CityName><!--BT-52-->
+                <cbc:CountrySubentity>RO-PH</cbc:CountrySubentity><!--BT-54-->
+                <cac:Country>
+                    <cbc:IdentificationCode>RO</cbc:IdentificationCode><!--BT-55-->
+                </cac:Country>
+            </cac:PostalAddress>
+            <cac:PartyLegalEntity>
+                <cbc:RegistrationName>A&amp;A FAST IT SOLUTIONS S.R.L.</cbc:RegistrationName><!--BT-44-->
+                <cbc:CompanyID>47446760</cbc:CompanyID><!--BT-47-->
+            </cac:PartyLegalEntity>
+            <cac:Contact><!--BG-9-->
+                <cbc:Name>pita valentin</cbc:Name><!--BT-56-->
+                <cbc:Telephone>0732029222</cbc:Telephone><!--BT-57-->
+            </cac:Contact>
+        </cac:Party>
+    </cac:AccountingCustomerParty>
+    <cac:PaymentMeans xmlns=""><!--BG-16-->
+        <cbc:PaymentMeansCode>42</cbc:PaymentMeansCode><!--BT-81 BT-82-->
+        <cbc:PaymentID>EMGSIKS220168</cbc:PaymentID><!--BT-83-->
+        <cac:PayeeFinancialAccount><!--BG-17-->
+            <cbc:ID>RO32INGB0000999914018290</cbc:ID><!--BT-84-->
+            <cbc:Name>CONT ING BANK IN RON</cbc:Name><!--BT-85-->
+        </cac:PayeeFinancialAccount>
+    </cac:PaymentMeans>
+    <cac:PaymentMeans xmlns=""><!--BG-16-->
+        <cbc:PaymentMeansCode>42</cbc:PaymentMeansCode><!--BT-81 BT-82-->
+        <cbc:PaymentID>EMGSIKS220168</cbc:PaymentID><!--BT-83-->
+        <cac:PayeeFinancialAccount><!--BG-17-->
+            <cbc:ID>RO98INGB0000999914487940</cbc:ID><!--BT-84-->
+            <cbc:Name>CONT ING BANK NV IN EUR</cbc:Name><!--BT-85-->
+            <cac:FinancialInstitutionBranch>
+                <cbc:ID>INGBROBU</cbc:ID><!--BT-86-->
+            </cac:FinancialInstitutionBranch>
+        </cac:PayeeFinancialAccount>
+    </cac:PaymentMeans>
+    <cac:TaxTotal xmlns="">
+        <cbc:TaxAmount currencyID="RON">6.93</cbc:TaxAmount><!--BT-110-->
+        <cac:TaxSubtotal><!--BG-23-->
+            <cbc:TaxableAmount currencyID="RON">32.98</cbc:TaxableAmount><!--BT-116-->
+            <cbc:TaxAmount currencyID="RON">6.93</cbc:TaxAmount><!--BT-117-->
+            <cac:TaxCategory>
+                <cbc:ID>S</cbc:ID><!--BT-118-->
+                <cbc:Percent>21.00</cbc:Percent><!--BT-119-->
+                <cac:TaxScheme>
+                    <cbc:ID>VAT</cbc:ID>
+                </cac:TaxScheme>
+            </cac:TaxCategory>
+        </cac:TaxSubtotal>
+    </cac:TaxTotal>
+    <cac:LegalMonetaryTotal xmlns=""><!--BG-22-->
+        <cbc:LineExtensionAmount currencyID="RON">32.98</cbc:LineExtensionAmount><!--BT-106-->
+        <cbc:TaxExclusiveAmount currencyID="RON">32.98</cbc:TaxExclusiveAmount><!--BT-109-->
+        <cbc:TaxInclusiveAmount currencyID="RON">39.91</cbc:TaxInclusiveAmount><!--BT-112-->
+        <cbc:AllowanceTotalAmount currencyID="RON">0.00</cbc:AllowanceTotalAmount><!--BT-107-->
+        <cbc:ChargeTotalAmount currencyID="RON">0</cbc:ChargeTotalAmount><!--BT-108-->
+        <cbc:PrepaidAmount currencyID="RON">0</cbc:PrepaidAmount><!--BT-113-->
+        <cbc:PayableRoundingAmount currencyID="RON">0.00</cbc:PayableRoundingAmount><!--BT-114-->
+        <cbc:PayableAmount currencyID="RON">39.91</cbc:PayableAmount><!--BT-115-->
+    </cac:LegalMonetaryTotal>
+    <cac:InvoiceLine xmlns="">
+        <cbc:ID>1</cbc:ID><!--BT-126-->
+        <!--cod intern SmartBill:13ccbc2722053cccba042a7a683126b76a37529faa620363593de0ec3283abe293efd7f03450d1aa16edfc2fea08804f-->
+        <cbc:InvoicedQuantity unitCode="H87">1.0000</cbc:InvoicedQuantity><!--BT-129 BT-130-->
+        <cbc:LineExtensionAmount currencyID="RON">32.98</cbc:LineExtensionAmount><!--BT-131-->
+        <cac:Item><!--BG-31-->
+            <cbc:Name>Set 10 Lame De Rezerva SIKS Pentru Trimmer Sau Motocoasa Gradina, Plastic Rezistent, Calitate Premiu</cbc:Name><!--BT-153-->
+            <cac:SellersItemIdentification>
+                <cbc:ID>REZPLAST06</cbc:ID><!--BT-155-->
+            </cac:SellersItemIdentification>
+            <cac:ClassifiedTaxCategory>
+                <cbc:ID>S</cbc:ID><!--BT-151-->
+                <cbc:Percent>21.00</cbc:Percent><!--BT-152-->
+                <cac:TaxScheme>
+                    <cbc:ID>VAT</cbc:ID>
+                </cac:TaxScheme>
+            </cac:ClassifiedTaxCategory>
+        </cac:Item>
+        <cac:Price><!--BG-29-->
+            <cbc:PriceAmount currencyID="RON">32.98</cbc:PriceAmount><!--BT-146-->
+            <cbc:BaseQuantity unitCode="H87">1</cbc:BaseQuantity><!--BT-149 BT-150-->
+        </cac:Price>
+    </cac:InvoiceLine>
+</Invoice>

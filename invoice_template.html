@@ -1,0 +1,143 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Factura {{factura_nr}}</title>
+  <style>
+    :root{
+      --theme: {{theme_color}};
+      --theme2: {{theme_color_light}};
+    }
+    body{font-family:system-ui,Arial;margin:0;padding:0}
+    .page{padding:22px 28px}
+    .topline{display:flex;justify-content:space-between;gap:16px;font-size:13px;margin-bottom:10px}
+    .topline b{font-weight:700}
+    .banner{background:var(--theme);color:#fff;padding:12px 28px;font-size:28px;font-weight:800;letter-spacing:.5px}
+    .row{display:block;margin-top:8px;padding-bottom:12px;border-bottom:1px solid #dcdcdc}
+    .logoBox{width:140px;height:90px;border:1px solid #ddd;border-radius:6px;display:flex;align-items:center;justify-content:center;overflow:hidden;margin:0 auto}
+    .logoBox img{max-width:100%;max-height:100%;object-fit:contain}
+    .cols{display:grid;grid-template-columns:1fr 160px 1fr;gap:28px;align-items:start}
+    .col h3{margin:0 0 6px 0;color:var(--theme);font-size:12px;letter-spacing:.3px}
+    .kv{font-size:11px;line-height:1.35}
+    .kv b{font-weight:700}
+    .tableTitle{margin-top:18px;color:var(--theme);font-weight:800;font-size:13px;letter-spacing:.3px}
+    table{border-collapse:collapse;width:100%;margin-top:8px;font-size:13px}
+    th,td{border-bottom:1px solid #e6e6e6;padding:8px 8px;vertical-align:top}
+    th{color:#333;font-weight:700}
+    th:first-child{color:var(--theme)}
+    .right{text-align:right}
+    .centerCol{display:flex;align-items:flex-start;justify-content:center}
+    .totalRow td{border-top:2px solid var(--theme);border-bottom:none}
+    .totalBox{background:var(--theme2);padding:12px 14px;border-radius:6px;min-width:220px;display:inline-block}
+    .footer{margin-top:18px;font-size:12px;color:#333}
+    .muted{opacity:.75}
+    .line{margin-top:6px;border-top:1px solid #dcdcdc;padding-top:8px}
+    .bottomBar{margin-top:10px;background:var(--theme2);padding:10px 12px;font-size:11px}
+  </style>
+</head>
+<body>
+  <div class="banner">FACTURA</div>
+
+  <div class="page">
+    <div class="topline">
+      <div>Seria <b>{{serie}}</b> Nr. <b>{{numar}}</b> din <b>{{data_emitere}}</b></div>
+      <div>Termen plata <b>{{scadenta}}</b></div>
+    </div>
+
+    <div class="row">
+      <div class="cols">
+        <div class="col">
+          <h3>FURNIZOR</h3>
+          <div class="kv"><b>{{furnizor.name}}</b></div>
+          <div class="kv">CIF: <b>{{furnizor.cui}}</b></div>
+          <div class="kv">Reg. com.: <b>{{furnizor.rc}}</b></div>
+          <div class="kv">Adresa: <b>{{furnizor.address}}</b></div>
+          <div class="kv">Judet: <b>{{furnizor.judet}}</b></div>
+          <div class="kv">IBAN: <b>{{furnizor.iban}}</b></div>
+          <div class="kv">Banca: <b>{{furnizor.bank}}</b></div>
+        </div>
+
+        <div class="centerCol">
+          <div class="logoBox">
+            {{#logo_data_uri}}<img src="{{logo_data_uri}}" alt="logo" />{{/logo_data_uri}}
+            {{^logo_data_uri}}<span class="muted">LOGO</span>{{/logo_data_uri}}
+          </div>
+        </div>
+
+        <div class="col">
+          <h3>CLIENT</h3>
+          <div class="kv"><b>{{client.name}}</b></div>
+          <div class="kv">CIF: <b>{{client.cui}}</b></div>
+          <div class="kv">Reg. com.: <b>{{client.reg_com}}</b></div>
+          <div class="kv">Adresa: <b>{{client.address}}</b></div>
+          <div class="kv">Judet: <b>{{client.judet}}</b></div>
+          <div class="kv">Tara: <b>{{client.tara}}</b></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tableTitle">PRODUSE/SERVICII</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:34px">#</th>
+          <th>Denumire</th>
+          <th style="width:70px">U.M.</th>
+          <th class="right" style="width:70px">Cant.</th>
+          <th class="right" style="width:110px">Pret unitar<br><span class="muted">{{moneda}}</span></th>
+          <th class="right" style="width:110px">Valoare<br><span class="muted">{{moneda}}</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#lines}}
+        <tr>
+          <td>{{idx}}</td>
+          <td>
+            <div>{{denumire}}</div>
+            {{#descriere}}<div class="muted" style="margin-top:4px;font-size:11px;line-height:1.35">{{descriere}}</div>{{/descriere}}
+          </td>
+          <td>{{unitate}}</td>
+          <td class="right">{{cantitate}}</td>
+          <td class="right">{{pret_unitar}}</td>
+          <td class="right">{{total_linie}}</td>
+        </tr>
+        {{/lines}}
+        {{^lines}}
+        <tr><td colspan="6"><i>Nu există linii</i></td></tr>
+        {{/lines}}
+      </tbody>
+      <tfoot>
+        <tr class="totalRow">
+          <td colspan="4"></td>
+          <td colspan="2" class="right">
+            <div class="totalBox">
+              <div style="display:flex;justify-content:space-between;gap:10px">
+                <div><b>Total factura</b></div>
+                <div><b>{{total}}</b></div>
+              </div>
+              {{#show_tva}}
+              <div style="display:flex;justify-content:space-between;gap:10px;margin-top:6px">
+                <div class="muted">TVA ({{tva_percent}}%)</div>
+                <div class="muted">{{tva_valoare}}</div>
+              </div>
+              {{/show_tva}}
+            </div>
+          </td>
+        </tr>
+      </tfoot>
+    </table>
+
+    <div class="footer">
+      {{#spv_index}}<div class="muted">Index incarcare SPV {{spv_index}}, din data de {{spv_date}}.</div>{{/spv_index}}
+      <div class="line">Intocmit de: <b>{{intocmit_de}}</b></div>
+      <div class="muted" style="margin-top:8px">{{furnizor.name}}</div>
+      
+      <div class="muted">{{invoice_footer}}</div>
+    </div>
+
+    <div class="bottomBar">
+      Facturez cu <b>{{app_name}}</b>, standardul facturarii electronice &nbsp;&nbsp; <b>Cod document:</b> {{doc_code}}
+    </div>
+  </div>
+</body>
+</html>

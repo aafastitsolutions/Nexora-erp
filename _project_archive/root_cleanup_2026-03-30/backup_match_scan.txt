@@ -1,0 +1,418 @@
+===== old_backups/server.js.bak_2026-03-06_navbar =====
+2038:    <button type="submit">Generează PDF factură</button>
+===== old_backups/server.js.bak_2026-03-06_products_routes =====
+2107:    <button type="submit">Generează PDF factură</button>
+===== old_backups/server.js.bak_2026-03-06_tva_logo =====
+2413:    <button type="submit">Generează PDF factură</button>
+===== old_backups/server.js.bak_accounts_step1_20260309_110831 =====
+3446:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+3712:              <button class="crm-btn" type="submit">Generează PDF</button>
+3760:              <button class="crm-btn" type="submit">Generează PDF</button>
+3797:              <button class="crm-btn" type="submit">Generează PDF</button>
+3839:              <button class="crm-btn" type="submit">Generează PDF</button>
+3876:              <button class="crm-btn" type="submit">Generează PDF</button>
+3914:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== old_backups/server.js.bak_accounts_step2_20260309_111659 =====
+3447:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+3713:              <button class="crm-btn" type="submit">Generează PDF</button>
+3761:              <button class="crm-btn" type="submit">Generează PDF</button>
+3798:              <button class="crm-btn" type="submit">Generează PDF</button>
+3840:              <button class="crm-btn" type="submit">Generează PDF</button>
+3877:              <button class="crm-btn" type="submit">Generează PDF</button>
+3915:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== old_backups/server.js.bak_accounts_step3_20260309_112723 =====
+3448:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+3714:              <button class="crm-btn" type="submit">Generează PDF</button>
+3762:              <button class="crm-btn" type="submit">Generează PDF</button>
+3799:              <button class="crm-btn" type="submit">Generează PDF</button>
+3841:              <button class="crm-btn" type="submit">Generează PDF</button>
+3878:              <button class="crm-btn" type="submit">Generează PDF</button>
+3916:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== old_backups/server.js.bak_accounts_step4_20260309_113625 =====
+3448:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+3714:              <button class="crm-btn" type="submit">Generează PDF</button>
+3762:              <button class="crm-btn" type="submit">Generează PDF</button>
+3799:              <button class="crm-btn" type="submit">Generează PDF</button>
+3841:              <button class="crm-btn" type="submit">Generează PDF</button>
+3878:              <button class="crm-btn" type="submit">Generează PDF</button>
+3916:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== old_backups/server.js.bak_anaf_settings_ui_20260316_121024 =====
+3613:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+3891:              <button class="crm-btn" type="submit">Generează PDF</button>
+3947:              <button class="crm-btn" type="submit">Generează PDF</button>
+3984:              <button class="crm-btn" type="submit">Generează PDF</button>
+4026:              <button class="crm-btn" type="submit">Generează PDF</button>
+4071:              <button class="crm-btn" type="submit">Generează PDF</button>
+4117:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== old_backups/server.js.bak_anaf_ui_move_20260316_121654 =====
+3656:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+3934:              <button class="crm-btn" type="submit">Generează PDF</button>
+3990:              <button class="crm-btn" type="submit">Generează PDF</button>
+4027:              <button class="crm-btn" type="submit">Generează PDF</button>
+4069:              <button class="crm-btn" type="submit">Generează PDF</button>
+4114:              <button class="crm-btn" type="submit">Generează PDF</button>
+4160:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== old_backups/server.js.bak_client_timeline_step1_20260312_195939 =====
+3504:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+3782:              <button class="crm-btn" type="submit">Generează PDF</button>
+3838:              <button class="crm-btn" type="submit">Generează PDF</button>
+3875:              <button class="crm-btn" type="submit">Generează PDF</button>
+3917:              <button class="crm-btn" type="submit">Generează PDF</button>
+3962:              <button class="crm-btn" type="submit">Generează PDF</button>
+4008:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== old_backups/server.js.bak_dashboard_fix =====
+3656:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+3934:              <button class="crm-btn" type="submit">Generează PDF</button>
+3990:              <button class="crm-btn" type="submit">Generează PDF</button>
+4027:              <button class="crm-btn" type="submit">Generează PDF</button>
+4069:              <button class="crm-btn" type="submit">Generează PDF</button>
+4114:              <button class="crm-btn" type="submit">Generează PDF</button>
+4160:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== old_backups/server.js.bak_employees_nav_20260312_193437 =====
+3499:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+3765:              <button class="crm-btn" type="submit">Generează PDF</button>
+3813:              <button class="crm-btn" type="submit">Generează PDF</button>
+3850:              <button class="crm-btn" type="submit">Generează PDF</button>
+3892:              <button class="crm-btn" type="submit">Generează PDF</button>
+3929:              <button class="crm-btn" type="submit">Generează PDF</button>
+3967:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== old_backups/server.js.bak_factura_design_20260316_retry1 =====
+3838:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+4146:              <button class="crm-btn" type="submit">Generează PDF</button>
+4202:              <button class="crm-btn" type="submit">Generează PDF</button>
+4239:              <button class="crm-btn" type="submit">Generează PDF</button>
+4281:              <button class="crm-btn" type="submit">Generează PDF</button>
+4326:              <button class="crm-btn" type="submit">Generează PDF</button>
+4372:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== old_backups/server.js.bak_factura_design_20260316_step1 =====
+3838:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+4146:              <button class="crm-btn" type="submit">Generează PDF</button>
+4202:              <button class="crm-btn" type="submit">Generează PDF</button>
+4239:              <button class="crm-btn" type="submit">Generează PDF</button>
+4281:              <button class="crm-btn" type="submit">Generează PDF</button>
+4326:              <button class="crm-btn" type="submit">Generează PDF</button>
+4372:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== old_backups/server.js.bak_factura_design_20260316_ui1 =====
+3617:      <button class="btn btn-primary" type="submit">Generează PDF</button>
+4141:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+4449:              <button class="crm-btn" type="submit">Generează PDF</button>
+4505:              <button class="crm-btn" type="submit">Generează PDF</button>
+4542:              <button class="crm-btn" type="submit">Generează PDF</button>
+4584:              <button class="crm-btn" type="submit">Generează PDF</button>
+4629:              <button class="crm-btn" type="submit">Generează PDF</button>
+4675:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== old_backups/server.js.bak_factura_efactura_ui_20260316_122346 =====
+3614:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+3892:              <button class="crm-btn" type="submit">Generează PDF</button>
+3948:              <button class="crm-btn" type="submit">Generează PDF</button>
+3985:              <button class="crm-btn" type="submit">Generează PDF</button>
+4027:              <button class="crm-btn" type="submit">Generează PDF</button>
+4072:              <button class="crm-btn" type="submit">Generează PDF</button>
+4118:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== old_backups/server.js.bak_factura_inline_preview_20260316_step1 =====
+3617:      <button class="btn btn-primary" type="submit">Generează PDF</button>
+4142:          <button class="crm-btn" type="submit">Generează PDF</button>
+4168:            <button class="crm-btn" type="submit">Trimite e-Factura</button>
+4180:        1. Preview PDF → 2. Generează PDF → 3. Trimite e-Factura. XML-ul UBL/CIUS-RO este documentul tehnic trimis către ANAF.
+4457:              <button class="crm-btn" type="submit">Generează PDF</button>
+4513:              <button class="crm-btn" type="submit">Generează PDF</button>
+4550:              <button class="crm-btn" type="submit">Generează PDF</button>
+4592:              <button class="crm-btn" type="submit">Generează PDF</button>
+4637:              <button class="crm-btn" type="submit">Generează PDF</button>
+4683:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== old_backups/server.js.bak_factura_layout_20260316_step1 =====
+3642:      <button class="btn btn-primary" type="submit">Generează PDF</button>
+4167:          <button class="crm-btn" type="submit">Generează PDF</button>
+4176:        <h3 style="margin:0;font-size:20px">Preview factură</h3>
+4212:            <button class="crm-btn" type="submit">Trimite e-Factura</button>
+4224:        1. Preview PDF → 2. Generează PDF → 3. Trimite e-Factura. XML-ul UBL/CIUS-RO este documentul tehnic trimis către ANAF.
+4524:              <button class="crm-btn" type="submit">Generează PDF</button>
+4580:              <button class="crm-btn" type="submit">Generează PDF</button>
+4617:              <button class="crm-btn" type="submit">Generează PDF</button>
+4659:              <button class="crm-btn" type="submit">Generează PDF</button>
+4704:              <button class="crm-btn" type="submit">Generează PDF</button>
+4750:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== old_backups/server.js.bak_factura_layout_20260316_step_final =====
+3642:      <button class="btn btn-primary" type="submit">Generează PDF</button>
+4168:        <div class="crm-muted" style="margin-top:6px">Flux recomandat: Trimite e-Factura, generează PDF și trimite clientului documentul final.</div>
+4173:          <button class="crm-btn" type="submit">Trimite e-Factura</button>
+4177:          <button class="crm-btn crm-btn-secondary" type="submit">Generează PDF</button>
+4181:          ? `<a href="mailto:${encodeURI(clientEmail)}?subject=${encodeURIComponent("Factura " + (f.factura_nr || ""))}" class="crm-btn crm-btn-secondary" style="text-decoration:none">Trimite email clientului</a>`
+4199:        <h3 style="margin:0;font-size:20px">Preview factură</h3>
+4234:            <button class="crm-btn" type="submit">Trimite e-Factura</button>
+4246:        1. Preview PDF → 2. Generează PDF → 3. Trimite e-Factura. XML-ul UBL/CIUS-RO este documentul tehnic trimis către ANAF.
+4546:              <button class="crm-btn" type="submit">Generează PDF</button>
+4602:              <button class="crm-btn" type="submit">Generează PDF</button>
+4639:              <button class="crm-btn" type="submit">Generează PDF</button>
+4681:              <button class="crm-btn" type="submit">Generează PDF</button>
+4726:              <button class="crm-btn" type="submit">Generează PDF</button>
+4772:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== old_backups/server.js.bak_factura_lines_polish_20260316 =====
+3642:      <button class="btn btn-primary" type="submit">Generează PDF</button>
+4151:          <h3 style="margin:0;font-size:20px">Preview factură</h3>
+4193:            <button class="crm-btn" type="submit" style="width:100%">Trimite e-Factura</button>
+4197:            <button class="crm-btn crm-btn-secondary" type="submit" style="width:100%">Generează PDF</button>
+4201:            ? `<a href="mailto:${encodeURI(clientEmail)}?subject=${encodeURIComponent("Factura " + (f.factura_nr || ""))}" class="crm-btn crm-btn-secondary" style="text-decoration:none;width:100%;box-sizing:border-box;text-align:center">Trimite email clientului</a>`
+4251:            <button class="crm-btn" type="submit">Trimite e-Factura</button>
+4263:        1. Preview PDF → 2. Generează PDF → 3. Trimite e-Factura. XML-ul UBL/CIUS-RO este documentul tehnic trimis către ANAF.
+4563:              <button class="crm-btn" type="submit">Generează PDF</button>
+4619:              <button class="crm-btn" type="submit">Generează PDF</button>
+4656:              <button class="crm-btn" type="submit">Generează PDF</button>
+4698:              <button class="crm-btn" type="submit">Generează PDF</button>
+4743:              <button class="crm-btn" type="submit">Generează PDF</button>
+4789:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== old_backups/server.js.bak_factura_preview_fix_20260316_step1 =====
+3642:      <button class="btn btn-primary" type="submit">Generează PDF</button>
+4167:          <button class="crm-btn" type="submit">Generează PDF</button>
+4176:        <h3 style="margin:0;font-size:20px">Preview factură</h3>
+4212:            <button class="crm-btn" type="submit">Trimite e-Factura</button>
+4224:        1. Preview PDF → 2. Generează PDF → 3. Trimite e-Factura. XML-ul UBL/CIUS-RO este documentul tehnic trimis către ANAF.
+4501:              <button class="crm-btn" type="submit">Generează PDF</button>
+4557:              <button class="crm-btn" type="submit">Generează PDF</button>
+4594:              <button class="crm-btn" type="submit">Generează PDF</button>
+4636:              <button class="crm-btn" type="submit">Generează PDF</button>
+4681:              <button class="crm-btn" type="submit">Generează PDF</button>
+4727:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== old_backups/server.js.bak_factura_preview_fix_20260316_step2 =====
+3642:      <button class="btn btn-primary" type="submit">Generează PDF</button>
+4167:          <button class="crm-btn" type="submit">Generează PDF</button>
+4176:        <h3 style="margin:0;font-size:20px">Preview factură</h3>
+4212:            <button class="crm-btn" type="submit">Trimite e-Factura</button>
+4224:        1. Preview PDF → 2. Generează PDF → 3. Trimite e-Factura. XML-ul UBL/CIUS-RO este documentul tehnic trimis către ANAF.
+4501:              <button class="crm-btn" type="submit">Generează PDF</button>
+4557:              <button class="crm-btn" type="submit">Generează PDF</button>
+4594:              <button class="crm-btn" type="submit">Generează PDF</button>
+4636:              <button class="crm-btn" type="submit">Generează PDF</button>
+4681:              <button class="crm-btn" type="submit">Generează PDF</button>
+4727:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== old_backups/server.js.bak_factura_preview_fix_20260316_step3 =====
+3642:      <button class="btn btn-primary" type="submit">Generează PDF</button>
+4167:          <button class="crm-btn" type="submit">Generează PDF</button>
+4176:        <h3 style="margin:0;font-size:20px">Preview factură</h3>
+4212:            <button class="crm-btn" type="submit">Trimite e-Factura</button>
+4224:        1. Preview PDF → 2. Generează PDF → 3. Trimite e-Factura. XML-ul UBL/CIUS-RO este documentul tehnic trimis către ANAF.
+4501:              <button class="crm-btn" type="submit">Generează PDF</button>
+4557:              <button class="crm-btn" type="submit">Generează PDF</button>
+4594:              <button class="crm-btn" type="submit">Generează PDF</button>
+4636:              <button class="crm-btn" type="submit">Generează PDF</button>
+4681:              <button class="crm-btn" type="submit">Generează PDF</button>
+4727:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== old_backups/server.js.bak_factura_preview_inline_final_20260316 =====
+3642:      <button class="btn btn-primary" type="submit">Generează PDF</button>
+4151:          <h3 style="margin:0;font-size:20px">Preview factură</h3>
+4193:            <button class="crm-btn" type="submit" style="width:100%">Trimite e-Factura</button>
+4197:            <button class="crm-btn crm-btn-secondary" type="submit" style="width:100%">Generează PDF</button>
+4201:            ? `<a href="mailto:${encodeURI(clientEmail)}?subject=${encodeURIComponent("Factura " + (f.factura_nr || ""))}" class="crm-btn crm-btn-secondary" style="text-decoration:none;width:100%;box-sizing:border-box;text-align:center">Trimite email clientului</a>`
+4251:            <button class="crm-btn" type="submit">Trimite e-Factura</button>
+4263:        1. Preview PDF → 2. Generează PDF → 3. Trimite e-Factura. XML-ul UBL/CIUS-RO este documentul tehnic trimis către ANAF.
+4563:              <button class="crm-btn" type="submit">Generează PDF</button>
+4619:              <button class="crm-btn" type="submit">Generează PDF</button>
+4656:              <button class="crm-btn" type="submit">Generează PDF</button>
+4698:              <button class="crm-btn" type="submit">Generează PDF</button>
+4743:              <button class="crm-btn" type="submit">Generează PDF</button>
+4789:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== old_backups/server.js.bak_outbox_messages_20260316_step1 =====
+3838:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+4146:              <button class="crm-btn" type="submit">Generează PDF</button>
+4202:              <button class="crm-btn" type="submit">Generează PDF</button>
+4239:              <button class="crm-btn" type="submit">Generează PDF</button>
+4281:              <button class="crm-btn" type="submit">Generează PDF</button>
+4326:              <button class="crm-btn" type="submit">Generează PDF</button>
+4372:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== old_backups/server.js.bak_outbox_messages_20260316_step2 =====
+3838:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+4146:              <button class="crm-btn" type="submit">Generează PDF</button>
+4202:              <button class="crm-btn" type="submit">Generează PDF</button>
+4239:              <button class="crm-btn" type="submit">Generează PDF</button>
+4281:              <button class="crm-btn" type="submit">Generează PDF</button>
+4326:              <button class="crm-btn" type="submit">Generează PDF</button>
+4372:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== old_backups/server.js.bak_outbox_messages_20260316_step3 =====
+3838:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+4146:              <button class="crm-btn" type="submit">Generează PDF</button>
+4202:              <button class="crm-btn" type="submit">Generează PDF</button>
+4239:              <button class="crm-btn" type="submit">Generează PDF</button>
+4281:              <button class="crm-btn" type="submit">Generează PDF</button>
+4326:              <button class="crm-btn" type="submit">Generează PDF</button>
+4372:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== old_backups/server.js.bak_permissions_step2_20260309_144840 =====
+3501:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+3767:              <button class="crm-btn" type="submit">Generează PDF</button>
+3815:              <button class="crm-btn" type="submit">Generează PDF</button>
+3852:              <button class="crm-btn" type="submit">Generează PDF</button>
+3894:              <button class="crm-btn" type="submit">Generează PDF</button>
+3931:              <button class="crm-btn" type="submit">Generează PDF</button>
+3969:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== old_backups/server.js.bak_timeline_fix_20260312_201330 =====
+3609:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+3887:              <button class="crm-btn" type="submit">Generează PDF</button>
+3943:              <button class="crm-btn" type="submit">Generează PDF</button>
+3980:              <button class="crm-btn" type="submit">Generează PDF</button>
+4022:              <button class="crm-btn" type="submit">Generează PDF</button>
+4067:              <button class="crm-btn" type="submit">Generează PDF</button>
+4113:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== old_backups/server.js.bak_timeline_ui_20260312_200437 =====
+3564:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+3842:              <button class="crm-btn" type="submit">Generează PDF</button>
+3898:              <button class="crm-btn" type="submit">Generează PDF</button>
+3935:              <button class="crm-btn" type="submit">Generează PDF</button>
+3977:              <button class="crm-btn" type="submit">Generează PDF</button>
+4022:              <button class="crm-btn" type="submit">Generează PDF</button>
+4068:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== old_backups/server.js.bak_tipizate_employees_20260312_194659 =====
+3504:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+3770:              <button class="crm-btn" type="submit">Generează PDF</button>
+3818:              <button class="crm-btn" type="submit">Generează PDF</button>
+3855:              <button class="crm-btn" type="submit">Generează PDF</button>
+3897:              <button class="crm-btn" type="submit">Generează PDF</button>
+3934:              <button class="crm-btn" type="submit">Generează PDF</button>
+3972:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== old_backups/server.js.bak_ui_2026_03_06_step1 =====
+2519:    <button class="pdf" type="submit">📄 Generează PDF factură</button>
+===== old_backups/server.js.bak_ui_2026_03_06_step10_quote_id =====
+3244:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+===== old_backups/server.js.bak_ui_2026_03_06_step11_contract_id =====
+3299:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+===== old_backups/server.js.bak_ui_2026_03_06_step12_produse_menu =====
+3357:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+===== old_backups/server.js.bak_ui_2026_03_06_step13_form_shell =====
+3364:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+===== old_backups/server.js.bak_ui_2026_03_06_step14_tipizate =====
+3445:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+===== old_backups/server.js.bak_ui_2026_03_06_step15_tipizate_delete_pv =====
+3446:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+===== old_backups/server.js.bak_ui_2026_03_06_step16_tipizate_all_templates =====
+3446:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+3711:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== old_backups/server.js.bak_ui_2026_03_06_step2_dashboard =====
+3006:    <button class="pdf" type="submit">📄 Generează PDF factură</button>
+===== old_backups/server.js.bak_ui_2026_03_06_step3_clients =====
+3068:    <button class="pdf" type="submit">📄 Generează PDF factură</button>
+===== old_backups/server.js.bak_ui_2026_03_06_step4_quotes =====
+3092:    <button class="pdf" type="submit">📄 Generează PDF factură</button>
+===== old_backups/server.js.bak_ui_2026_03_06_step5_contracte =====
+3140:    <button class="pdf" type="submit">📄 Generează PDF factură</button>
+===== old_backups/server.js.bak_ui_2026_03_06_step6_facturi =====
+3156:    <button class="pdf" type="submit">📄 Generează PDF factură</button>
+===== old_backups/server.js.bak_ui_2026_03_06_step7_factura_id =====
+3178:    <button class="pdf" type="submit">📄 Generează PDF factură</button>
+===== old_backups/server.js.bak_ui_2026_03_06_step8_setari =====
+3164:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+===== old_backups/server.js.bak_ui_2026_03_06_step9_client_id =====
+3164:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+===== server.js.bak_2026-03-06_navbar =====
+2038:    <button type="submit">Generează PDF factură</button>
+===== server.js.bak_2026-03-06_products_routes =====
+2107:    <button type="submit">Generează PDF factură</button>
+===== server.js.bak_2026-03-06_tva_logo =====
+2413:    <button type="submit">Generează PDF factură</button>
+===== server.js.bak_accounts_step1_20260309_110831 =====
+3446:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+3712:              <button class="crm-btn" type="submit">Generează PDF</button>
+3760:              <button class="crm-btn" type="submit">Generează PDF</button>
+3797:              <button class="crm-btn" type="submit">Generează PDF</button>
+3839:              <button class="crm-btn" type="submit">Generează PDF</button>
+3876:              <button class="crm-btn" type="submit">Generează PDF</button>
+3914:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== server.js.bak_accounts_step2_20260309_111659 =====
+3447:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+3713:              <button class="crm-btn" type="submit">Generează PDF</button>
+3761:              <button class="crm-btn" type="submit">Generează PDF</button>
+3798:              <button class="crm-btn" type="submit">Generează PDF</button>
+3840:              <button class="crm-btn" type="submit">Generează PDF</button>
+3877:              <button class="crm-btn" type="submit">Generează PDF</button>
+3915:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== server.js.bak_accounts_step3_20260309_112723 =====
+3448:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+3714:              <button class="crm-btn" type="submit">Generează PDF</button>
+3762:              <button class="crm-btn" type="submit">Generează PDF</button>
+3799:              <button class="crm-btn" type="submit">Generează PDF</button>
+3841:              <button class="crm-btn" type="submit">Generează PDF</button>
+3878:              <button class="crm-btn" type="submit">Generează PDF</button>
+3916:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== server.js.bak_accounts_step4_20260309_113625 =====
+3448:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+3714:              <button class="crm-btn" type="submit">Generează PDF</button>
+3762:              <button class="crm-btn" type="submit">Generează PDF</button>
+3799:              <button class="crm-btn" type="submit">Generează PDF</button>
+3841:              <button class="crm-btn" type="submit">Generează PDF</button>
+3878:              <button class="crm-btn" type="submit">Generează PDF</button>
+3916:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== server.js.bak_before_preview_helpers_20260317_121938 =====
+3647:      <button class="btn btn-primary" type="submit">Generează PDF</button>
+4173:        <div class="crm-muted" style="margin-top:6px">Flux recomandat: Trimite e-Factura, generează PDF și trimite clientului documentul final.</div>
+4178:          <button class="crm-btn" type="submit">Trimite e-Factura</button>
+4182:          <button class="crm-btn crm-btn-secondary" type="submit">Generează PDF</button>
+4186:          ? `<a href="mailto:${encodeURI(clientEmail)}?subject=${encodeURIComponent("Factura " + (f.factura_nr || ""))}" class="crm-btn crm-btn-secondary" style="text-decoration:none">Trimite email clientului</a>`
+4204:        <h3 style="margin:0;font-size:20px">Preview factură</h3>
+4239:            <button class="crm-btn" type="submit">Trimite e-Factura</button>
+4251:        1. Preview PDF → 2. Generează PDF → 3. Trimite e-Factura. XML-ul UBL/CIUS-RO este documentul tehnic trimis către ANAF.
+4551:              <button class="crm-btn" type="submit">Generează PDF</button>
+4607:              <button class="crm-btn" type="submit">Generează PDF</button>
+4644:              <button class="crm-btn" type="submit">Generează PDF</button>
+4686:              <button class="crm-btn" type="submit">Generează PDF</button>
+4731:              <button class="crm-btn" type="submit">Generează PDF</button>
+4777:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== server.js.bak_current_before_restore =====
+3642:      <button class="btn btn-primary" type="submit">Generează PDF</button>
+4151:          <h3 style="margin:0;font-size:20px">Preview factură</h3>
+4193:            <button class="crm-btn" type="submit" style="width:100%">Trimite e-Factura</button>
+4197:            <button class="crm-btn crm-btn-secondary" type="submit" style="width:100%">Generează PDF</button>
+4201:            ? `<a href="mailto:${encodeURI(clientEmail)}?subject=${encodeURIComponent("Factura " + (f.factura_nr || ""))}" class="crm-btn crm-btn-secondary" style="text-decoration:none;width:100%;box-sizing:border-box;text-align:center">Trimite email clientului</a>`
+4251:            <button class="crm-btn" type="submit">Trimite e-Factura</button>
+4263:        1. Preview PDF → 2. Generează PDF → 3. Trimite e-Factura. XML-ul UBL/CIUS-RO este documentul tehnic trimis către ANAF.
+4563:              <button class="crm-btn" type="submit">Generează PDF</button>
+4619:              <button class="crm-btn" type="submit">Generează PDF</button>
+4656:              <button class="crm-btn" type="submit">Generează PDF</button>
+4698:              <button class="crm-btn" type="submit">Generează PDF</button>
+4743:              <button class="crm-btn" type="submit">Generează PDF</button>
+4789:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== server.js.bak_permissions_step2_20260309_144840 =====
+3501:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+3767:              <button class="crm-btn" type="submit">Generează PDF</button>
+3815:              <button class="crm-btn" type="submit">Generează PDF</button>
+3852:              <button class="crm-btn" type="submit">Generează PDF</button>
+3894:              <button class="crm-btn" type="submit">Generează PDF</button>
+3931:              <button class="crm-btn" type="submit">Generează PDF</button>
+3969:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== server.js.bak_ui_2026_03_06_step1 =====
+2519:    <button class="pdf" type="submit">📄 Generează PDF factură</button>
+===== server.js.bak_ui_2026_03_06_step10_quote_id =====
+3244:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+===== server.js.bak_ui_2026_03_06_step11_contract_id =====
+3299:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+===== server.js.bak_ui_2026_03_06_step12_produse_menu =====
+3357:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+===== server.js.bak_ui_2026_03_06_step13_form_shell =====
+3364:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+===== server.js.bak_ui_2026_03_06_step14_tipizate =====
+3445:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+===== server.js.bak_ui_2026_03_06_step15_tipizate_delete_pv =====
+3446:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+===== server.js.bak_ui_2026_03_06_step16_tipizate_all_templates =====
+3446:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+3711:              <button class="crm-btn" type="submit">Generează PDF</button>
+===== server.js.bak_ui_2026_03_06_step2_dashboard =====
+3006:    <button class="pdf" type="submit">📄 Generează PDF factură</button>
+===== server.js.bak_ui_2026_03_06_step3_clients =====
+3068:    <button class="pdf" type="submit">📄 Generează PDF factură</button>
+===== server.js.bak_ui_2026_03_06_step4_quotes =====
+3092:    <button class="pdf" type="submit">📄 Generează PDF factură</button>
+===== server.js.bak_ui_2026_03_06_step5_contracte =====
+3140:    <button class="pdf" type="submit">📄 Generează PDF factură</button>
+===== server.js.bak_ui_2026_03_06_step6_facturi =====
+3156:    <button class="pdf" type="submit">📄 Generează PDF factură</button>
+===== server.js.bak_ui_2026_03_06_step7_factura_id =====
+3178:    <button class="pdf" type="submit">📄 Generează PDF factură</button>
+===== server.js.bak_ui_2026_03_06_step8_setari =====
+3164:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+===== server.js.bak_ui_2026_03_06_step9_client_id =====
+3164:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+===== server.js.bak_ui_settings_step1_20260317_114223 =====
+3499:          <button class="crm-btn" type="submit">Generează PDF factură</button>
+3765:              <button class="crm-btn" type="submit">Generează PDF</button>
+3813:              <button class="crm-btn" type="submit">Generează PDF</button>
+3850:              <button class="crm-btn" type="submit">Generează PDF</button>
+3892:              <button class="crm-btn" type="submit">Generează PDF</button>
+3929:              <button class="crm-btn" type="submit">Generează PDF</button>
+3967:              <button class="crm-btn" type="submit">Generează PDF</button>

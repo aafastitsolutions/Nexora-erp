@@ -1,0 +1,94 @@
+
+<div class="dashboard-grid cols-<%= dashboard.layout %>">
+
+  <% columns.forEach(col => { %>
+    <div class="dashboard-column">
+
+      <% col.widgets.forEach(widget => { %>
+
+        <% if (widget.id === 'kpi_cards') { %>
+          <div class="card">KPI CARDS</div>
+        <% } %>
+
+        <% if (widget.id === 'recent_activity') { %>
+          <div class="card">RECENT ACTIVITY</div>
+        <% } %>
+
+        <% if (widget.id === 'overdue_invoices') { %>
+          <div class="card">OVERDUE INVOICES</div>
+        <% } %>
+
+        <% if (widget.id === 'expiring_contracts') { %>
+          <div class="card">EXPIRING CONTRACTS</div>
+        <% } %>
+
+        <% if (widget.id === 'tasks_reminders') { %>
+          <div class="card">TASKS / REMINDERS</div>
+        <% } %>
+
+        <% if (widget.id === 'quick_actions') { %>
+          <div class="card">QUICK ACTIONS</div>
+        <% } %>
+
+        <% if (widget.id === 'revenue_chart') { %>
+          <div class="card">REVENUE CHART</div>
+        <% } %>
+
+        <% if (widget.id === 'client_timeline') { %>
+          <div class="card">CLIENT TIMELINE</div>
+        <% } %>
+
+      <% }) %>
+
+    </div>
+  <% }) %>
+
+</div>
+
+
+<div class="dashboard-grid cols-<%= dashboard.layout %>">
+
+  <% columns.forEach(col => { %>
+    <div class="dashboard-column">
+
+      <% col.widgets.forEach(widget => { %>
+
+        <% if (widget.id === 'kpi_cards') { %>
+          <div class="card">KPI CARDS</div>
+        <% } %>
+
+        <% if (widget.id === 'recent_activity') { %>
+          <div class="card">RECENT ACTIVITY</div>
+        <% } %>
+
+        <% if (widget.id === 'overdue_invoices') { %>
+          <div class="card">OVERDUE INVOICES</div>
+        <% } %>
+
+        <% if (widget.id === 'expiring_contracts') { %>
+          <div class="card">EXPIRING CONTRACTS</div>
+        <% } %>
+
+        <% if (widget.id === 'tasks_reminders') { %>
+          <div class="card">TASKS / REMINDERS</div>
+        <% } %>
+
+        <% if (widget.id === 'quick_actions') { %>
+          <div class="card">QUICK ACTIONS</div>
+        <% } %>
+
+        <% if (widget.id === 'revenue_chart') { %>
+          <div class="card">REVENUE CHENART</div>
+        <% } %>
+
+        <% if (widget.id === 'client_timeline') { %>
+          <div class="card">CLIENT TIMELINE</div>
+        <% } %>
+
+      <% }) %>
+
+    </div>
+  <% }) %>
+
+</div>
+

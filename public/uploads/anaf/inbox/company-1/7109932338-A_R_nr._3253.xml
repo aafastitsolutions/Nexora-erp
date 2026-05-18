@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:qdt="urn:oasis:names:specification:ubl:schema:xsd:QualifiedDataTypes-2" xmlns:ccts="urn:un:unece:uncefact:documentation:2" xmlns:udt="urn:oasis:names:specification:ubl:schema:xsd:UnqualifiedDataTypes-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">
+    <cbc:UBLVersionID>2.1</cbc:UBLVersionID>
+    <cbc:CustomizationID>urn:cen.eu:en16931:2017#compliant#urn:efactura.mfinante.ro:CIUS-RO:1.0.1</cbc:CustomizationID>
+    <cbc:ID>A&amp;R nr. 3253</cbc:ID><!--BT-1-->
+    <cbc:IssueDate>2026-04-01</cbc:IssueDate><!--BT-2-->
+    <cbc:DueDate>2026-04-01</cbc:DueDate><!--BT-9-->
+    <cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode><!--BT-3-->
+    <cbc:Note>REGIM SPECIAL DE SCUTIRE PENTRU INTREPRINDERILE MICI</cbc:Note><!--BT-22-->
+    <cbc:DocumentCurrencyCode>RON</cbc:DocumentCurrencyCode><!--BT-5-->
+    <cac:AccountingSupplierParty><!--BG-4-->
+        <cac:Party>
+            <cbc:EndpointID schemeID="EM">office@accar.ro</cbc:EndpointID><!--BT-34-->
+            <cac:PostalAddress><!--BG-5-->
+                <cbc:StreetName>Iazu  -</cbc:StreetName><!--BT-35-->
+                <cbc:CityName>Magurele</cbc:CityName><!--BT-37-->
+                <cbc:CountrySubentity>RO-PH</cbc:CountrySubentity><!--BT-39-->
+                <cac:Country>
+                    <cbc:IdentificationCode>RO</cbc:IdentificationCode><!--BT-40-->
+                </cac:Country>
+            </cac:PostalAddress>
+            <cac:PartyTaxScheme>
+                <cbc:CompanyID>37988993</cbc:CompanyID><!--BT-32-->
+                <cac:TaxScheme/>
+            </cac:PartyTaxScheme>
+            <cac:PartyLegalEntity>
+                <cbc:RegistrationName>ALEX &amp; RALUCA DEVELOPMENT  SRL</cbc:RegistrationName><!--BT-27-->
+                <cbc:CompanyID>J29/1894/2017</cbc:CompanyID><!--BT-30-->
+                <cbc:CompanyLegalForm>Capital social: 200 Lei lei</cbc:CompanyLegalForm><!--BT-33-->
+            </cac:PartyLegalEntity>
+            <cac:Contact><!--BG-6-->
+                <cbc:Name>Alexandru Vasilescu</cbc:Name><!--BT-41-->
+                <cbc:ElectronicMail>office@accar.ro</cbc:ElectronicMail><!--BT-43-->
+            </cac:Contact>
+        </cac:Party>
+    </cac:AccountingSupplierParty>
+    <cac:AccountingCustomerParty><!--BG-7-->
+        <cac:Party>
+            <cbc:EndpointID schemeID="EM">aafastitsolutions@gmail.com</cbc:EndpointID><!--BT-49-->
+            <cac:PartyIdentification>
+                <cbc:ID>J2023000076295</cbc:ID><!--BT-46-->
+            </cac:PartyIdentification>
+            <cac:PostalAddress><!--BG-8-->
+                <cbc:StreetName>Sat Chitorani Com. Bucov, Str. Gheorghe Ionescu Sisesti, Nr.8, Bl.1, Ap.4</cbc:StreetName><!--BT-50-->
+                <cbc:CityName>Chitorani</cbc:CityName><!--BT-52-->
+                <cbc:CountrySubentity>RO-PH</cbc:CountrySubentity><!--BT-54-->
+                <cac:Country>
+                    <cbc:IdentificationCode>RO</cbc:IdentificationCode><!--BT-55-->
+                </cac:Country>
+            </cac:PostalAddress>
+            <cac:PartyLegalEntity>
+                <cbc:RegistrationName>A&amp;A FAST IT SOLUTIONS SRL</cbc:RegistrationName><!--BT-44-->
+                <cbc:CompanyID>47446760</cbc:CompanyID><!--BT-47-->
+            </cac:PartyLegalEntity>
+            <cac:Contact><!--BG-9-->
+                <cbc:ElectronicMail>aafastitsolutions@gmail.com</cbc:ElectronicMail><!--BT-58-->
+            </cac:Contact>
+        </cac:Party>
+    </cac:AccountingCustomerParty>
+    <cac:PaymentMeans><!--BG-16-->
+        <cbc:PaymentMeansCode>42</cbc:PaymentMeansCode><!--BT-81 BT-82-->
+        <cbc:PaymentID>A&amp;R nr. 3253</cbc:PaymentID><!--BT-83-->
+        <cac:PayeeFinancialAccount><!--BG-17-->
+            <cbc:ID>RO88INGB0000999907115247</cbc:ID><!--BT-84-->
+            <cbc:Name>CONT ING BANK NV IN RON</cbc:Name><!--BT-85-->
+            <cac:FinancialInstitutionBranch>
+                <cbc:ID>INGBROBU</cbc:ID><!--BT-86-->
+            </cac:FinancialInstitutionBranch>
+        </cac:PayeeFinancialAccount>
+    </cac:PaymentMeans>
+    <cac:TaxTotal>
+        <cbc:TaxAmount currencyID="RON">0.00</cbc:TaxAmount><!--BT-110-->
+        <cac:TaxSubtotal><!--BG-23-->
+            <cbc:TaxableAmount currencyID="RON">300.00</cbc:TaxableAmount><!--BT-116-->
+            <cbc:TaxAmount currencyID="RON">0.00</cbc:TaxAmount><!--BT-117-->
+            <cac:TaxCategory>
+                <cbc:ID>O</cbc:ID><!--BT-118-->
+                <cbc:TaxExemptionReasonCode>VATEX-EU-O</cbc:TaxExemptionReasonCode><!--BT-121-->
+                <cbc:TaxExemptionReason>Nu face obiectul TVA</cbc:TaxExemptionReason><!--BT-120-->
+                <cac:TaxScheme>
+                    <cbc:ID>VAT</cbc:ID>
+                </cac:TaxScheme>
+            </cac:TaxCategory>
+        </cac:TaxSubtotal>
+    </cac:TaxTotal>
+    <cac:LegalMonetaryTotal><!--BG-22-->
+        <cbc:LineExtensionAmount currencyID="RON">300.00</cbc:LineExtensionAmount><!--BT-106-->
+        <cbc:TaxExclusiveAmount currencyID="RON">300.00</cbc:TaxExclusiveAmount><!--BT-109-->
+        <cbc:TaxInclusiveAmount currencyID="RON">300.00</cbc:TaxInclusiveAmount><!--BT-112-->
+        <cbc:AllowanceTotalAmount currencyID="RON">0.00</cbc:AllowanceTotalAmount><!--BT-107-->
+        <cbc:ChargeTotalAmount currencyID="RON">0</cbc:ChargeTotalAmount><!--BT-108-->
+        <cbc:PrepaidAmount currencyID="RON">0</cbc:PrepaidAmount><!--BT-113-->
+        <cbc:PayableRoundingAmount currencyID="RON">0.00</cbc:PayableRoundingAmount><!--BT-114-->
+        <cbc:PayableAmount currencyID="RON">300.00</cbc:PayableAmount><!--BT-115-->
+    </cac:LegalMonetaryTotal>
+    <cac:InvoiceLine>
+        <cbc:ID>1</cbc:ID><!--BT-126-->
+        <cbc:InvoicedQuantity unitCode="MON">1.0000</cbc:InvoicedQuantity><!--BT-129 BT-130-->
+        <cbc:LineExtensionAmount currencyID="RON">300.00</cbc:LineExtensionAmount><!--BT-131-->
+        <cac:Item><!--BG-31-->
+            <cbc:Description>aprilie 2026</cbc:Description><!--BT-154-->
+            <cbc:Name>Prestari servicii contabile</cbc:Name><!--BT-153-->
+            <cac:ClassifiedTaxCategory>
+                <cbc:ID>O</cbc:ID><!--BT-151-->
+                <cac:TaxScheme>
+                    <cbc:ID>VAT</cbc:ID>
+                </cac:TaxScheme>
+            </cac:ClassifiedTaxCategory>
+        </cac:Item>
+        <cac:Price><!--BG-29-->
+            <cbc:PriceAmount currencyID="RON">300.00</cbc:PriceAmount><!--BT-146-->
+            <cbc:BaseQuantity unitCode="MON">1</cbc:BaseQuantity><!--BT-149 BT-150-->
+        </cac:Price>
+    </cac:InvoiceLine>
+</Invoice>

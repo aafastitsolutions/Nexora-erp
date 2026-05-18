@@ -1,0 +1,295 @@
+
+// Datele prestatorului (completate automat in contract)
+const COMPANY = {
+  name: "QR-LAB SRL",
+  cui: "47446760",
+  rc: "J29/XXXX/2023",
+  address: "Prahova, Bucov, Chitorani",
+  iban: "ROXXBANKXXXXXXXXXXXX",
+  bank: "Banca Transilvania",
+  representative: "Pita Valentin"
+};
+
+import express from "express";
+import session from "express-session";
+import Mustache from "mustache";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+import { renderPdfBuffer } from "./pdf.js";
+
+import { db, migrate } from "./db.js";
+import { requireAuth, seedAdminFromEnv, verifyUser } from "./auth.js";
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const app = express();
+// MiniCRM bootstrap
+migrate();
+const __seed = seedAdminFromEnv();
+if (!__seed.ok) console.warn("Admin seed skipped:", __seed.reason);
+app.use(session({
+  secret: process.env.SESSION_SECRET || "dev-secret-change-me",
+  resave: false,
+  saveUninitialized: false,
+  cookie: { httpOnly: true, sameSite: "lax" }
+}));
+app.use("/contracts", express.static(path.join(__dirname, "contracts")));
+app.use(express.static(path.join(__dirname, "public")));
+
+app.use(express.json({ limit: "2mb" }));
+app.use(express.urlencoded({ extended: true }));
+
+const templateHtml = fs.readFileSync(path.join(__dirname, "template.html"), "utf8");
+const uiHtml = fs.readFileSync(path.join(__dirname, "ui.html"), "utf8");
+
+function normalizeCui(input = "") {
+  return String(input).toUpperCase().replace(/^RO/, "").replace(/\D/g, "");
+}
+
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// ANAF TVA webservice v7: https://webservicesp.anaf.ro/PlatitorTvaRest/api/v6/ws/tva
+app.get("/api/company", async (req, res) => {
+  try {
+    const cui = normalizeCui(req.query.cui);
+    if (!cui) return res.status(400).json({ error: "CUI invalid" });
+
+    const payload = [{ cui: Number(cui), data: todayISO() }];
+
+    const endpoints = [
+      "https://webservicesp.anaf.ro/api/PlatitorTvaRest/v9/tva",
+      "https://webservicesp.anaf.ro/api/PlatitorTvaRest/v8/tva",
+      "https://webservicesp.anaf.ro/api/PlatitorTvaRest/v7/tva",
+      "https://webservicesp.anaf.ro/api/PlatitorTvaRest/v6/tva"
+    ];
+
+    let lastErr = null;
+
+    for (const url of endpoints) {
+      const r = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          // uneori ajută la WAF/redirect-uri care returnează HTML
+          "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) contracts-app/1.0"
+        },
+        body: JSON.stringify(payload),
+        redirect: "follow",
+      });
+
+      const ct = (r.headers.get("content-type") || "").toLowerCase();
+      const txt = await r.text();
+
+      // dacă ANAF ne dă HTML (mentenanță / redirect / 404), încercăm următorul endpoint
+      if (!ct.includes("application/json")) {
+        lastErr = { url, status: r.status, details: txt.slice(0, 300) };
+        continue;
+      }
+
+      if (!r.ok) {
+        lastErr = { url, status: r.status, details: txt.slice(0, 300) };
+        continue;
+      }
+
+      const data = JSON.parse(txt);
+      const found = data?.found?.[0];
+      if (!found?.date_generale) {
+        return res.status(404).json({ error: "CUI negăsit în răspunsul ANAF", source_url: url });
+      }
+
+      const dg = found.date_generale;
+      return res.json({
+        normalized_cui: String(dg.cui ?? cui),
+        legal_name: dg.denumire ?? "",
+        address: dg.adresa ?? "",
+        reg_com: dg.nrRegCom ?? "",
+        caen: dg.cod_CAEN ?? "",
+        vat: found?.inregistrare_scop_Tva?.scpTVA ?? null,
+        inactive: found?.stare_inactiv?.statusInactivi ?? null,
+        source_url: url,
+        fetched_at: new Date().toISOString()
+      });
+    }
+
+    return res.status(502).json({
+      error: "ANAF unavailable / returned non-JSON",
+      tried: endpoints,
+      last: lastErr
+    });
+
+  } catch (e) {
+    return res.status(500).json({ error: "Server error", details: String(e?.message ?? e) });
+  }
+});
+
+// MiniCRM routes
+app.get("/login", (req, res) => {
+  if (req.session?.user) return res.redirect("/dashboard");
+  res.type("html").send(`
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Login</title>
+<style>
+  body{font-family:system-ui,Arial;margin:40px;max-width:520px}
+  input{width:100%;padding:10px;margin:6px 0}
+  button{padding:10px 14px}
+  .box{border:1px solid #ddd;border-radius:10px;padding:18px}
+</style></head>
+<body>
+  <h2>MiniCRM Login</h2>
+  <div class="box">
+    <form method="post" action="/login">
+      <label>Email</label>
+      <input name="email" type="email" required />
+      <label>Password</label>
+      <input name="password" type="password" required />
+      <button type="submit">Login</button>
+    </form>
+  </div>
+</body></html>`);
+});
+
+app.post("/login", (req, res) => {
+  const email = String(req.body?.email || "").trim().toLowerCase();
+  const password = String(req.body?.password || "");
+  const u = verifyUser(email, password);
+  if (!u) return res.status(401).type("html").send("<p style='font-family:system-ui'>Login invalid. <a href='/login'>Înapoi</a></p>");
+  req.session.user = { id: u.id, email: u.email, role: u.role };
+  return res.redirect("/dashboard");
+});
+
+app.post("/logout", (req, res) => {
+  req.session?.destroy(() => res.redirect("/login"));
+});
+
+app.get("/dashboard", requireAuth, (req, res) => {
+  const rows = db.prepare(`
+    SELECT c.id, c.contract_number, c.created_at, c.price, c.duration,
+           cl.name AS client_name, cl.cui AS client_cui,
+           c.pdf_path
+    FROM contracts c
+    JOIN clients cl ON cl.id = c.client_id
+    ORDER BY c.id DESC
+    LIMIT 200
+  `).all();
+
+  const userEmail = req.session.user.email;
+  const htmlRows = rows.map(r => `
+    <tr>
+      <td>${escapeHtml(r.contract_number)}</td>
+      <td>${escapeHtml(r.client_name)}<br><small>${escapeHtml(r.client_cui || "")}</small></td>
+      <td>${escapeHtml(String(r.price ?? ""))}</td>
+      <td>${escapeHtml(r.duration || "")}</td>
+      <td>${escapeHtml(r.created_at || "")}</td>
+      <td>${r.pdf_path ? `<a href="/${encodeURI(r.pdf_path)}" target="_blank">PDF</a>` : ""}</td>
+    </tr>`).join("");
+
+  res.type("html").send(`
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Dashboard</title>
+<style>
+  body{font-family:system-ui,Arial;margin:30px}
+  table{border-collapse:collapse;width:100%}
+  th,td{border:1px solid #ddd;padding:8px;vertical-align:top}
+  th{background:#f6f6f6;text-align:left}
+  .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+  form{margin:0}
+  button{padding:8px 12px}
+  a{color:#0b57d0;text-decoration:none}
+  a:hover{text-decoration:underline}
+</style></head>
+<body>
+  <div class="top">
+    <div>
+      <h2 style="margin:0">MiniCRM Dashboard</h2>
+      <div style="opacity:.7">Logat: ${escapeHtml(userEmail)}</div>
+    </div>
+    <form method="post" action="/logout"><button type="submit">Logout</button></form>
+  </div>
+  <p><a href="/">Form contract</a></p>
+  <table>
+    <thead><tr>
+      <th>Contract</th><th>Client</th><th>Preț</th><th>Durată</th><th>Creat</th><th>PDF</th>
+    </tr></thead>
+    <tbody>${htmlRows || "<tr><td colspan=6><em>Încă nu există contracte salvate în DB.</em></td></tr>"}</tbody>
+  </table>
+</body></html>`);
+});
+
+function escapeHtml(x){
+  return String(x ?? "")
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#39;");
+}
+
+
+app.get("/", (req, res) => res.type("html").send(uiHtml));
+
+app.post("/api/contract/pdf", async (req, res) => {
+  try {
+    const body = req.body || {};
+
+    const provider = {
+      provider_legal_name: "QR-LAB SRL",
+      provider_address: "Completează adresa prestatorului",
+      provider_cui: "ROXXXXXXX",
+      provider_reg_com: "Jxx/xxxx/xxxx",
+      provider_iban: "ROxxBANKxxxxxxxxxxxxxx",
+      provider_bank: "Banca",
+      provider_representative_name: "Nume Reprezentant",
+      provider_representative_role: "Administrator",
+    };
+
+    const is_company = body.is_company === "true" || body.is_company === true;
+
+    const vm = {
+      ...provider,
+      contract_number: body.contract_number || `CTR-${Date.now()}`,
+      contract_date: body.contract_date || todayISO(),
+      is_company,
+
+      contact_email: body.contact_email || "",
+      contact_phone: body.contact_phone || "",
+
+      pj_cui: body.pj_cui || "",
+      pj_legal_name: body.pj_legal_name || "",
+      pj_address: body.pj_address || "",
+      pj_reg_com: body.pj_reg_com || "",
+      pj_representative_name: body.pj_representative_name || "",
+      pj_representative_role: body.pj_representative_role || "Administrator",
+
+      pf_full_name: body.pf_full_name || "",
+      pf_address: body.pf_address || "",
+
+      service_description: body.service_description || "",
+      price_amount: body.price_amount || "",
+      price_currency: body.price_currency || "RON",
+      payment_terms: body.payment_terms || "15 zile",
+      start_date: body.start_date || todayISO(),
+      duration: body.duration || "12 luni",
+      termination_notice_days: body.termination_notice_days || "30",
+      jurisdiction_city: body.jurisdiction_city || "București",
+      privacy_policy_url: body.privacy_policy_url || "https://qr-lab.ro",
+
+      client_signer_name: is_company ? (body.pj_representative_name || "") : (body.pf_full_name || ""),
+      provider_signer_name: provider.provider_representative_name,
+    };
+
+    const html = Mustache.render(templateHtml, { ...vm, company: COMPANY });
+    const pdf = await renderPdfBuffer(html);
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="contract-${vm.contract_number}.pdf"`);
+    res.send(pdf);
+  } catch (e) {
+    res.status(500).json({ error: "PDF error", details: String(e?.message ?? e) });
+  }
+});
+
+app.listen(3000, "0.0.0.0", () => console.log("Contracts app running on :3000"));

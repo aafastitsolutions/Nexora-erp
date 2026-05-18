@@ -1,0 +1,88 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Quote {{quote_number}}</title>
+  <style>
+    body{font-family:system-ui,Arial;margin:40px;font-size:12.5px}
+    h1,h2,h3{margin:0}
+    .muted{opacity:.7}
+    .box{border:1px solid #ddd;border-radius:10px;padding:12px;margin-top:12px}
+    table{border-collapse:collapse;width:100%;margin-top:10px}
+    th,td{border:1px solid #ddd;padding:8px;vertical-align:top}
+    th{background:#f6f6f6;text-align:left}
+    .right{text-align:right}
+    .totals{margin-top:12px;display:flex;justify-content:flex-end}
+    .totals table{width:320px}
+  </style>
+</head>
+<body>
+
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:20px">
+    <div>
+      <h1>Offer / Quote</h1>
+      <div class="muted">Nr: <b>{{quote_number}}</b></div>
+      <div class="muted">Data: {{quote_date}}</div>
+      {{#valid_until}}<div class="muted">Valabil până la: {{valid_until}}</div>{{/valid_until}}
+      {{#title}}<div style="margin-top:6px"><b>{{title}}</b></div>{{/title}}
+    </div>
+    <div style="text-align:right">
+      <div><b>{{company.name}}</b></div>
+      <div class="muted">CUI: {{company.cui}}</div>
+      <div class="muted">RC: {{company.rc}}</div>
+      <div class="muted">{{company.address}}</div>
+    </div>
+  </div>
+
+  <div class="box">
+    <h3>Client</h3>
+    <div><b>{{client_name}}</b></div>
+    <div class="muted">CUI: {{client_cui}}</div>
+    {{#client_address}}<div class="muted">Adresă: {{client_address}}</div>{{/client_address}}
+  </div>
+
+  <div class="box">
+    <h3>Items</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Denumire</th>
+          <th class="right">Qty</th>
+          <th>Unit</th>
+          <th class="right">Unit price</th>
+          <th class="right">Line total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#items}}
+        <tr>
+          <td>{{name}}</td>
+          <td class="right">{{qty}}</td>
+          <td>{{unit}}</td>
+          <td class="right">{{unit_price}}</td>
+          <td class="right">{{line_total}}</td>
+        </tr>
+        {{/items}}
+        {{^items}}
+        <tr><td colspan="5"><em>No items</em></td></tr>
+        {{/items}}
+      </tbody>
+    </table>
+
+    <div class="totals">
+      <table>
+        <tr><th>Subtotal</th><td class="right">{{subtotal}} {{currency}}</td></tr>
+        <tr><th>VAT ({{vat_percent}}%)</th><td class="right">{{vat_amount}} {{currency}}</td></tr>
+        <tr><th>Total</th><td class="right"><b>{{total}} {{currency}}</b></td></tr>
+      </table>
+    </div>
+
+    {{#notes}}
+    <div style="margin-top:10px" class="muted">
+      <b>Notes:</b><br>{{notes}}
+    </div>
+    {{/notes}}
+  </div>
+
+</body>
+</html>

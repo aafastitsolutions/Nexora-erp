@@ -1,0 +1,12 @@
+● contracts-app.service - Contracts App (Node)
+     Loaded: loaded (/etc/systemd/system/contracts-app.service; enabled; preset: enabled)
+     Active: active (running) since Mon 2026-03-16 15:50:25 UTC; 1min 19s ago
+   Main PID: 509195 (node)
+      Tasks: 11 (limit: 9268)
+     Memory: 46.9M (peak: 73.2M)
+        CPU: 1.104s
+     CGroup: /system.slice/contracts-app.service
+             └─509195 /usr/bin/node /home/server/contracts-app/server.js
+
+Mar 16 15:50:25 server systemd[1]: Started contracts-app.service - Contracts App (Node).
+Mar 16 15:50:26 server node[509195]: Contracts app running on :3000

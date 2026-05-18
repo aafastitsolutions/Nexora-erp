@@ -1,0 +1,21 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="148" y1="92" x2="1448" y2="802" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0F172A"/>
+      <stop offset="0.58" stop-color="#2563EB"/>
+      <stop offset="1" stop-color="#38BDF8"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="900" rx="48" fill="url(#bg)"/>
+  <rect x="188" y="142" width="1224" height="616" rx="42" fill="white" fill-opacity="0.92"/>
+  <rect x="252" y="206" width="1096" height="488" rx="30" fill="#EFF6FF"/>
+  <rect x="308" y="264" width="196" height="24" rx="12" fill="#BFDBFE"/>
+  <rect x="308" y="308" width="322" height="42" rx="18" fill="#0F172A"/>
+  <rect x="308" y="382" width="980" height="228" rx="30" fill="#DBEAFE"/>
+  <path d="M366 542C426 464 500 420 596 420C692 420 762 462 814 542" stroke="#2563EB" stroke-width="30" stroke-linecap="round"/>
+  <circle cx="544" cy="516" r="48" fill="#60A5FA"/>
+  <circle cx="674" cy="478" r="38" fill="#93C5FD"/>
+  <circle cx="788" cy="550" r="34" fill="#BFDBFE"/>
+  <text x="300" y="118" fill="white" font-family="Arial, sans-serif" font-size="44" font-weight="700">Demo</text>
+  <text x="300" y="824" fill="white" fill-opacity="0.82" font-family="Arial, sans-serif" font-size="28">Cont de prezentare cu date separate si e-Factura rulata doar in mod simulat</text>
+</svg>

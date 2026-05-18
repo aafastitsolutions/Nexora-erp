@@ -1,0 +1,126 @@
+      <td>${escapeHtml(l.denumire||"")}</td>
+      <td class="crm-right">${escapeHtml(String(l.cantitate ?? ""))}</td>
+      <td>${escapeHtml(l.unitate||"")}</td>
+      <td class="crm-right">${escapeHtml(fmtMoney(l.pret_unitar))}</td>
+      <td class="crm-right">${escapeHtml(fmtMoney(l.total_linie))}</td>
+      <td class="crm-right">
+        <form method="post" action="/factura/${id}/linie/${l.id}/sterge" style="margin:0">
+          <button class="crm-btn crm-btn-danger" type="submit">Șterge</button>
+        </form>
+      </td>
+    </tr>`).join("");
+
+  res.type("html").send(`
+<!doctype html>
+<html>
+<head>
+<meta charset="utf8">
+<title>${escapeHtml(f.factura_nr)}</title>
+</head>
+
+${crmShellStart("facturi", `Factura ${f.factura_nr || ""}`, "Administrare linii, totaluri și generare PDF.", req.session.user.email, req.session.user.module_permissions)}
+
+  ${ok ? `<div class="crm-card" style="margin-bottom:18px;border:1px solid #bbf7d0;background:#f0fdf4">
+    <div style="font-weight:800;color:#166534;margin-bottom:6px">Operațiune reușită</div>
+    <div class="crm-muted">${
+      ok === "xml_generat" ? "XML-ul e-Factura a fost generat cu succes."
+      : ok === "trimis_local" ? "Factura a fost marcată ca pregătită pentru trimitere către ANAF."
+      : "Operațiunea a fost finalizată cu succes."
+    }</div>
+  </div>` : ``}
+
+  ${err ? `<div class="crm-card" style="margin-bottom:18px;border:1px solid #fecaca;background:#fef2f2">
+    <div style="font-weight:800;color:#991b1b;margin-bottom:6px">Operațiune eșuată</div>
+    <div class="crm-muted">${
+      err === "nu_exista_xml" ? "Nu există XML generat pentru această factură."
+      : err === "xml_lipsa_pe_server" ? "Fișierul XML lipsește de pe server."
+      : "A apărut o eroare la procesarea e-Factura."
+    }</div>
+  </div>` : ``}
+
+  <section class="crm-card" style="margin-bottom:18px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+      <div>
+        <h3 style="margin:0;font-size:20px">Acțiuni factură</h3>
+        <div class="crm-muted" style="margin-top:6px">Flux rapid: preview, PDF, e-Factura, email client.</div>
+      </div>
+      <div>${facturaStatusBadgeModern(f.status)}</div>
+    </div>
+
+    <div class="crm-row" style="gap:10px;flex-wrap:wrap">
+      <form method="post" action="/factura/${id}/efactura/trimite" style="margin:0">
+        <button class="crm-btn" type="submit">Trimite e-Factura</button>
+      </form>
+
+      <form method="post" action="/factura/${id}/genereaza-pdf" style="margin:0">
+        <button class="crm-btn crm-btn-secondary" type="submit">Generează PDF</button>
+      </form>
+
+      ${clientEmail
+        ? `<a href="mailto:${encodeURI(clientEmail)}?subject=${encodeURIComponent("Factura " + (f.factura_nr || ""))}" class="crm-btn crm-btn-secondary" style="text-decoration:none;text-align:center">Trimite email clientului</a>`
+        : `<a href="/client/${f.client_id}" class="crm-btn crm-btn-secondary" style="text-decoration:none;text-align:center">Adaugă email client</a>`}
+
+      ${f.pdf_path
+        ? `<a href="/${encodeURI(f.pdf_path)}" target="_blank" class="crm-btn crm-btn-secondary" style="text-decoration:none;text-align:center">Deschide PDF</a>`
+        : `<span class="crm-muted">Fără PDF generat încă</span>`}
+    </div>
+
+    <div style="margin-top:16px;padding:14px 16px;border:1px dashed #cbd5e1;border-radius:14px;background:#f8fafc">
+      <div style="font-weight:800;margin-bottom:6px">Flux recomandat</div>
+      <div class="crm-muted">1. Preview PDF · 2. Generează PDF · 3. Trimite e-Factura · 4. Trimite email clientului.</div>
+    </div>
+  </section>
+
+  <section id="factura-preview-wrap" class="crm-card" style="margin-bottom:18px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+      <div>
+        <h3 style="margin:0;font-size:20px">Preview factură</h3>
+        <div class="crm-muted" style="margin-top:6px">Previzualizare direct în aceeași pagină, fără iframe.</div>
+      </div>
+    </div>
+
+    <div style="border:1px solid #cbd5e1;border-radius:16px;overflow:hidden;background:#fff;padding:18px">
+      ${renderFacturaPreviewInner({
+        f,
+        lines,
+        totals,
+        company: {
+          name: getSetting("company_name", COMPANY.name),
+          cui: getSetting("company_cui", COMPANY.cui),
+          rc: getSetting("company_rc", COMPANY.rc),
+          address: getSetting("company_address", COMPANY.address),
+          iban: getSetting("company_iban", COMPANY.iban),
+          bank: getSetting("company_bank", COMPANY.bank),
+          rep: getSetting("company_rep", COMPANY.rep)
+        }
+      })}
+    </div>
+  </section>
+
+  <section class="crm-card" style="margin-bottom:18px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:14px">
+      <div>
+        <h3 style="margin:0;font-size:20px">e-Factura ANAF</h3>
+        <div class="crm-muted" style="margin-top:6px">După verificarea PDF-ului, poți trimite direct e-Factura. XML-ul tehnic se generează automat la trimitere dacă lipsește.</div>
+      </div>
+      <div>${f.efactura_status ? `<span class="crm-badge crm-badge-blue">${escapeHtml(f.efactura_status)}</span>` : `<span class="crm-badge crm-badge-neutral">neexpediată</span>`}</div>
+    </div>
+
+    <div class="crm-grid-2" style="gap:16px">
+      <div class="crm-stack" style="gap:10px">
+        <div><b>Status e-Factura:</b> ${escapeHtml(f.efactura_status || "neexpediată")}</div>
+        <div><b>Message ID:</b> ${f.efactura_message_id ? escapeHtml(f.efactura_message_id) : `<span class="crm-muted">—</span>`}</div>
+        <div><b>Ultima eroare:</b> ${f.efactura_last_error ? escapeHtml(f.efactura_last_error) : `<span class="crm-muted">—</span>`}</div>
+      </div>
+
+      <div class="crm-stack" style="gap:10px">
+        <div><b>XML tehnic:</b> ${f.efactura_xml_path ? escapeHtml(f.efactura_xml_path) : `<span class="crm-muted">se generează automat la trimitere</span>`}</div>
+        <div class="crm-row" style="margin-top:4px">
+          <form method="post" action="/factura/${id}/efactura/trimite" style="margin:0">
+            <button class="crm-btn" type="submit">Trimite e-Factura</button>
+          </form>
+          <form method="post" action="/factura/${id}/efactura/genereaza-xml" style="margin:0">
+            <button class="crm-btn crm-btn-secondary" type="submit">Regenerează XML</button>
+          </form>
+        </div>
+      </div>

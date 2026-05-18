@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
+ xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
+ xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">
+
+  <cbc:UBLVersionID>2.1</cbc:UBLVersionID>
+  <cbc:CustomizationID>urn:cen.eu:en16931:2017#compliant#urn:efactura.mfinante.ro:CIUS-RO:1.0.1</cbc:CustomizationID>
+  <cbc:ProfileID>urn:fdc:peppol.eu:2017:poacc:billing:01:1.0</cbc:ProfileID>
+  <cbc:ID>FITS-051</cbc:ID>
+  <cbc:IssueDate>2026-05-14</cbc:IssueDate>
+  <cbc:DueDate>2026-05-18</cbc:DueDate>
+  <cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>
+  <cbc:Note>REGIM SPECIAL DE SCUTIRE PENTRU INTREPRINDERILE MICI</cbc:Note>
+  <cbc:DocumentCurrencyCode>RON</cbc:DocumentCurrencyCode>
+
+  <cac:AccountingSupplierParty>
+    <cac:Party>
+      
+      <cac:PartyIdentification>
+        <cbc:ID>47446760</cbc:ID>
+      </cac:PartyIdentification>
+      <cac:PartyName>
+        <cbc:Name>A&amp;A FAST IT SOLUTIONS S.R.L.</cbc:Name>
+      </cac:PartyName>
+      <cac:PostalAddress>
+        <cbc:StreetName>SAT CHIŢORANI COM. BUCOV, STR. GHEORGHE IONESCU SISEŞTI, NR.8, BL.1, AP.4</cbc:StreetName>
+        <cbc:CityName>CHIŢORANI</cbc:CityName>
+        <cbc:CountrySubentity>RO-PH</cbc:CountrySubentity>
+        <cac:Country>
+          <cbc:IdentificationCode>RO</cbc:IdentificationCode>
+        </cac:Country>
+      </cac:PostalAddress>
+      
+      <cac:PartyTaxScheme>
+        <cbc:CompanyID>47446760</cbc:CompanyID>
+        <cac:TaxScheme/>
+      </cac:PartyTaxScheme>
+      <cac:PartyLegalEntity>
+        <cbc:RegistrationName>A&amp;A FAST IT SOLUTIONS S.R.L.</cbc:RegistrationName>
+        <cbc:CompanyID>J29/76/2023</cbc:CompanyID>
+      </cac:PartyLegalEntity>
+      
+      <cac:Contact>
+        <cbc:Name>Valentin Pita</cbc:Name>
+        
+        
+      </cac:Contact>
+    </cac:Party>
+  </cac:AccountingSupplierParty>
+
+  <cac:AccountingCustomerParty>
+    <cac:Party>
+      
+      <cac:PartyIdentification>
+        <cbc:ID>J23/1715/2018</cbc:ID>
+      </cac:PartyIdentification>
+      <cac:PartyName>
+        <cbc:Name>INTEGRA INSPECT CONSULTING S.R.L.</cbc:Name>
+      </cac:PartyName>
+      <cac:PostalAddress>
+        <cbc:StreetName>ORŞ. VOLUNTARI, STR. ŞERBAN ION, NR.58A</cbc:StreetName>
+        <cbc:CityName>VOLUNTARI</cbc:CityName>
+        <cbc:CountrySubentity>RO-IF</cbc:CountrySubentity>
+        <cac:Country>
+          <cbc:IdentificationCode>RO</cbc:IdentificationCode>
+        </cac:Country>
+      </cac:PostalAddress>
+      
+      <cac:PartyLegalEntity>
+        <cbc:RegistrationName>INTEGRA INSPECT CONSULTING S.R.L.</cbc:RegistrationName>
+        <cbc:CompanyID>39206309</cbc:CompanyID>
+      </cac:PartyLegalEntity>
+    </cac:Party>
+  </cac:AccountingCustomerParty>
+
+  
+  <cac:PaymentMeans>
+    <cbc:PaymentMeansCode>42</cbc:PaymentMeansCode>
+    <cbc:PaymentID>FITS nr. 0051</cbc:PaymentID>
+    <cac:PayeeFinancialAccount>
+      <cbc:ID>RO65BRDE300SV02450713000</cbc:ID>
+      <cbc:Name>CONT BRD - GROUPE SOCIETE GENERALE IN RON</cbc:Name>
+      
+      <cac:FinancialInstitutionBranch>
+        <cbc:ID>BRDEROBU</cbc:ID>
+      </cac:FinancialInstitutionBranch>
+    </cac:PayeeFinancialAccount>
+  </cac:PaymentMeans>
+
+  <cac:TaxTotal>
+    <cbc:TaxAmount currencyID="RON">0.00</cbc:TaxAmount>
+    <cac:TaxSubtotal>
+      <cbc:TaxableAmount currencyID="RON">7500.00</cbc:TaxableAmount>
+      <cbc:TaxAmount currencyID="RON">0.00</cbc:TaxAmount>
+      
+      <cac:TaxCategory>
+        <cbc:ID>O</cbc:ID>
+        
+        <cbc:TaxExemptionReasonCode>VATEX-EU-O</cbc:TaxExemptionReasonCode>
+        <cbc:TaxExemptionReason>Nu face obiectul TVA</cbc:TaxExemptionReason>
+        <cac:TaxScheme>
+          <cbc:ID>VAT</cbc:ID>
+        </cac:TaxScheme>
+      </cac:TaxCategory>
+    </cac:TaxSubtotal>
+  </cac:TaxTotal>
+
+  <cac:LegalMonetaryTotal>
+    <cbc:LineExtensionAmount currencyID="RON">7500.00</cbc:LineExtensionAmount>
+    <cbc:TaxExclusiveAmount currencyID="RON">7500.00</cbc:TaxExclusiveAmount>
+    <cbc:TaxInclusiveAmount currencyID="RON">7500.00</cbc:TaxInclusiveAmount>
+    <cbc:PayableAmount currencyID="RON">7500.00</cbc:PayableAmount>
+  </cac:LegalMonetaryTotal>
+
+  
+  <cac:InvoiceLine>
+    <cbc:ID>1</cbc:ID>
+    <cbc:InvoicedQuantity unitCode="C62">1</cbc:InvoicedQuantity>
+    <cbc:LineExtensionAmount currencyID="RON">7500.00</cbc:LineExtensionAmount>
+    <cac:Item>
+      <cbc:Description>in cadrul proiectului Digitalizarea societății Integra Inspect Consulting SRL” (contract de finanțare NR624/RUE/1802/I3/C9/30.10.2024)</cbc:Description>
+      <cbc:Name>Achizitie Website conform contract de servicii nr.1/12.03.2026</cbc:Name>
+      
+      <cac:ClassifiedTaxCategory>
+        <cbc:ID>O</cbc:ID>
+        
+        <cac:TaxScheme>
+          <cbc:ID>VAT</cbc:ID>
+        </cac:TaxScheme>
+      </cac:ClassifiedTaxCategory>
+    </cac:Item>
+    <cac:Price>
+      <cbc:PriceAmount currencyID="RON">7500.00</cbc:PriceAmount>
+    </cac:Price>
+  </cac:InvoiceLine>
+
+</Invoice>

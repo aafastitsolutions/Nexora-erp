@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 12px; color: #111; }
+    h1 { font-size: 16px; margin: 0 0 10px; }
+    h2 { font-size: 13px; margin: 14px 0 6px; }
+    .muted { color: #555; }
+    .box { border: 1px solid #ddd; padding: 10px; border-radius: 6px; margin: 10px 0; }
+    .sig { margin-top: 28px; display: flex; justify-content: space-between; }
+    .sig .line { margin-top: 40px; border-top: 1px solid #333; width: 240px; }
+    .small { font-size: 11px; }
+  </style>
+</head>
+<body>
+  <h1>Contract de prestări servicii</h1>
+  <div class="muted">Contract nr. <b>{{contract_number}}</b> — Data: <b>{{contract_date}}</b></div>
+
+  <h2>1. Părțile contractante</h2>
+
+  <div class="box">
+    <b>Prestator:</b> {{company.name}}<br/>
+    <span class="small">Sediu: {{company.address}} | CUI: {{company.cui}} | RC: {{company.rc}}</span><br/>
+    <span class="small">IBAN: {{company.iban}} | Banca: {{company.bank}}</span><br/>
+    Reprezentant: {{company.representative}} (Administrator)
+  </div>
+
+  {{#is_company}}
+  <div class="box">
+    <b>Beneficiar (PJ):</b> {{pj_legal_name}}<br/>
+    <span class="small">Sediu: {{pj_address}} | CUI: {{pj_cui}} | RC: {{pj_reg_com}}</span><br/>
+    Reprezentant: {{pj_representative_name}} ({{pj_representative_role}})<br/>
+    Contact: {{contact_email}} {{#contact_phone}} | {{contact_phone}}{{/contact_phone}}
+  </div>
+  {{/is_company}}
+
+  {{^is_company}}
+  <div class="box">
+    <b>Beneficiar (PF):</b> {{pf_full_name}}<br/>
+    <span class="small">Adresă: {{pf_address}}</span><br/>
+    Contact: {{contact_email}} {{#contact_phone}} | {{contact_phone}}{{/contact_phone}}
+  </div>
+  {{/is_company}}
+
+  <h2>2. Obiect</h2>
+  <div class="box">{{service_description}}</div>
+
+  <h2>3. Durata</h2>
+  <div class="box">De la <b>{{start_date}}</b>, durata <b>{{duration}}</b>.</div>
+
+  <h2>4. Preț și plată</h2>
+  <div class="box">
+    Valoare: <b>{{price_amount}} {{price_currency}}</b><br/>
+    Termen plată: <b>{{payment_terms}}</b>
+  </div>
+
+  <h2>5. Litigii</h2>
+  <div class="box">Instanțe competente: <b>{{jurisdiction_city}}</b>.</div>
+
+  <div class="sig">
+    <div>
+      <b>PRESTATOR</b><br/>
+      {{provider_signer_name}}
+      <div class="line"></div>
+    </div>
+    <div>
+      <b>BENEFICIAR</b><br/>
+      {{client_signer_name}}
+      <div class="line"></div>
+    </div>
+  </div>
+
+  <p class="muted small">Politica GDPR: {{privacy_policy_url}}</p>
+</body>
+</html>

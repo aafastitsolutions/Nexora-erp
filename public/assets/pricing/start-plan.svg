@@ -1,0 +1,42 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="136" y1="92" x2="1452" y2="822" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0F172A"/>
+      <stop offset="0.55" stop-color="#1D4ED8"/>
+      <stop offset="1" stop-color="#60A5FA"/>
+    </linearGradient>
+    <linearGradient id="card" x1="325" y1="196" x2="1251" y2="731" gradientUnits="userSpaceOnUse">
+      <stop stop-color="white" stop-opacity="0.98"/>
+      <stop offset="1" stop-color="#DBEAFE" stop-opacity="0.95"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="235" y1="646" x2="1339" y2="181" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F59E0B"/>
+      <stop offset="1" stop-color="#FB7185"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="900" rx="48" fill="url(#bg)"/>
+  <circle cx="1242" cy="164" r="176" fill="white" fill-opacity="0.08"/>
+  <circle cx="258" cy="730" r="210" fill="#F8FAFC" fill-opacity="0.08"/>
+  <rect x="189" y="130" width="1222" height="640" rx="42" fill="url(#card)"/>
+  <rect x="249" y="190" width="530" height="520" rx="34" fill="#EFF6FF"/>
+  <rect x="829" y="190" width="522" height="162" rx="30" fill="#FFFFFF"/>
+  <rect x="829" y="380" width="522" height="330" rx="30" fill="#F8FAFC"/>
+  <rect x="299" y="242" width="170" height="26" rx="13" fill="#BFDBFE"/>
+  <rect x="299" y="291" width="312" height="52" rx="18" fill="#0F172A"/>
+  <rect x="299" y="366" width="232" height="16" rx="8" fill="#93C5FD"/>
+  <rect x="299" y="398" width="278" height="16" rx="8" fill="#93C5FD"/>
+  <rect x="299" y="430" width="198" height="16" rx="8" fill="#93C5FD"/>
+  <rect x="299" y="504" width="430" height="138" rx="26" fill="url(#accent)"/>
+  <rect x="879" y="238" width="110" height="18" rx="9" fill="#BFDBFE"/>
+  <rect x="879" y="275" width="298" height="34" rx="14" fill="#0F172A"/>
+  <rect x="1151" y="251" width="150" height="50" rx="18" fill="#DBEAFE"/>
+  <rect x="879" y="430" width="182" height="208" rx="24" fill="#E0E7FF"/>
+  <rect x="1091" y="430" width="212" height="92" rx="24" fill="#0F172A"/>
+  <rect x="1091" y="546" width="212" height="92" rx="24" fill="#FFFFFF"/>
+  <rect x="1091" y="662" width="212" height="24" rx="12" fill="#BFDBFE"/>
+  <path d="M361 573C414 530 475 523 536 533C600 543 651 579 713 569V642H361V573Z" fill="#FFF7ED" fill-opacity="0.72"/>
+  <circle cx="1032" cy="566" r="48" fill="#1D4ED8"/>
+  <circle cx="1032" cy="566" r="24" fill="#DBEAFE"/>
+  <text x="300" y="118" fill="white" font-family="Arial, sans-serif" font-size="44" font-weight="700">Start</text>
+  <text x="300" y="824" fill="white" fill-opacity="0.82" font-family="Arial, sans-serif" font-size="28">1 user, dashboard inclus, pana la 5 module operationale active</text>
+</svg>
