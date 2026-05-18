@@ -1,3 +1,4 @@
+import { renderNexoraAnafOutboxPage } from "./src/ui/nexora-anaf-outbox-page.js";
 import { renderNexoraAnafStatusPage } from "./src/ui/nexora-anaf-status-page.js";
 import express from "express";
 import dotenv from "dotenv";
@@ -9963,6 +9964,49 @@ app.get("/anaf/inbox", requireAuth, requireSpvAccess, (req,res)=>{
   ${crmShellEnd()}
   </html>`;
   res.send(html);
+});
+
+app.get("/nexora/anaf/outbox", requireAuth, requireSpvAccess, (req, res) => {
+  const companyId = Number(req.session.user.company_id || 0);
+  const statusFilter = String(req.query?.status || "").trim().toUpperCase();
+
+  const rows = db.prepare(`
+    WITH latest_responses AS (
+      SELECT MAX(m.id) AS id
+      FROM anaf_messages m
+      WHERE m.company_id = ?
+        AND UPPER(COALESCE(m.direction,'')) = 'OUT'
+        AND m.factura_id IS NOT NULL
+        AND UPPER(COALESCE(m.status,'')) IN ('RASPUNS_DISPONIBIL', 'RESPINS_VALIDARE', 'RESPINSA_SPV')
+      GROUP BY m.factura_id
+    )
+    SELECT
+      m.id,
+      m.message_id,
+      m.factura_id,
+      m.direction,
+      m.status,
+      m.created_at,
+      f.factura_nr,
+      f.efactura_xml_path
+    FROM latest_responses lr
+    JOIN anaf_messages m ON m.id = lr.id
+    LEFT JOIN facturi f ON f.id = m.factura_id AND f.company_id = m.company_id
+    WHERE m.company_id = ?
+      AND (
+        ? = ''
+        OR (? = 'RASPUNS_DISPONIBIL' AND UPPER(COALESCE(m.status,'')) = 'RASPUNS_DISPONIBIL')
+        OR (? = 'RESPINSE' AND UPPER(COALESCE(m.status,'')) IN ('RESPINS_VALIDARE', 'RESPINSA_SPV'))
+      )
+    ORDER BY m.id DESC
+    LIMIT 100
+  `).all(companyId, companyId, statusFilter, statusFilter, statusFilter);
+
+  res.send(renderNexoraAnafOutboxPage({
+    user: req.session.user,
+    rows,
+    statusFilter
+  }));
 });
 
 app.get("/anaf/outbox", requireAuth, requireSpvAccess, (req,res)=>{
