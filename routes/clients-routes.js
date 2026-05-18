@@ -1,4 +1,4 @@
-import { renderNexoraClientsPage } from "../src/ui/nexora-clients-page.js";
+import { renderNexoraClientsPage, renderNexoraClientNewPage } from "../src/ui/nexora-clients-page.js";
 import { formatInvoiceDisplayNumber } from "../lib/invoice-numbering.js";
 
 export function registerClientsRoutes(app, deps) {
@@ -25,6 +25,12 @@ export function registerClientsRoutes(app, deps) {
     const n = Number(v || 0);
     return Number.isFinite(n) ? n.toFixed(2) : "0.00";
   }
+
+  app.get("/nexora/clients/new", requireAuth, (req, res) => {
+    res.send(renderNexoraClientNewPage({
+      user: req.session.user
+    }));
+  });
 
   app.get("/nexora/clients", requireAuth, (req, res) => {
     const companyId = Number(req.session.user.company_id || 0);

@@ -71,7 +71,7 @@ function renderNexoraClientsPage(options = {}) {
 
         <div class="nx-actions">
           <a class="nx-btn" href="/clients">UI vechi</a>
-          <a class="nx-btn primary" href="/clients">Client nou</a>
+          <a class="nx-btn primary" href="/nexora/clients/new">Client nou</a>
         </div>
       </header>
 
@@ -107,6 +107,69 @@ function renderNexoraClientsPage(options = {}) {
 </html>`;
 }
 
+function renderNexoraClientNewPage(options = {}) {
+  const user = options.user || {};
+  const companyName = user.company_name || options.companyName || "Workspace";
+
+  const sidebar = renderErpSidebar({
+    currentPath: "/clients",
+    appName: "Nexora ERP",
+    companyName
+  });
+
+  return `<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nexora ERP - Client nou</title>
+  <link rel="stylesheet" href="/css/nexora-shell.css">
+</head>
+<body>
+  <div class="nx-app-shell">
+    ${sidebar}
+
+    <main class="nx-main">
+      <header class="nx-topbar">
+        <div>
+          <div class="nx-page-eyebrow">CRM</div>
+          <div class="nx-page-title">Client nou</div>
+        </div>
+
+        <div class="nx-actions">
+          <a class="nx-btn" href="/nexora/clients">Înapoi la clienți</a>
+          <a class="nx-btn" href="/clients">UI vechi</a>
+        </div>
+      </header>
+
+      <section class="nx-content-card">
+        <div class="nx-section-head">
+          <div>
+            <h1>Adaugă client după CUI</h1>
+            <p>Folosește integrarea existentă pentru verificare și completare date firmă.</p>
+          </div>
+        </div>
+
+        <form class="nx-form-card" method="post" action="/clients/add-by-cui">
+          <label class="nx-field">
+            <span>CUI firmă</span>
+            <input name="cui" required placeholder="Ex: 12345678" autocomplete="off">
+          </label>
+
+          <div class="nx-form-actions">
+            <button class="nx-btn primary" type="submit">Adaugă client</button>
+            <a class="nx-btn" href="/nexora/clients">Renunță</a>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+</body>
+</html>`;
+}
+
+
 export {
-  renderNexoraClientsPage
+  renderNexoraClientsPage,
+  renderNexoraClientNewPage
 };
