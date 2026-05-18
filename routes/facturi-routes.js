@@ -260,7 +260,7 @@ export function registerFacturiRoutes(app, deps) {
     const factura = db.prepare("SELECT status FROM facturi WHERE id=? AND company_id=?").get(factura_id, companyId);
     const lockedStatuses = new Set(["TRIMIS_EFACTURA", "RECEPTIONATA_SPV"]);
     if (factura && lockedStatuses.has(String(factura.status || "").toUpperCase())) {
-      return res.redirect("/factura/" + factura_id + "?err=factura_blocata");
+      return res.redirect(req.body?.return_to === "nexora" ? "/nexora/facturi/" + factura_id + "?err=factura_blocata" : "/factura/" + factura_id + "?err=factura_blocata");
     }
 
     const denumire = String(req.body?.denumire || "").trim();
@@ -283,7 +283,7 @@ export function registerFacturiRoutes(app, deps) {
     `).run(factura_id, denumire, descriere || null, cantitate, unitate || null, pret_unitar, lt, sort_order, companyId);
 
     recalcFacturaTotals(factura_id);
-    return res.redirect("/factura/" + factura_id);
+    return res.redirect(req.body?.return_to === "nexora" ? "/nexora/facturi/" + factura_id : "/factura/" + factura_id);
   });
 
   app.post("/factura/:id/linie/:lid/sterge", requireAuth, (req, res) => {
@@ -295,12 +295,12 @@ export function registerFacturiRoutes(app, deps) {
     const factura = db.prepare("SELECT status FROM facturi WHERE id=? AND company_id=?").get(factura_id, companyId);
     const lockedStatuses = new Set(["TRIMIS_EFACTURA", "RECEPTIONATA_SPV"]);
     if (factura && lockedStatuses.has(String(factura.status || "").toUpperCase())) {
-      return res.redirect("/factura/" + factura_id + "?err=factura_blocata");
+      return res.redirect(req.body?.return_to === "nexora" ? "/nexora/facturi/" + factura_id + "?err=factura_blocata" : "/factura/" + factura_id + "?err=factura_blocata");
     }
 
     db.prepare("DELETE FROM facturi_linii WHERE id=? AND factura_id=? AND company_id=?").run(lid, factura_id, companyId);
     recalcFacturaTotals(factura_id);
-    return res.redirect("/factura/" + factura_id);
+    return res.redirect(req.body?.return_to === "nexora" ? "/nexora/facturi/" + factura_id : "/factura/" + factura_id);
   });
 
   app.post("/factura/:id/status", requireAuth, (req, res) => {
@@ -1126,6 +1126,8 @@ ${crmShellEnd()}
   app.get("/nexora/facturi/:id", requireAuth, (req, res) => {
     const companyId = Number(req.session.user.company_id || 0);
     const id = Number(req.params.id);
+    const ok = String(req.query.ok || "");
+    const err = String(req.query.err || "");
     if (!Number.isFinite(id)) return res.status(400).send("Bad id");
 
     const f = db.prepare(`
@@ -1161,7 +1163,9 @@ ${crmShellEnd()}
       lines: linii,
       totals,
       displayNumber,
-      clientEmail
+      clientEmail,
+      ok,
+      err
     }));
   });
 
