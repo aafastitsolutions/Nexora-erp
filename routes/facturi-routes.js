@@ -1,3 +1,4 @@
+import { renderNexoraInvoicesPage } from "../src/ui/nexora-invoices-page.js";
 export function registerFacturiRoutes(app, deps) {
   const {
     COMPANY,
@@ -319,6 +320,44 @@ export function registerFacturiRoutes(app, deps) {
     }
 
     return res.redirect("/factura/" + factura_id + "?ok=status_factura_actualizat");
+  });
+
+  app.get("/nexora/facturi", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const view = String(req.query.view || "").trim().toLowerCase();
+    const showCancelled = view === "anulate";
+    const statusOperator = showCancelled ? "=" : "<>";
+
+    const counters = db.prepare(`
+      SELECT
+        COUNT(*) AS total_count,
+        COALESCE(SUM(CASE WHEN UPPER(COALESCE(status,'')) = 'ANULATA' THEN 1 ELSE 0 END), 0) AS cancelled_count,
+        COALESCE(SUM(CASE WHEN UPPER(COALESCE(status,'')) <> 'ANULATA' THEN 1 ELSE 0 END), 0) AS active_count,
+        COALESCE(SUM(CASE WHEN UPPER(COALESCE(status,'')) IN ('CIORNA', 'TRIMISA', 'INTARZIATA') THEN 1 ELSE 0 END), 0) AS pending_count
+      FROM facturi
+      WHERE company_id=?
+    `).get(companyId) || {};
+
+    const invoices = db.prepare(`
+      SELECT f.id, f.factura_nr, f.an, f.seq, f.data_emitere, f.total, f.status,
+             c.name AS client_name, c.cui AS client_cui
+      FROM facturi f
+      JOIN clients c ON c.id = f.client_id
+      WHERE f.company_id=?
+        AND UPPER(COALESCE(f.status,'')) ${statusOperator} 'ANULATA'
+      ORDER BY f.id DESC
+      LIMIT 300
+    `).all(companyId).map((invoice) => ({
+      ...invoice,
+      display_number: facturaDisplayNumber(invoice)
+    }));
+
+    res.send(renderNexoraInvoicesPage({
+      user: req.session.user,
+      invoices,
+      counters,
+      showCancelled
+    }));
   });
 
   app.get("/facturi", requireAuth, (req, res) => {
