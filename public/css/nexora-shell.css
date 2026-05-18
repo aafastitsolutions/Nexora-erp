@@ -1054,3 +1054,133 @@
   background: rgba(239, 68, 68, 0.12);
   border-color: rgba(239, 68, 68, 0.25);
 }
+
+.nx-autocomplete-field {
+  position: relative;
+}
+
+.nx-autocomplete-results {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.14);
+  overflow: hidden;
+}
+
+.nx-autocomplete-item {
+  width: 100%;
+  border: 0;
+  background: #ffffff;
+  text-align: left;
+  padding: 11px 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.nx-autocomplete-item:hover {
+  background: #f8fafc;
+}
+
+.nx-autocomplete-item strong {
+  font-size: 13px;
+  color: #111827;
+}
+
+.nx-autocomplete-item span,
+.nx-autocomplete-empty {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.nx-autocomplete-empty {
+  padding: 12px;
+}
+
+.nx-field-hint {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 650;
+  margin-top: 2px;
+}
+
+.nx-client-preview-hint {
+  border: 1px dashed #cbd5e1;
+  background: #f8fafc;
+  color: #64748b;
+  border-radius: 16px;
+  padding: 13px 14px;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.nx-client-preview-box {
+  border: 1px solid #bfdbfe;
+  background: linear-gradient(180deg, #f8fbff 0%, #eef6ff 100%);
+  border-radius: 18px;
+  padding: 14px;
+}
+
+.nx-client-preview-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.nx-client-preview-head strong {
+  display: block;
+  font-size: 15px;
+  color: #111827;
+}
+
+.nx-client-preview-head span {
+  display: block;
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.nx-client-preview-head em {
+  font-style: normal;
+  color: #1d4ed8;
+  background: #dbeafe;
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.nx-client-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.nx-client-preview-grid > div {
+  background: rgba(255,255,255,0.72);
+  border: 1px solid rgba(191, 219, 254, 0.75);
+  border-radius: 13px;
+  padding: 10px;
+}
+
+.nx-client-preview-grid span {
+  display: block;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 850;
+  margin-bottom: 4px;
+}
+
+.nx-client-preview-grid b {
+  font-size: 13px;
+  color: #111827;
+}

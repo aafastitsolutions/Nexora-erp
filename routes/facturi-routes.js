@@ -1,3 +1,4 @@
+import { renderNexoraInvoiceNewPage } from "../src/ui/nexora-invoice-new-page.js";
 import { renderNexoraInvoiceDetailPage } from "../src/ui/nexora-invoice-detail-page.js";
 import { renderNexoraInvoicesPage } from "../src/ui/nexora-invoices-page.js";
 export function registerFacturiRoutes(app, deps) {
@@ -321,6 +322,12 @@ export function registerFacturiRoutes(app, deps) {
     }
 
     return res.redirect("/factura/" + factura_id + "?ok=status_factura_actualizat");
+  });
+
+  app.get("/nexora/facturi/new", requireAuth, (req, res) => {
+    res.send(renderNexoraInvoiceNewPage({
+      user: req.session.user
+    }));
   });
 
   app.get("/nexora/facturi", requireAuth, (req, res) => {
@@ -1081,6 +1088,10 @@ ${crmShellEnd()}
       SET factura_nr=?
       WHERE id=? AND company_id=?
     `).run(buildDraftInvoiceNumber(facturaId), facturaId, companyId);
+
+    if (req.body?.return_to === "nexora") {
+      return res.redirect("/nexora/facturi/" + facturaId);
+    }
 
     res.redirect("/factura/" + facturaId);
   });
