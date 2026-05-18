@@ -80,7 +80,19 @@ function renderNexoraInvoiceDetailPage(options = {}) {
         <div class="nx-actions">
           <a class="nx-btn" href="/nexora/facturi">Înapoi la facturi</a>
           <a class="nx-btn" href="/factura/${escapeHtml(invoice.id)}">UI vechi</a>
-          ${invoice.pdf_path ? `<a class="nx-btn primary" href="/${escapeHtml(invoice.pdf_path)}" target="_blank">Deschide PDF</a>` : ""}
+          <form method="post" action="/factura/${escapeHtml(invoice.id)}/genereaza-pdf" style="margin:0">
+            <input type="hidden" name="return_to" value="nexora">
+            <button class="nx-btn primary" type="submit">Generează PDF</button>
+          </form>
+          <form method="post" action="/factura/${escapeHtml(invoice.id)}/efactura/trimite" style="margin:0">
+            <input type="hidden" name="return_to" value="nexora">
+            <button class="nx-btn primary" type="submit">Trimite e-Factura</button>
+          </form>
+          <form method="post" action="/factura/${escapeHtml(invoice.id)}/efactura/confirma-spv" style="margin:0">
+            <input type="hidden" name="return_to" value="nexora">
+            <button class="nx-btn" type="submit">Verifică SPV</button>
+          </form>
+          ${invoice.pdf_path ? `<a class="nx-btn" href="/${escapeHtml(invoice.pdf_path)}" target="_blank">Deschide PDF</a>` : ""}
         </div>
       </header>
 
@@ -158,7 +170,15 @@ function renderNexoraInvoiceDetailPage(options = {}) {
                 <span>Message ID</span>
                 <strong>${escapeHtml(invoice.efactura_message_id || "-")}</strong>
               </div>
-              <a class="nx-btn primary nx-anaf-link" href="/factura/${escapeHtml(invoice.id)}">Acțiuni e-Factura în UI vechi</a>
+              <div class="nx-invoice-action-stack">
+                <form method="post" action="/factura/${escapeHtml(invoice.id)}/efactura/genereaza-xml">
+                  <input type="hidden" name="return_to" value="nexora">
+                  <button class="nx-btn" type="submit">Generează XML</button>
+                </form>
+
+                ${invoice.efactura_response_zip_path ? `<a class="nx-btn" href="/factura/${escapeHtml(invoice.id)}/efactura/raspuns">Deschide răspuns ANAF</a>` : ""}
+                <a class="nx-btn" href="/factura/${escapeHtml(invoice.id)}">Acțiuni avansate în UI vechi</a>
+              </div>
             </div>
           </section>
         </aside>

@@ -952,3 +952,69 @@
     grid-template-columns: 1fr;
   }
 }
+
+.nx-invoice-action-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: 4px;
+}
+
+.nx-invoice-action-stack form {
+  margin: 0;
+}
+
+.nx-invoice-action-stack .nx-btn {
+  width: 100%;
+  justify-content: center;
+}
+
+/* Compact e-Factura actions */
+.nx-invoice-side .nx-anaf-box {
+  gap: 8px;
+}
+
+.nx-invoice-side .nx-anaf-row {
+  min-height: 40px;
+  padding: 9px 11px;
+}
+
+.nx-invoice-side .nx-anaf-row strong {
+  font-size: 14px;
+  word-break: break-word;
+  text-align: right;
+}
+
+.nx-invoice-action-stack {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.nx-invoice-action-stack form {
+  margin: 0;
+}
+
+.nx-invoice-action-stack .nx-btn {
+  width: 100%;
+  min-height: 38px;
+  justify-content: center;
+  padding: 0 10px;
+  font-size: 12px;
+  border-radius: 12px;
+}
+
+.nx-invoice-action-stack .nx-btn.primary {
+  box-shadow: none;
+}
+
+.nx-invoice-action-stack a.nx-btn:last-child {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 1320px) {
+  .nx-invoice-action-stack {
+    grid-template-columns: 1fr;
+  }
+}

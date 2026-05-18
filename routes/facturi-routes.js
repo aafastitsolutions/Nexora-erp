@@ -1953,6 +1953,10 @@ table{width:100%;border-collapse:collapse}
         WHERE id=? AND company_id=?
       `).run(pdf_path, id, companyId);
 
+      if (req.body?.return_to === "nexora") {
+        return res.redirect(`/nexora/facturi/${id}?ok=pdf_generat`);
+      }
+
       return res.redirect("/" + encodeURI(pdf_path));
     } catch (error) {
       console.error(`[PDF] generate invoice ${id} failed`, error);
@@ -1976,7 +1980,7 @@ table{width:100%;border-collapse:collapse}
 
     const r = ensureFacturaXmlGenerated(id);
     if (r.error) return res.status(404).send(r.error);
-    return res.redirect("/factura/" + id + "?ok=xml_generat");
+    return res.redirect(req.body?.return_to === "nexora" ? "/nexora/facturi/" + id + "?ok=xml_generat" : "/factura/" + id + "?ok=xml_generat");
   });
 
   app.post("/factura/:id/efactura/trimite", requireAuth, async (req, res) => {
@@ -2003,7 +2007,7 @@ table{width:100%;border-collapse:collapse}
           SET efactura_last_error=?
           WHERE id=?
         `).run(generated.error, id);
-        return res.redirect("/factura/" + id + "?err=nu_exista_xml");
+        return res.redirect(req.body?.return_to === "nexora" ? "/nexora/facturi/" + id + "?err=nu_exista_xml" : "/factura/" + id + "?err=nu_exista_xml");
       }
 
       if (!fs.existsSync(generated.absPath)) {
@@ -2012,7 +2016,7 @@ table{width:100%;border-collapse:collapse}
           SET efactura_last_error=?
           WHERE id=?
         `).run("Fisierul XML lipseste de pe server.", id);
-        return res.redirect("/factura/" + id + "?err=xml_lipsa_pe_server");
+        return res.redirect(req.body?.return_to === "nexora" ? "/nexora/facturi/" + id + "?err=xml_lipsa_pe_server" : "/factura/" + id + "?err=xml_lipsa_pe_server");
       }
 
       const payload = fs.readFileSync(generated.absPath, "utf8");
@@ -2037,7 +2041,7 @@ table{width:100%;border-collapse:collapse}
         `).run("DEMO_LOCAL", demoUploadIndex, demoUploadIndex, id, companyId);
 
         db.prepare("UPDATE facturi SET status=? WHERE id=? AND company_id=?").run("TRIMIS_EFACTURA", id, companyId);
-        return res.redirect("/factura/" + id + "?ok=trimis_demo");
+        return res.redirect(req.body?.return_to === "nexora" ? "/nexora/facturi/" + id + "?ok=trimis_demo" : "/factura/" + id + "?ok=trimis_demo");
       }
 
       const environment = String(getSetting("anaf_environment", "test") || "test").trim();
