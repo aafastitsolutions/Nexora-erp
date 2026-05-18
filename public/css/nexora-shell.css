@@ -891,3 +891,49 @@
     grid-template-columns: 1fr;
   }
 }
+
+.nx-inline-form-activity {
+  grid-template-columns: 150px 180px 1fr 170px;
+}
+
+.nx-field-wide {
+  grid-column: span 3;
+}
+
+@media (max-width: 1180px) {
+  .nx-inline-form-activity {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .nx-field-wide {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 680px) {
+  .nx-field-wide {
+    grid-column: span 1;
+  }
+}
+
+.nx-btn.danger {
+  color: #991b1b;
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.22);
+}
+
+.nx-btn.danger:hover {
+  color: #ffffff;
+  background: #ef4444;
+  border-color: #ef4444;
+}
+
+.nx-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.nx-form-actions-placeholder {
+  display: none;
+}

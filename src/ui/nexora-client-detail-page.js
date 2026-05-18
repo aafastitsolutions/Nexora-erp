@@ -58,6 +58,12 @@ function renderNexoraClientDetailPage(options = {}) {
       <td>${escapeHtml(a.due_at || "-")}</td>
       <td>${a.done ? `<span class="nx-status-pill success">done</span>` : `<span class="nx-status-pill warn">open</span>`}</td>
       <td>${escapeHtml(a.created_at || "-")}</td>
+      <td class="nx-table-actions">
+        <form method="post" action="/client/${escapeHtml(client.id)}/activities/${escapeHtml(a.id)}/delete" onsubmit="return confirm('Ștergi această activitate?');">
+          <input type="hidden" name="return_to" value="nexora">
+          <button class="nx-btn danger" type="submit">Șterge</button>
+        </form>
+      </td>
     </tr>
   `);
 
@@ -160,9 +166,15 @@ function renderNexoraClientDetailPage(options = {}) {
           </section>
 
           <section class="nx-content-card">
-            <div class="nx-panel-head"><h2>Contacte</h2><span>${contacts.length}</span></div>
+            <div class="nx-panel-head">
+              <h2>Contacte</h2>
+              <div class="nx-panel-actions">
+                <span>${contacts.length}</span>
+                <button class="nx-btn primary" type="submit" form="nx-contact-form">Adaugă contact</button>
+              </div>
+            </div>
 
-            <form class="nx-inline-form" method="post" action="/client/${escapeHtml(client.id)}/contacts/add">\n              <input type="hidden" name="return_to" value="nexora">
+            <form id="nx-contact-form" class="nx-inline-form" method="post" action="/client/${escapeHtml(client.id)}/contacts/add">\n              <input type="hidden" name="return_to" value="nexora">
               <label class="nx-field">
                 <span>Nume contact</span>
                 <input name="name" required placeholder="Ex: Popescu Ion">
@@ -188,9 +200,7 @@ function renderNexoraClientDetailPage(options = {}) {
                 <span>Contact principal</span>
               </label>
 
-              <div class="nx-form-actions">
-                <button class="nx-btn primary" type="submit">Adaugă contact</button>
-              </div>
+              <div class="nx-form-actions nx-form-actions-placeholder"></div>
             </form>
 
             <div class="nx-table-wrap">
@@ -202,10 +212,57 @@ function renderNexoraClientDetailPage(options = {}) {
           </section>
 
           <section class="nx-content-card">
-            <div class="nx-panel-head"><h2>Activități</h2><span>${activities.length}</span></div>
+            <div class="nx-panel-head">
+              <h2>Activități</h2>
+              <div class="nx-panel-actions">
+                <span>${activities.length}</span>
+                <button class="nx-btn primary" type="submit" form="nx-activity-form">Adaugă activitate</button>
+              </div>
+            </div>
+
+            <form id="nx-activity-form" class="nx-inline-form nx-inline-form-activity" method="post" action="/client/${escapeHtml(client.id)}/activities/add">
+              <input type="hidden" name="return_to" value="nexora">
+
+              <label class="nx-field">
+                <span>Tip</span>
+                <select name="type" required>
+                  <option value="call">Call</option>
+                  <option value="meeting">Meeting</option>
+                  <option value="email">Email</option>
+                  <option value="note" selected>Note</option>
+                  <option value="task">Task</option>
+                </select>
+              </label>
+
+              <label class="nx-field">
+                <span>Contact</span>
+                <select name="contact_id">
+                  <option value="">—</option>
+                  ${contacts.map((c) => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name || "")}</option>`).join("")}
+                </select>
+              </label>
+
+              <label class="nx-field">
+                <span>Subiect</span>
+                <input name="subject" placeholder="Ex: Follow-up ofertă">
+              </label>
+
+              <label class="nx-field">
+                <span>Scadent</span>
+                <input name="due_at" placeholder="2026-05-18">
+              </label>
+
+              <label class="nx-field nx-field-wide">
+                <span>Note</span>
+                <textarea name="note" rows="3" placeholder="Detalii activitate..."></textarea>
+              </label>
+
+              <div class="nx-form-actions nx-form-actions-placeholder"></div>
+            </form>
+
             <div class="nx-table-wrap">
               <table class="nx-table">
-                <thead><tr><th>Tip</th><th>Subiect</th><th>Scadent</th><th>Status</th><th>Creat</th></tr></thead>
+                <thead><tr><th>Tip</th><th>Subiect</th><th>Scadent</th><th>Status</th><th>Creat</th><th></th></tr></thead>
                 <tbody>${activitiesRows}</tbody>
               </table>
             </div>
