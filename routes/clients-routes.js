@@ -1074,7 +1074,7 @@ ${crmShellEnd()}
     });
 
     tx();
-    return res.redirect("/client/" + client_id);
+    return res.redirect(req.body?.return_to === "nexora" ? "/nexora/clients/" + client_id : "/client/" + client_id);
   });
 
   app.post("/client/:id/activities/add", requireAuth, (req, res) => {

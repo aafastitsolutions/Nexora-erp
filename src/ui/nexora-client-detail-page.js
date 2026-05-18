@@ -161,6 +161,38 @@ function renderNexoraClientDetailPage(options = {}) {
 
           <section class="nx-content-card">
             <div class="nx-panel-head"><h2>Contacte</h2><span>${contacts.length}</span></div>
+
+            <form class="nx-inline-form" method="post" action="/client/${escapeHtml(client.id)}/contacts/add">\n              <input type="hidden" name="return_to" value="nexora">
+              <label class="nx-field">
+                <span>Nume contact</span>
+                <input name="name" required placeholder="Ex: Popescu Ion">
+              </label>
+
+              <label class="nx-field">
+                <span>Funcție</span>
+                <input name="position" placeholder="Ex: Manager">
+              </label>
+
+              <label class="nx-field">
+                <span>Email</span>
+                <input name="email" type="email" placeholder="email@firma.ro">
+              </label>
+
+              <label class="nx-field">
+                <span>Telefon</span>
+                <input name="phone" placeholder="+40...">
+              </label>
+
+              <label class="nx-check-field">
+                <input type="checkbox" name="is_primary" value="1">
+                <span>Contact principal</span>
+              </label>
+
+              <div class="nx-form-actions">
+                <button class="nx-btn primary" type="submit">Adaugă contact</button>
+              </div>
+            </form>
+
             <div class="nx-table-wrap">
               <table class="nx-table">
                 <thead><tr><th>Nume</th><th>Funcție</th><th>Email</th><th>Telefon</th><th>Creat</th></tr></thead>

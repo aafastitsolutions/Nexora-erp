@@ -810,3 +810,84 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Nexora inline forms */
+.nx-inline-form {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  align-items: end;
+  padding: 14px;
+  margin-bottom: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 18px;
+  background: #f8fafc;
+}
+
+.nx-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.nx-field span,
+.nx-check-field span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.nx-field input,
+.nx-field select,
+.nx-field textarea {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #e5e7eb;
+  border-radius: 13px;
+  background: #ffffff;
+  padding: 10px 12px;
+  outline: none;
+  font: inherit;
+}
+
+.nx-field textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+.nx-field input:focus,
+.nx-field select:focus,
+.nx-field textarea:focus {
+  border-color: rgba(99, 91, 255, 0.5);
+  box-shadow: 0 0 0 4px rgba(99, 91, 255, 0.1);
+}
+
+.nx-check-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+}
+
+.nx-check-field input {
+  width: 16px;
+  height: 16px;
+}
+
+.nx-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+@media (max-width: 1180px) {
+  .nx-inline-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .nx-inline-form {
+    grid-template-columns: 1fr;
+  }
+}
