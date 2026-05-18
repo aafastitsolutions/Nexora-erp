@@ -495,4 +495,10 @@ ${crmShellStart("dashboard", "Dashboard", "Overview rapid pentru activitatea cur
 ${crmShellEnd()}
 </html>`);
   });
+
+  app.get("/nexora-dashboard", requireAuth, (req, res) => {
+    res.sendFile("nexora-preview.html", {
+      root: "public"
+    });
+  });
 }
