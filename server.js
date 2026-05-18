@@ -1,3 +1,4 @@
+import { renderNexoraAnafInboxPage } from "./src/ui/nexora-anaf-inbox-page.js";
 import { renderNexoraAnafOutboxPage } from "./src/ui/nexora-anaf-outbox-page.js";
 import { renderNexoraAnafStatusPage } from "./src/ui/nexora-anaf-status-page.js";
 import express from "express";
@@ -9716,6 +9717,97 @@ app.post("/anaf/inbox/:id/process", requireAuth, requireSpvAccess, (req, res) =>
   const redirectTo = String(req.body?.redirect_to || "").trim();
   if (redirectTo && redirectTo.startsWith("/")) return res.redirect(redirectTo);
   return res.redirect("/anaf/inbox");
+});
+
+app.get("/nexora/anaf/inbox", requireAuth, requireSpvAccess, (req, res) => {
+  const companyId = Number(req.session.user.company_id || 0);
+  const ok = String(req.query?.ok || "").trim();
+  const err = String(req.query?.err || "").trim();
+  const reauth = String(req.query?.reauth || "").trim();
+
+  const syncImported = Number.parseInt(String(req.query?.imported || "0"), 10) || 0;
+  const syncNew = Number.parseInt(String(req.query?.new_count || "0"), 10) || 0;
+  const syncUpdated = Number.parseInt(String(req.query?.updated || "0"), 10) || 0;
+  const syncIgnored = Number.parseInt(String(req.query?.ignored || "0"), 10) || 0;
+  const syncFailed = Number.parseInt(String(req.query?.failed || "0"), 10) || 0;
+
+  const processedFilter = String(req.query?.processed || "").trim().toLowerCase();
+  const search = String(req.query?.search || "").trim();
+  const dateFrom = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query?.date_from || "").trim()) ? String(req.query.date_from).trim() : "";
+  const dateTo = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query?.date_to || "").trim()) ? String(req.query.date_to).trim() : "";
+
+  const where = ["company_id=?"];
+  const params = [companyId];
+
+  if (processedFilter === "processed") {
+    where.push("processed=1");
+  } else if (processedFilter === "new") {
+    where.push("processed=0");
+  }
+
+  if (dateFrom) {
+    where.push("date(COALESCE(received_at, created_at)) >= date(?)");
+    params.push(dateFrom);
+  }
+
+  if (dateTo) {
+    where.push("date(COALESCE(received_at, created_at)) <= date(?)");
+    params.push(dateTo);
+  }
+
+  if (search) {
+    const like = `%${search.toLowerCase()}%`;
+    where.push("(LOWER(COALESCE(supplier_name,'')) LIKE ? OR LOWER(COALESCE(supplier_cui,'')) LIKE ? OR LOWER(COALESCE(invoice_number,'')) LIKE ? OR LOWER(COALESCE(details,'')) LIKE ? OR LOWER(COALESCE(xml_path,'')) LIKE ? OR LOWER(COALESCE(pdf_path,'')) LIKE ? OR LOWER(COALESCE(zip_path,'')) LIKE ?)");
+    params.push(like, like, like, like, like, like, like);
+  }
+
+  const whereSql = where.join(" AND ");
+
+  const rows = db.prepare(`
+    SELECT id, supplier_name, supplier_cui, invoice_number, message_type, details, zip_path, xml_path, pdf_path, received_at, processed, created_at
+    FROM anaf_inbox
+    WHERE ${whereSql}
+    ORDER BY COALESCE(received_at, created_at) DESC, id DESC
+    LIMIT 200
+  `).all(...params);
+
+  const stats = db.prepare(`
+    SELECT
+      COUNT(*) AS total_count,
+      SUM(CASE WHEN processed=0 THEN 1 ELSE 0 END) AS new_count,
+      SUM(CASE WHEN processed=1 THEN 1 ELSE 0 END) AS processed_count
+    FROM anaf_inbox
+    WHERE company_id=?
+  `).get(companyId) || {};
+
+  const filteredStats = db.prepare(`
+    SELECT
+      COUNT(*) AS total_count,
+      SUM(CASE WHEN processed=0 THEN 1 ELSE 0 END) AS new_count
+    FROM anaf_inbox
+    WHERE ${whereSql}
+  `).get(...params) || {};
+
+  res.send(renderNexoraAnafInboxPage({
+    user: req.session.user,
+    rows,
+    stats,
+    filteredStats,
+    processedFilter,
+    search,
+    dateFrom,
+    dateTo,
+    ok,
+    err,
+    reauth,
+    sync: {
+      imported: syncImported,
+      newCount: syncNew,
+      updated: syncUpdated,
+      ignored: syncIgnored,
+      failed: syncFailed
+    }
+  }));
 });
 
 app.get("/anaf/inbox", requireAuth, requireSpvAccess, (req,res)=>{
