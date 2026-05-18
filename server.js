@@ -9325,6 +9325,10 @@ app.get("/nexora/anaf/status", requireAuth, requireSpvAccess, (req, res) => {
   const environment = String(getSetting("anaf_environment","test") || "test").trim() || "test";
   const redirectUri = String(getSetting("anaf_redirect_uri","https://minicrm.qr-lab.ro/oauth/anaf/callback") || "").trim();
   const efacturaApiBase = `https://api.anaf.ro/${environment === "prod" ? "prod" : "test"}/FCTEL/rest`;
+  const inviteFlash = req.session?.anafInviteFlash && typeof req.session.anafInviteFlash === "object"
+    ? { ...req.session.anafInviteFlash }
+    : null;
+  delete req.session.anafInviteFlash;
 
   const latestConnections = db.prepare(`
     SELECT environment, serial_certificate, expires_at, refresh_expires_at, updated_at
@@ -9370,6 +9374,7 @@ app.get("/nexora/anaf/status", requireAuth, requireSpvAccess, (req, res) => {
     oauthState,
     oauthMessage,
     reauthRequested,
+    inviteFlash,
     latestTestConnection: normalizeConnection(latestTestConnection),
     latestProdConnection: normalizeConnection(latestProdConnection),
     lastOauthLog

@@ -56,6 +56,29 @@ function renderNexoraAnafStatusPage(options = {}) {
   const latestTestConnection = options.latestTestConnection || null;
   const latestProdConnection = options.latestProdConnection || null;
   const lastOauthLog = options.lastOauthLog || null;
+  const inviteFlash = options.inviteFlash || null;
+
+  const inviteFlashHtml = inviteFlash
+    ? `<div class="nx-alert ${inviteFlash.status === "error" ? "danger" : "success"}">
+        <div style="font-weight:950;margin-bottom:8px">${escapeHtml(inviteFlash.status === "error" ? "Generare cod eșuată" : "Cod pentru contabil generat")}</div>
+        <div>${escapeHtml(inviteFlash.message || "Codul de reautorizare este pregătit.")}</div>
+        ${inviteFlash.code ? `
+          <div class="nx-invite-grid">
+            <label class="nx-field">
+              <span>Cod contabil</span>
+              <input readonly onclick="this.select()" value="${escapeHtml(inviteFlash.code)}">
+            </label>
+            <label class="nx-field">
+              <span>Link direct</span>
+              <input readonly onclick="this.select()" value="${escapeHtml(inviteFlash.invite_link || "")}">
+            </label>
+            <div><span>Expiră la</span><b>${escapeHtml(inviteFlash.expires_at || "-")}</b></div>
+            <div><span>Email contabil</span><b>${escapeHtml(inviteFlash.accountant_email || "-")}</b></div>
+            <div><span>Mediu</span><b>${escapeHtml(String(inviteFlash.environment || environment).toUpperCase())}</b></div>
+          </div>
+        ` : ""}
+      </div>`
+    : "";
 
   const sidebar = renderErpSidebar({
     currentPath: "/anaf/outbox",
@@ -69,7 +92,7 @@ function renderNexoraAnafStatusPage(options = {}) {
       </div>`
     : "";
 
-  const reauthAlert = reauthRequested
+  const reauthAlert = reauthRequested && !inviteFlash
     ? `<div class="nx-alert danger">Conexiunea ANAF/SPV trebuie reautorizată pentru această companie.</div>`
     : "";
 
@@ -100,6 +123,7 @@ function renderNexoraAnafStatusPage(options = {}) {
       </header>
 
       ${oauthAlert}
+      ${inviteFlashHtml}
       ${reauthAlert}
 
       <section class="nx-kpi-grid invoice-kpis">
@@ -157,7 +181,23 @@ function renderNexoraAnafStatusPage(options = {}) {
               <span>Data log</span>
               <strong>${escapeHtml(lastOauthLog?.created_at || "-")}</strong>
             </div>
-            <a class="nx-btn primary nx-anaf-link" href="/anaf/status">Acțiuni avansate în UI vechi</a>
+            <form class="nx-anaf-accountant-form" method="post" action="/anaf/reautorizare-link">
+              <input type="hidden" name="redirect_to" value="/nexora/anaf/status?reauth=needed">
+
+              <label class="nx-field">
+                <span>Email contabil, opțional</span>
+                <input type="email" name="accountant_email" placeholder="contabil@firma.ro">
+              </label>
+
+              <label class="nx-field">
+                <span>Notă internă, opțional</span>
+                <input name="note" placeholder="reautorizare certificat nou">
+              </label>
+
+              <button class="nx-btn primary" type="submit">Generează cod contabil</button>
+            </form>
+
+            <a class="nx-btn nx-anaf-link" href="/anaf/status">Acțiuni avansate în UI vechi</a>
           </div>
         </div>
       </section>
