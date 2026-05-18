@@ -1,3 +1,4 @@
+import { renderNexoraClientsPage } from "../src/ui/nexora-clients-page.js";
 import { formatInvoiceDisplayNumber } from "../lib/invoice-numbering.js";
 
 export function registerClientsRoutes(app, deps) {
@@ -24,6 +25,45 @@ export function registerClientsRoutes(app, deps) {
     const n = Number(v || 0);
     return Number.isFinite(n) ? n.toFixed(2) : "0.00";
   }
+
+  app.get("/nexora/clients", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const q = String(req.query?.q || "").trim();
+
+    let clients = [];
+    if (q) {
+      const like = `%${q}%`;
+      clients = db.prepare(`
+        SELECT DISTINCT cl.id, cl.cui, cl.name, cl.address, cl.reg_com, cl.created_at
+        FROM clients cl
+        LEFT JOIN contacts ct ON ct.client_id = cl.id
+        WHERE cl.company_id = ?
+          AND (
+            cl.name LIKE ?
+            OR cl.cui LIKE ?
+            OR cl.reg_com LIKE ?
+            OR ct.email LIKE ?
+            OR ct.phone LIKE ?
+          )
+        ORDER BY cl.id DESC
+        LIMIT 100
+      `).all(companyId, like, like, like, like, like);
+    } else {
+      clients = db.prepare(`
+        SELECT id, cui, name, address, reg_com, created_at
+        FROM clients
+        WHERE company_id = ?
+        ORDER BY id DESC
+        LIMIT 100
+      `).all(companyId);
+    }
+
+    res.send(renderNexoraClientsPage({
+      user: req.session.user,
+      clients,
+      q
+    }));
+  });
 
   app.get("/clients", requireAuth, (req, res) => {
     const companyId = Number(req.session.user.company_id || 0);

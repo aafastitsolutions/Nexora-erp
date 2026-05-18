@@ -562,3 +562,93 @@
   justify-content: center;
   margin-top: 4px;
 }
+
+/* Nexora data tables */
+.nx-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.nx-section-head h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 950;
+  letter-spacing: -0.03em;
+}
+
+.nx-section-head p {
+  margin: 6px 0 0;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.nx-count-pill {
+  background: rgba(99, 91, 255, 0.1);
+  color: #4f46e5;
+  border: 1px solid rgba(99, 91, 255, 0.18);
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.nx-table-wrap {
+  overflow: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 18px;
+}
+
+.nx-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #ffffff;
+  min-width: 760px;
+}
+
+.nx-table th {
+  text-align: left;
+  color: #64748b;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: #f8fafc;
+  padding: 14px 16px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.nx-table td {
+  padding: 15px 16px;
+  border-bottom: 1px solid #eef2f7;
+  vertical-align: top;
+  font-size: 14px;
+}
+
+.nx-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.nx-table-main-link {
+  color: #111827;
+  text-decoration: none;
+  font-weight: 900;
+}
+
+.nx-table-main-link:hover {
+  color: var(--nx-primary);
+}
+
+.nx-table-sub {
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 12px;
+  max-width: 420px;
+}
+
+.nx-table-actions {
+  text-align: right;
+  white-space: nowrap;
+}
