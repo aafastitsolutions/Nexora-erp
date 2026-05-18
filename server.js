@@ -1,3 +1,4 @@
+import { renderNexoraAnafStatusPage } from "./src/ui/nexora-anaf-status-page.js";
 import express from "express";
 import dotenv from "dotenv";
 dotenv.config();
@@ -9315,6 +9316,65 @@ res.redirect("/setari");
 
 });
 
+
+app.get("/nexora/anaf/status", requireAuth, requireSpvAccess, (req, res) => {
+  const companyId = Number(req.session.user.company_id || 0);
+  const oauthState = String(req.query.oauth || "");
+  const oauthMessage = String(req.query.message || "");
+  const reauthRequested = String(req.query.reauth || "").trim() === "needed";
+  const environment = String(getSetting("anaf_environment","test") || "test").trim() || "test";
+  const redirectUri = String(getSetting("anaf_redirect_uri","https://minicrm.qr-lab.ro/oauth/anaf/callback") || "").trim();
+  const efacturaApiBase = `https://api.anaf.ro/${environment === "prod" ? "prod" : "test"}/FCTEL/rest`;
+
+  const latestConnections = db.prepare(`
+    SELECT environment, serial_certificate, expires_at, refresh_expires_at, updated_at
+    FROM anaf_connections
+    WHERE company_id=?
+    ORDER BY id DESC
+  `).all(companyId);
+
+  const latestTestConnection = latestConnections.find((row) => String(row.environment || "").trim() === "test") || null;
+  const latestProdConnection = latestConnections.find((row) => String(row.environment || "").trim() === "prod") || null;
+
+  const isAccessTokenActive = (row) => {
+    if (!row) return false;
+    const expiresMs = row.expires_at ? Date.parse(String(row.expires_at)) : NaN;
+    return !Number.isFinite(expiresMs) || expiresMs > Date.now();
+  };
+
+  const isRefreshTokenActive = (row) => {
+    if (!row) return false;
+    const expiresMs = row.refresh_expires_at ? Date.parse(String(row.refresh_expires_at)) : NaN;
+    return !Number.isFinite(expiresMs) || expiresMs > Date.now();
+  };
+
+  const normalizeConnection = (row) => row ? {
+    ...row,
+    accessActive: isAccessTokenActive(row),
+    refreshActive: isRefreshTokenActive(row)
+  } : null;
+
+  const lastOauthLog = db.prepare(`
+    SELECT event_type, status, details, created_at
+    FROM anaf_oauth_logs
+    WHERE company_id=?
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(companyId);
+
+  res.send(renderNexoraAnafStatusPage({
+    user: req.session.user,
+    environment,
+    efacturaApiBase,
+    redirectUri,
+    oauthState,
+    oauthMessage,
+    reauthRequested,
+    latestTestConnection: normalizeConnection(latestTestConnection),
+    latestProdConnection: normalizeConnection(latestProdConnection),
+    lastOauthLog
+  }));
+});
 
 app.get("/anaf/status", requireAuth, requireSpvAccess, (req,res)=>{
   const companyId = Number(req.session.user.company_id || 0);
