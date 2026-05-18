@@ -24,6 +24,7 @@ function renderNexoraDashboardPage(options = {}) {
   };
 
   const activities = Array.isArray(options.activities) ? options.activities : [];
+  const recentInvoices = Array.isArray(options.recentInvoices) ? options.recentInvoices : [];
 
   const sidebar = renderErpSidebar({
     currentPath: "/dashboard",
@@ -42,6 +43,25 @@ function renderNexoraDashboardPage(options = {}) {
       <div class="nx-activity">
         <b>Nu există activități recente</b>
         <span>Activitățile vor apărea aici pe măsură ce lucrezi în ERP.</span>
+      </div>
+    `;
+
+  const recentInvoicesHtml = recentInvoices.length
+    ? recentInvoices.map((invoice) => `
+        <a class="nx-invoice-row" href="/facturi/${escapeHtml(invoice.id)}">
+          <div>
+            <b>${escapeHtml(invoice.factura_nr)}</b>
+            <span>${escapeHtml(invoice.client_name || "Client necunoscut")}</span>
+          </div>
+          <div class="nx-invoice-meta">
+            <strong>${escapeHtml(invoice.total_formatted || invoice.total || "0 RON")}</strong>
+            <em>${escapeHtml(invoice.status || "CIORNA")}</em>
+          </div>
+        </a>
+      `).join("")
+    : `
+      <div class="nx-empty-state">
+        Nu există facturi recente.
       </div>
     `;
 
@@ -149,6 +169,17 @@ function renderNexoraDashboardPage(options = {}) {
 
           <div class="nx-activity-list">
             ${activitiesHtml}
+          </div>
+        </div>
+
+        <div class="nx-panel">
+          <div class="nx-panel-head">
+            <h2>Facturi recente</h2>
+            <span>Ultimele 6</span>
+          </div>
+
+          <div class="nx-invoice-list">
+            ${recentInvoicesHtml}
           </div>
         </div>
 

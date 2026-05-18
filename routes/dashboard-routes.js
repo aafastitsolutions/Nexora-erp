@@ -537,6 +537,19 @@ ${crmShellEnd()}
       subtitle: `${task.client_name || "Client"}${task.due_at ? " · scadent " + task.due_at : ""}`
     }));
 
+    const recentInvoices = db.prepare(`
+      SELECT f.id, f.factura_nr, f.status, f.total, f.moneda, f.data_emitere,
+             cl.name AS client_name
+      FROM facturi f
+      LEFT JOIN clients cl ON cl.id = f.client_id
+      WHERE f.company_id = ?
+      ORDER BY f.id DESC
+      LIMIT 6
+    `).all(companyId).map((invoice) => ({
+      ...invoice,
+      total_formatted: fmtMoney(Number(invoice.total || 0))
+    }));
+
     res.send(renderNexoraDashboardPage({
       user: req.session.user,
       totalRevenue: fmtMoney(totalRevenueValue),
@@ -545,7 +558,8 @@ ${crmShellEnd()}
       totalContracts,
       totalInvoicesOpen,
       openTasks: tasks.length,
-      activities
+      activities,
+      recentInvoices
     }));
   });
 }
