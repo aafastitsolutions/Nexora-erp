@@ -40,7 +40,7 @@ function renderNexoraInvoicesPage(options = {}) {
     ? invoices.map((invoice) => `
       <tr>
         <td>
-          <a class="nx-table-main-link" href="/factura/${escapeHtml(invoice.id)}">
+          <a class="nx-table-main-link" href="/nexora/facturi/${escapeHtml(invoice.id)}">
             ${escapeHtml(invoice.display_number || invoice.factura_nr || "-")}
           </a>
           <div class="nx-table-sub">${escapeHtml(invoice.client_cui || "")}</div>
@@ -52,7 +52,7 @@ function renderNexoraInvoicesPage(options = {}) {
         <td>${escapeHtml(money(invoice.total))}</td>
         <td><span class="nx-status-pill ${statusClass(invoice.status)}">${escapeHtml(invoice.status || "CIORNA")}</span></td>
         <td class="nx-table-actions">
-          <a class="nx-btn" href="/factura/${escapeHtml(invoice.id)}">Deschide</a>
+          <a class="nx-btn" href="/nexora/facturi/${escapeHtml(invoice.id)}">Deschide</a>
         </td>
       </tr>
     `).join("")

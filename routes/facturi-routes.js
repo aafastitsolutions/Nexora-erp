@@ -1,3 +1,4 @@
+import { renderNexoraInvoiceDetailPage } from "../src/ui/nexora-invoice-detail-page.js";
 import { renderNexoraInvoicesPage } from "../src/ui/nexora-invoices-page.js";
 export function registerFacturiRoutes(app, deps) {
   const {
@@ -1120,6 +1121,48 @@ ${crmShellEnd()}
     })();
 
     return res.redirect("/facturi?ok=stearsa");
+  });
+
+  app.get("/nexora/facturi/:id", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).send("Bad id");
+
+    const f = db.prepare(`
+      SELECT f.*, c.name AS client
+      FROM facturi f
+      JOIN clients c ON c.id=f.client_id
+      WHERE f.id=? AND f.company_id=?
+    `).get(id, companyId);
+
+    if (!f) return res.status(404).send("Factura nu exista");
+
+    const clientEmail = db.prepare(`
+      SELECT email
+      FROM contacts
+      WHERE client_id=? AND company_id=? AND email IS NOT NULL AND TRIM(email) <> ''
+      ORDER BY is_primary DESC, id ASC
+      LIMIT 1
+    `).get(f.client_id, companyId)?.email || "";
+
+    const linii = db.prepare(`
+      SELECT id, denumire, descriere, cantitate, unitate, pret_unitar, total_linie
+      FROM facturi_linii
+      WHERE factura_id=? AND company_id=?
+      ORDER BY sort_order ASC, id ASC
+    `).all(id, companyId);
+
+    const totals = recalcFacturaTotals(id);
+    const displayNumber = facturaDisplayNumber(f);
+
+    res.send(renderNexoraInvoiceDetailPage({
+      user: req.session.user,
+      invoice: f,
+      lines: linii,
+      totals,
+      displayNumber,
+      clientEmail
+    }));
   });
 
   app.get("/factura/:id", requireAuth, (req, res) => {
