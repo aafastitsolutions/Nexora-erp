@@ -321,7 +321,7 @@ export function registerFacturiRoutes(app, deps) {
       return res.redirect("/facturi?view=anulate&ok=anulata");
     }
 
-    return res.redirect("/factura/" + factura_id + "?ok=status_factura_actualizat");
+    return res.redirect(req.body?.return_to === "nexora" ? "/nexora/facturi/" + factura_id + "?ok=status_factura_actualizat" : "/factura/" + factura_id + "?ok=status_factura_actualizat");
   });
 
   app.get("/nexora/facturi/new", requireAuth, (req, res) => {
@@ -1109,7 +1109,7 @@ ${crmShellEnd()}
 
     if (!factura) return res.status(404).send("Factura nu exista");
     if (!isDraftFacturaStatus(factura.status)) {
-      return res.redirect("/factura/" + factura_id + "?err=stergere_permisa_doar_ciorna");
+      return res.redirect(req.body?.return_to === "nexora" ? "/nexora/facturi/" + factura_id + "?err=stergere_permisa_doar_ciorna" : "/factura/" + factura_id + "?err=stergere_permisa_doar_ciorna");
     }
 
     for (const storedFile of [factura.pdf_path, factura.efactura_xml_path, factura.efactura_response_zip_path]) {
@@ -1976,7 +1976,7 @@ table{width:100%;border-collapse:collapse}
     } catch (error) {
       console.error(`[PDF] generate invoice ${id} failed`, error);
       const errCode = error?.code === "PDF_BROWSER_MISSING" ? "pdf_neconfigurat" : "pdf_generare";
-      return res.redirect(`/factura/${id}?err=${errCode}`);
+      return res.redirect(req.body?.return_to === "nexora" ? `/nexora/facturi/${id}?err=${errCode}` : `/factura/${id}?err=${errCode}`);
     }
   });
 
@@ -2086,7 +2086,7 @@ table{width:100%;border-collapse:collapse}
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `).run(companyId, null, uploaded.uploadIndex || "", id, "OUT", "EROARE", payload, uploaded.rawText || errorMessage);
 
-        return res.redirect("/factura/" + id + "?err=eroare_anaf");
+        return res.redirect(req.body?.return_to === "nexora" ? "/nexora/facturi/" + id + "?err=eroare_anaf" : "/factura/" + id + "?err=eroare_anaf");
       }
 
       db.prepare(`
@@ -2107,7 +2107,7 @@ table{width:100%;border-collapse:collapse}
       `).run("TRIMIS", uploaded.uploadIndex, uploaded.uploadIndex, id, companyId);
 
       db.prepare("UPDATE facturi SET status=? WHERE id=? AND company_id=?").run("TRIMIS_EFACTURA", id, companyId);
-      return res.redirect("/factura/" + id + "?ok=trimis_anaf");
+      return res.redirect(req.body?.return_to === "nexora" ? "/nexora/facturi/" + id + "?ok=trimis_anaf" : "/factura/" + id + "?ok=trimis_anaf");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Nu exista conexiune ANAF activa.";
       db.prepare(`
@@ -2117,7 +2117,7 @@ table{width:100%;border-collapse:collapse}
             efactura_last_checked_at=CURRENT_TIMESTAMP
         WHERE id=? AND company_id=?
       `).run("FARA_CONEXIUNE", message, id, companyId);
-      return res.redirect("/factura/" + id + `?err=fara_conexiune_anaf${spvNeedsManualReauthorization(message) ? "&reauth=needed" : ""}`);
+      return res.redirect(req.body?.return_to === "nexora" ? "/nexora/facturi/" + id + `?err=fara_conexiune_anaf${spvNeedsManualReauthorization(message) ? "&reauth=needed" : ""}` : "/factura/" + id + `?err=fara_conexiune_anaf${spvNeedsManualReauthorization(message) ? "&reauth=needed" : ""}`);
     }
   });
 
@@ -2150,11 +2150,11 @@ table{width:100%;border-collapse:collapse}
         WHERE id=? AND company_id=?
       `).run("TRIMIS_EFACTURA", "DEMO_CONFIRMAT", demoDownloadId, id, companyId);
 
-      return res.redirect("/factura/" + id + "?ok=stare_demo");
+      return res.redirect(req.body?.return_to === "nexora" ? "/nexora/facturi/" + id + "?ok=stare_demo" : "/factura/" + id + "?ok=stare_demo");
     }
 
     const uploadIndex = String(factura?.efactura_upload_index || factura?.efactura_message_id || "").trim();
-    if (!uploadIndex) return res.redirect("/factura/" + id + "?err=fara_index_incarcare");
+    if (!uploadIndex) return res.redirect(req.body?.return_to === "nexora" ? "/nexora/facturi/" + id + "?err=fara_index_incarcare" : "/factura/" + id + "?err=fara_index_incarcare");
 
     const environment = String(getSetting("anaf_environment", "test") || "test").trim();
 
@@ -2231,7 +2231,7 @@ table{width:100%;border-collapse:collapse}
       const nextOkParam = isRejectedByAnaf
         ? "stare_respinsa_anaf"
         : (responseZipPath ? "stare_actualizata_cu_zip" : "stare_actualizata");
-      return res.redirect("/factura/" + id + `?ok=${nextOkParam}`);
+      return res.redirect(req.body?.return_to === "nexora" ? "/nexora/facturi/" + id + `?ok=${nextOkParam}` : "/factura/" + id + `?ok=${nextOkParam}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Nu exista conexiune ANAF activa.";
       db.prepare(`
@@ -2240,7 +2240,7 @@ table{width:100%;border-collapse:collapse}
             efactura_last_checked_at=CURRENT_TIMESTAMP
         WHERE id=? AND company_id=?
       `).run(message, id, companyId);
-      return res.redirect("/factura/" + id + `?err=fara_conexiune_anaf${spvNeedsManualReauthorization(message) ? "&reauth=needed" : ""}`);
+      return res.redirect(req.body?.return_to === "nexora" ? "/nexora/facturi/" + id + `?err=fara_conexiune_anaf${spvNeedsManualReauthorization(message) ? "&reauth=needed" : ""}` : "/factura/" + id + `?err=fara_conexiune_anaf${spvNeedsManualReauthorization(message) ? "&reauth=needed" : ""}`);
     }
   });
 
@@ -2266,11 +2266,11 @@ table{width:100%;border-collapse:collapse}
       LIMIT 1
     `).get(f.client_id, companyId);
 
-    if (!contact || !contact.email) return res.redirect("/factura/" + id + "?err=fara_email_client");
-    if (!f.pdf_path) return res.redirect("/factura/" + id + "?err=fara_pdf");
+    if (!contact || !contact.email) return res.redirect(req.body?.return_to === "nexora" ? "/nexora/facturi/" + id + "?err=fara_email_client" : "/factura/" + id + "?err=fara_email_client");
+    if (!f.pdf_path) return res.redirect(req.body?.return_to === "nexora" ? "/nexora/facturi/" + id + "?err=fara_pdf" : "/factura/" + id + "?err=fara_pdf");
 
     const absPath = path.join(__dirname, f.pdf_path);
-    if (!fs.existsSync(absPath)) return res.redirect("/factura/" + id + "?err=pdf_lipsa");
+    if (!fs.existsSync(absPath)) return res.redirect(req.body?.return_to === "nexora" ? "/nexora/facturi/" + id + "?err=pdf_lipsa" : "/factura/" + id + "?err=pdf_lipsa");
 
     try {
       const displayFacturaNumber = facturaDisplayNumber(f);
@@ -2284,10 +2284,10 @@ table{width:100%;border-collapse:collapse}
       });
 
       db.prepare("UPDATE facturi SET status=? WHERE id=? AND company_id=?").run("TRIMIS_CLIENT", id, companyId);
-      return res.redirect("/factura/" + id + "?ok=trimis_client");
+      return res.redirect(req.body?.return_to === "nexora" ? "/nexora/facturi/" + id + "?ok=trimis_client" : "/factura/" + id + "?ok=trimis_client");
     } catch (e) {
       console.error("EMAIL ERROR:", e);
-      return res.redirect("/factura/" + id + "?err=eroare_email");
+      return res.redirect(req.body?.return_to === "nexora" ? "/nexora/facturi/" + id + "?err=eroare_email" : "/factura/" + id + "?err=eroare_email");
     }
   });
 }
