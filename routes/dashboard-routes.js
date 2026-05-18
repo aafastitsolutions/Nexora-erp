@@ -1,3 +1,4 @@
+import { renderNexoraDashboardPage } from "../src/ui/nexora-dashboard-page.js";
 export function registerDashboardRoutes(app, { db, requireAuth, todayISO, escapeHtml, fmtMoney, crmShellStart, crmShellEnd }) {
   app.get("/dashboard", requireAuth, (req, res) => {
     const companyId = Number(req.session.user.company_id || 0);
@@ -497,8 +498,54 @@ ${crmShellEnd()}
   });
 
   app.get("/nexora-dashboard", requireAuth, (req, res) => {
-    res.sendFile("nexora-preview.html", {
-      root: "public"
-    });
+    const companyId = Number(req.session.user.company_id || 0);
+
+    const totalClients = db.prepare(`SELECT COUNT(*) AS n FROM clients WHERE company_id=?`).get(companyId)?.n || 0;
+
+    const totalQuotesOpen = db.prepare(`
+      SELECT COUNT(*) AS n
+      FROM quotes
+      WHERE status IN ('DRAFT','SENT') AND company_id=?
+    `).get(companyId)?.n || 0;
+
+    const totalContracts = db.prepare(`SELECT COUNT(*) AS n FROM contracts WHERE company_id=?`).get(companyId)?.n || 0;
+
+    const totalInvoicesOpen = db.prepare(`
+      SELECT COUNT(*) AS n
+      FROM facturi
+      WHERE status IN ('CIORNA','TRIMISA','INTARZIATA') AND company_id=?
+    `).get(companyId)?.n || 0;
+
+    const totalRevenueValue = db.prepare(`
+      SELECT IFNULL(SUM(price), 0) AS total
+      FROM contracts
+      WHERE company_id=?
+    `).get(companyId)?.total || 0;
+
+    const tasks = db.prepare(`
+      SELECT a.id, a.subject, a.note, a.due_at, a.created_at,
+             cl.id AS client_id, cl.name AS client_name
+      FROM activities a
+      JOIN clients cl ON cl.id = a.client_id
+      WHERE a.type='task' AND a.done=0 AND a.company_id=?
+      ORDER BY (a.due_at IS NULL) ASC, a.due_at ASC, a.id DESC
+      LIMIT 5
+    `).all(companyId);
+
+    const activities = tasks.map((task) => ({
+      title: task.subject || "Task fără titlu",
+      subtitle: `${task.client_name || "Client"}${task.due_at ? " · scadent " + task.due_at : ""}`
+    }));
+
+    res.send(renderNexoraDashboardPage({
+      user: req.session.user,
+      totalRevenue: fmtMoney(totalRevenueValue),
+      totalClients,
+      totalQuotesOpen,
+      totalContracts,
+      totalInvoicesOpen,
+      openTasks: tasks.length,
+      activities
+    }));
   });
 }
