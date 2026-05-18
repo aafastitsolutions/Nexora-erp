@@ -32,6 +32,8 @@ function renderNexoraInvoiceDetailPage(options = {}) {
   const ok = String(options.ok || "");
   const err = String(options.err || "");
   const companyName = user.company_name || "Workspace";
+  const lockedStatuses = new Set(["TRIMIS_EFACTURA", "RECEPTIONATA_SPV", "ANULATA"]);
+  const isInvoiceLocked = lockedStatuses.has(String(invoice.status || "").toUpperCase());
 
   const alertHtml = err
     ? `<div class="nx-alert danger">${err === "factura_blocata" ? "Factura este blocată legal și nu mai poate fi modificată." : "A apărut o eroare: " + escapeHtml(err)}</div>`
@@ -57,10 +59,12 @@ function renderNexoraInvoiceDetailPage(options = {}) {
         <td>${escapeHtml(money(line.pret_unitar, invoice.moneda))}</td>
         <td>${escapeHtml(money(line.total_linie, invoice.moneda))}</td>
         <td class="nx-table-actions">
-          <form method="post" action="/factura/${escapeHtml(invoice.id)}/linie/${escapeHtml(line.id)}/sterge" onsubmit="return confirm('Ștergi această linie?');">
-            <input type="hidden" name="return_to" value="nexora">
-            <button class="nx-btn danger" type="submit">Șterge</button>
-          </form>
+          ${isInvoiceLocked ? `<span class="nx-table-sub">Blocat</span>` : `
+            <form method="post" action="/factura/${escapeHtml(invoice.id)}/linie/${escapeHtml(line.id)}/sterge" onsubmit="return confirm('Ștergi această linie?');">
+              <input type="hidden" name="return_to" value="nexora">
+              <button class="nx-btn danger" type="submit">Șterge</button>
+            </form>
+          `}
         </td>
       </tr>
     `).join("")
@@ -143,38 +147,44 @@ function renderNexoraInvoiceDetailPage(options = {}) {
               </div>
             </div>
 
-            <form id="nx-invoice-line-form" class="nx-inline-form nx-invoice-line-form" method="post" action="/factura/${escapeHtml(invoice.id)}/linie">
-              <input type="hidden" name="return_to" value="nexora">
-
-              <label class="nx-field nx-field-wide">
-                <span>Denumire</span>
-                <input name="denumire" required placeholder="Ex: Servicii consultanță">
-              </label>
-
-              <label class="nx-field nx-field-wide">
-                <span>Descriere</span>
-                <input name="descriere" placeholder="Detalii linie factură">
-              </label>
-
-              <label class="nx-field">
-                <span>Cantitate</span>
-                <input name="cantitate" value="1">
-              </label>
-
-              <label class="nx-field">
-                <span>UM</span>
-                <input name="unitate" placeholder="buc">
-              </label>
-
-              <label class="nx-field">
-                <span>Preț unitar</span>
-                <input name="pret_unitar" value="0">
-              </label>
-
-              <div class="nx-form-actions">
-                <button class="nx-btn primary" type="submit">Adaugă linie</button>
+            ${isInvoiceLocked ? `
+              <div class="nx-alert danger">
+                Factura este blocată legal și nu mai poate fi modificată.
               </div>
-            </form>
+            ` : `
+              <form id="nx-invoice-line-form" class="nx-inline-form nx-invoice-line-form" method="post" action="/factura/${escapeHtml(invoice.id)}/linie">
+                <input type="hidden" name="return_to" value="nexora">
+
+                <label class="nx-field nx-field-wide">
+                  <span>Denumire</span>
+                  <input name="denumire" required placeholder="Ex: Servicii consultanță">
+                </label>
+
+                <label class="nx-field nx-field-wide">
+                  <span>Descriere</span>
+                  <input name="descriere" placeholder="Detalii linie factură">
+                </label>
+
+                <label class="nx-field">
+                  <span>Cantitate</span>
+                  <input name="cantitate" value="1">
+                </label>
+
+                <label class="nx-field">
+                  <span>UM</span>
+                  <input name="unitate" placeholder="buc">
+                </label>
+
+                <label class="nx-field">
+                  <span>Preț unitar</span>
+                  <input name="pret_unitar" value="0">
+                </label>
+
+                <div class="nx-form-actions">
+                  <button class="nx-btn primary" type="submit">Adaugă linie</button>
+                </div>
+              </form>
+            `}
 
             <div class="nx-table-wrap">
               <table class="nx-table">
