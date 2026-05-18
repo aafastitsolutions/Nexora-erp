@@ -2,6 +2,7 @@ node_modules/
 *.db
 sessions.db
 .env
+.env.*
 uploads/
 public/uploads/
 old_backups/
@@ -9,3 +10,4 @@ old_backups/
 *.zip
 logs/
 *.log
+.DS_Store
