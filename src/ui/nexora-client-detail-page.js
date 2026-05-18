@@ -137,24 +137,55 @@ function renderNexoraClientDetailPage(options = {}) {
       <section class="nx-client-layout">
         <div class="nx-client-main">
           <section class="nx-content-card">
-            <div class="nx-section-head">
-              <div>
-                <h1>Date client</h1>
-                <p>Fișă centralizată CRM pentru client, contacte, documente și activități.</p>
-              </div>
-              <span class="nx-status-pill ${statusClass}">${escapeHtml(client.client_status || "verde")}</span>
-            </div>
+            <form id="nx-client-profile-form" method="post" action="/client/${escapeHtml(client.id)}/profile/save">
+              <input type="hidden" name="return_to" value="nexora">
 
-            <div class="nx-client-info-grid">
-              <div><span>CUI</span><b>${escapeHtml(client.cui || "-")}</b></div>
-              <div><span>Reg. Com.</span><b>${escapeHtml(client.reg_com || "-")}</b></div>
-              <div><span>CAEN</span><b>${escapeHtml(client.caen || "-")}</b></div>
-              <div><span>TVA</span><b>${client.vat ? "Da" : "Nu"}</b></div>
-              <div><span>Email</span><b>${escapeHtml(client.email || "-")}</b></div>
-              <div><span>Telefon</span><b>${escapeHtml(client.phone || "-")}</b></div>
-              <div class="wide"><span>Adresă</span><b>${escapeHtml(client.address || "-")}</b></div>
-              <div class="wide"><span>Observații</span><b>${escapeHtml(client.notes || "-")}</b></div>
-            </div>
+              <div class="nx-section-head">
+                <div>
+                  <h1>Date client</h1>
+                  <p>Fișă centralizată CRM pentru client, contacte, documente și activități.</p>
+                </div>
+
+                <div class="nx-panel-actions">
+                  <span class="nx-status-pill ${statusClass}">${escapeHtml(client.client_status || "verde")}</span>
+                  <button class="nx-btn primary" type="submit">Salvează client</button>
+                </div>
+              </div>
+
+              <div class="nx-client-info-grid">
+                <div><span>CUI</span><b>${escapeHtml(client.cui || "-")}</b></div>
+                <div><span>Reg. Com.</span><b>${escapeHtml(client.reg_com || "-")}</b></div>
+                <div><span>CAEN</span><b>${escapeHtml(client.caen || "-")}</b></div>
+                <div><span>TVA</span><b>${client.vat ? "Da" : "Nu"}</b></div>
+                <div class="wide"><span>Adresă</span><b>${escapeHtml(client.address || "-")}</b></div>
+              </div>
+
+              <div class="nx-profile-edit-grid">
+                <label class="nx-field">
+                  <span>Email</span>
+                  <input name="email" type="email" value="${escapeHtml(client.email || "")}" placeholder="email@firma.ro">
+                </label>
+
+                <label class="nx-field">
+                  <span>Telefon</span>
+                  <input name="phone" value="${escapeHtml(client.phone || "")}" placeholder="+40...">
+                </label>
+
+                <label class="nx-field">
+                  <span>Status client</span>
+                  <select name="client_status">
+                    <option value="verde" ${client.client_status === "verde" ? "selected" : ""}>Verde - OK</option>
+                    <option value="galben" ${client.client_status === "galben" ? "selected" : ""}>Galben - atenție</option>
+                    <option value="rosu" ${client.client_status === "rosu" ? "selected" : ""}>Roșu - risc</option>
+                  </select>
+                </label>
+
+                <label class="nx-field nx-field-wide">
+                  <span>Observații</span>
+                  <textarea name="notes" rows="4" placeholder="Observații despre client...">${escapeHtml(client.notes || "")}</textarea>
+                </label>
+              </div>
+            </form>
           </section>
 
           <section class="nx-kpi-grid client-kpis">

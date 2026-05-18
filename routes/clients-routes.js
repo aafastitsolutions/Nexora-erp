@@ -1049,7 +1049,7 @@ ${crmShellEnd()}
       WHERE id=? AND company_id=?
     `).run(email || null, phone || null, client_status, notes || null, id, companyId);
 
-    return res.redirect("/client/" + id);
+    return res.redirect(req.body?.return_to === "nexora" ? "/nexora/clients/" + id : "/client/" + id);
   });
 
   app.post("/client/:id/contacts/add", requireAuth, (req, res) => {
@@ -1098,7 +1098,24 @@ ${crmShellEnd()}
       VALUES (?,?,?,?,?,?,?)
     `).run(client_id, contact_id, type, subject || null, note || null, due_at || null, companyId);
 
-    return res.redirect("/client/" + client_id);
+    return res.redirect(req.body?.return_to === "nexora" ? "/nexora/clients/" + client_id : "/client/" + client_id);
+  });
+
+  app.post("/client/:id/activities/:aid/delete", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const client_id = Number(req.params.id);
+    const aid = Number(req.params.aid);
+
+    if (!Number.isFinite(client_id) || !Number.isFinite(aid)) {
+      return res.status(400).send("Bad id");
+    }
+
+    db.prepare(`
+      DELETE FROM activities
+      WHERE id = ? AND client_id = ? AND company_id = ?
+    `).run(aid, client_id, companyId);
+
+    return res.redirect(req.body?.return_to === "nexora" ? "/nexora/clients/" + client_id : "/client/" + client_id);
   });
 
   app.post("/client/:id/activities/:aid/toggle", requireAuth, (req, res) => {
