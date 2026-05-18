@@ -1,0 +1,11 @@
+node_modules/
+*.db
+sessions.db
+.env
+uploads/
+public/uploads/
+old_backups/
+*.tar.gz
+*.zip
+logs/
+*.log
