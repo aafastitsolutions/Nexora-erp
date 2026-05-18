@@ -150,7 +150,7 @@ function renderNexoraClientNewPage(options = {}) {
           </div>
         </div>
 
-        <form class="nx-form-card" method="post" action="/clients/add-by-cui">
+        <form class="nx-form-card" method="post" action="/clients/add-by-cui">\n          <input type="hidden" name="return_to" value="nexora">
           <label class="nx-field">
             <span>CUI firmă</span>
             <input name="cui" required placeholder="Ex: 12345678" autocomplete="off">

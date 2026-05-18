@@ -555,6 +555,10 @@ ${crmShellEnd()}
       const saved = db.prepare("SELECT id FROM clients WHERE cui=? AND company_id=?").get(cui, companyId);
       if (!saved?.id) return res.redirect("/clients?err=save_failed");
 
+      if (req.body?.return_to === "nexora") {
+        return res.redirect("/nexora/clients/" + saved.id);
+      }
+
       return res.redirect(existed ? "/clients?ok=exists" : "/clients?ok=added");
     } catch (e) {
       console.error("clients/add-by-cui failed:", e);
