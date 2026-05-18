@@ -509,3 +509,56 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ANAF dashboard box */
+.nx-anaf-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.nx-anaf-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  border: 1px solid #e5e7eb;
+  background: #f8fafc;
+  border-radius: 14px;
+  padding: 10px 12px;
+}
+
+.nx-anaf-row span {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.nx-anaf-row strong {
+  font-size: 18px;
+  font-weight: 950;
+}
+
+.nx-anaf-row.success {
+  background: rgba(34, 197, 94, 0.08);
+  border-color: rgba(34, 197, 94, 0.2);
+}
+
+.nx-anaf-row.success strong {
+  color: #16a34a;
+}
+
+.nx-anaf-row.warn {
+  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.22);
+}
+
+.nx-anaf-row.warn strong {
+  color: #d97706;
+}
+
+.nx-anaf-link {
+  justify-content: center;
+  margin-top: 4px;
+}

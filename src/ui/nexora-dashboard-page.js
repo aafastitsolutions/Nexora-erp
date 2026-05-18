@@ -25,6 +25,11 @@ function renderNexoraDashboardPage(options = {}) {
 
   const activities = Array.isArray(options.activities) ? options.activities : [];
   const recentInvoices = Array.isArray(options.recentInvoices) ? options.recentInvoices : [];
+  const efacturaSummary = options.efacturaSummary || {
+    total: 0,
+    responseAvailable: 0,
+    missingStatus: 0
+  };
 
   const sidebar = renderErpSidebar({
     currentPath: "/dashboard",
@@ -180,6 +185,29 @@ function renderNexoraDashboardPage(options = {}) {
 
           <div class="nx-invoice-list">
             ${recentInvoicesHtml}
+          </div>
+        </div>
+
+        <div class="nx-panel">
+          <div class="nx-panel-head">
+            <h2>ANAF e-Factura</h2>
+            <span>Status</span>
+          </div>
+
+          <div class="nx-anaf-box">
+            <div class="nx-anaf-row">
+              <span>Total facturi</span>
+              <strong>${escapeHtml(efacturaSummary.total)}</strong>
+            </div>
+            <div class="nx-anaf-row success">
+              <span>Răspuns disponibil</span>
+              <strong>${escapeHtml(efacturaSummary.responseAvailable)}</strong>
+            </div>
+            <div class="nx-anaf-row warn">
+              <span>Fără status e-Factura</span>
+              <strong>${escapeHtml(efacturaSummary.missingStatus)}</strong>
+            </div>
+            <a class="nx-btn primary nx-anaf-link" href="/anaf/outbox">Deschide e-Factura</a>
           </div>
         </div>
 

@@ -550,6 +550,31 @@ ${crmShellEnd()}
       total_formatted: fmtMoney(Number(invoice.total || 0))
     }));
 
+    const efacturaStatusRows = db.prepare(`
+      SELECT IFNULL(efactura_status, 'NULL') AS status, COUNT(*) AS count
+      FROM facturi
+      WHERE company_id = ?
+      GROUP BY IFNULL(efactura_status, 'NULL')
+    `).all(companyId);
+
+    const efacturaSummary = efacturaStatusRows.reduce((acc, row) => {
+      acc.total += Number(row.count || 0);
+
+      if (row.status === "RASPUNS_DISPONIBIL") {
+        acc.responseAvailable += Number(row.count || 0);
+      }
+
+      if (row.status === "NULL") {
+        acc.missingStatus += Number(row.count || 0);
+      }
+
+      return acc;
+    }, {
+      total: 0,
+      responseAvailable: 0,
+      missingStatus: 0
+    });
+
     res.send(renderNexoraDashboardPage({
       user: req.session.user,
       totalRevenue: fmtMoney(totalRevenueValue),
@@ -559,7 +584,8 @@ ${crmShellEnd()}
       totalInvoicesOpen,
       openTasks: tasks.length,
       activities,
-      recentInvoices
+      recentInvoices,
+      efacturaSummary
     }));
   });
 }
