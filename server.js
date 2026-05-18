@@ -9626,8 +9626,9 @@ app.get("/anaf/status", requireAuth, requireSpvAccess, (req,res)=>{
 });
 
 function buildAnafInboxRedirect(targetPath, extraParams = {}) {
-  const safeTarget = String(targetPath || "").trim().startsWith("/anaf/inbox")
-    ? String(targetPath || "").trim()
+  const rawTarget = String(targetPath || "").trim();
+  const safeTarget = rawTarget.startsWith("/anaf/inbox") || rawTarget.startsWith("/nexora/anaf/inbox")
+    ? rawTarget
     : "/anaf/inbox";
 
   const targetUrl = new URL(safeTarget, "http://localhost");
