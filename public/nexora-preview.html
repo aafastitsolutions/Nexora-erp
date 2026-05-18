@@ -1,0 +1,704 @@
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nexora ERP Shell Preview</title>
+  <link rel="stylesheet" href="/css/nexora-shell.css">
+</head>
+<body>
+  <div class="nx-app-shell">
+    
+    <aside class="nx-sidebar">
+      <div class="nx-brand">
+        <div class="nx-brand-mark">N</div>
+        <div>
+          <div class="nx-brand-title">Nexora ERP</div>
+          <div class="nx-brand-subtitle">A&amp;A Fast IT Solutions</div>
+        </div>
+      </div>
+
+      <nav class="nx-nav">
+        
+      <div class="nx-module ">
+        <button class="nx-module-main" type="button" data-nx-toggle>
+          <span class="nx-module-icon">⌂</span>
+          <span class="nx-module-label">Dashboard</span>
+          
+        </button>
+
+        
+      </div>
+    
+      <div class="nx-module active open">
+        <button class="nx-module-main" type="button" data-nx-toggle>
+          <span class="nx-module-icon">▣</span>
+          <span class="nx-module-label">Financiar &amp; Contabilitate</span>
+          <span class="nx-module-chevron">⌄</span>
+        </button>
+
+        
+          <div class="nx-submenu">
+            <a class="nx-subitem nx-module-entry active" href="/facturi">
+              <span>Deschide modulul</span>
+            </a>
+            
+          <a class="nx-subitem " href="/accounting">
+            <span>Contabilitate generală</span>
+          </a>
+        
+          <a class="nx-subitem active" href="/facturi">
+            <span>Facturi</span>
+          </a>
+        
+          <a class="nx-subitem " href="/accounting/payments">
+            <span>Plăți</span>
+          </a>
+        
+          <a class="nx-subitem " href="/accounting/receipts">
+            <span>Încasări</span>
+          </a>
+        
+          <a class="nx-subitem " href="/accounting/registers">
+            <span>Registre</span>
+          </a>
+        
+          <a class="nx-subitem " href="/accounting/trial-balance">
+            <span>Balanță</span>
+          </a>
+        
+          <a class="nx-subitem " href="/accounting/cashflow">
+            <span>Cashflow</span>
+          </a>
+        
+          <a class="nx-subitem " href="/accounting/budgets">
+            <span>Bugete</span>
+          </a>
+        
+          <a class="nx-subitem " href="/accounting/bank-reconciliation">
+            <span>Reconciliere bancară</span>
+          </a>
+        
+          <a class="nx-subitem " href="/accounting/vat">
+            <span>TVA</span>
+          </a>
+        
+          <a class="nx-subitem " href="/accounting/fixed-assets">
+            <span>Active fixe</span>
+          </a>
+        
+          <a class="nx-subitem " href="/anaf/outbox">
+            <span>ANAF e-Factura</span>
+          </a>
+        
+          </div>
+        
+      </div>
+    
+      <div class="nx-module active open">
+        <button class="nx-module-main" type="button" data-nx-toggle>
+          <span class="nx-module-icon">↗</span>
+          <span class="nx-module-label">Vânzări</span>
+          <span class="nx-module-chevron">⌄</span>
+        </button>
+
+        
+          <div class="nx-submenu">
+            <a class="nx-subitem nx-module-entry " href="/quotes">
+              <span>Deschide modulul</span>
+            </a>
+            
+          <a class="nx-subitem " href="/quotes">
+            <span>Oferte</span>
+          </a>
+        
+          <a class="nx-subitem " href="/orders">
+            <span>Comenzi</span>
+          </a>
+        
+          <a class="nx-subitem " href="/clients">
+            <span>Clienți</span>
+          </a>
+        
+          <a class="nx-subitem " href="/sales/prices">
+            <span>Prețuri</span>
+          </a>
+        
+          <a class="nx-subitem " href="/sales/discounts">
+            <span>Discounturi</span>
+          </a>
+        
+          <a class="nx-subitem " href="/contracte">
+            <span>Contracte</span>
+          </a>
+        
+          <a class="nx-subitem active" href="/facturi">
+            <span>Facturare</span>
+          </a>
+        
+          <a class="nx-subitem " href="/deliveries">
+            <span>Livrări</span>
+          </a>
+        
+          </div>
+        
+      </div>
+    
+      <div class="nx-module ">
+        <button class="nx-module-main" type="button" data-nx-toggle>
+          <span class="nx-module-icon">◉</span>
+          <span class="nx-module-label">CRM</span>
+          <span class="nx-module-chevron">⌄</span>
+        </button>
+
+        
+          <div class="nx-submenu">
+            <a class="nx-subitem nx-module-entry " href="/clients">
+              <span>Deschide modulul</span>
+            </a>
+            
+          <a class="nx-subitem " href="/crm/leads">
+            <span>Lead-uri</span>
+          </a>
+        
+          <a class="nx-subitem " href="/crm/pipeline">
+            <span>Pipeline</span>
+          </a>
+        
+          <a class="nx-subitem " href="/crm/follow-up">
+            <span>Follow-up</span>
+          </a>
+        
+          <a class="nx-subitem " href="/crm/activities">
+            <span>Activități</span>
+          </a>
+        
+          <a class="nx-subitem " href="/crm/email-tracking">
+            <span>Email tracking</span>
+          </a>
+        
+          <a class="nx-subitem " href="/clients">
+            <span>Relații clienți</span>
+          </a>
+        
+          </div>
+        
+      </div>
+    
+      <div class="nx-module ">
+        <button class="nx-module-main" type="button" data-nx-toggle>
+          <span class="nx-module-icon">□</span>
+          <span class="nx-module-label">Inventar &amp; Gestiune</span>
+          <span class="nx-module-chevron">⌄</span>
+        </button>
+
+        
+          <div class="nx-submenu">
+            <a class="nx-subitem nx-module-entry " href="/inventory">
+              <span>Deschide modulul</span>
+            </a>
+            
+          <a class="nx-subitem " href="/inventory">
+            <span>Stocuri</span>
+          </a>
+        
+          <a class="nx-subitem " href="/produse">
+            <span>Produse</span>
+          </a>
+        
+          <a class="nx-subitem " href="/inventory/warehouses">
+            <span>Depozite</span>
+          </a>
+        
+          <a class="nx-subitem " href="/inventory/lots">
+            <span>Loturi / Serii</span>
+          </a>
+        
+          <a class="nx-subitem " href="/inventory/transfers">
+            <span>Transferuri</span>
+          </a>
+        
+          <a class="nx-subitem " href="/inventory/counts">
+            <span>Inventar</span>
+          </a>
+        
+          <a class="nx-subitem " href="/inventory/receipts">
+            <span>Recepții</span>
+          </a>
+        
+          <a class="nx-subitem " href="/inventory/picking">
+            <span>Picking / Packing</span>
+          </a>
+        
+          <a class="nx-subitem " href="/inventory/barcodes">
+            <span>Coduri de bare</span>
+          </a>
+        
+          </div>
+        
+      </div>
+    
+      <div class="nx-module ">
+        <button class="nx-module-main" type="button" data-nx-toggle>
+          <span class="nx-module-icon">▤</span>
+          <span class="nx-module-label">Achiziții</span>
+          <span class="nx-module-chevron">⌄</span>
+        </button>
+
+        
+          <div class="nx-submenu">
+            <a class="nx-subitem nx-module-entry " href="/procurement">
+              <span>Deschide modulul</span>
+            </a>
+            
+          <a class="nx-subitem " href="/procurement/suppliers">
+            <span>Furnizori</span>
+          </a>
+        
+          <a class="nx-subitem " href="/procurement/orders">
+            <span>Comenzi achiziție</span>
+          </a>
+        
+          <a class="nx-subitem " href="/procurement/receipts">
+            <span>Recepții</span>
+          </a>
+        
+          <a class="nx-subitem " href="/procurement/approvals">
+            <span>Aprobări achiziții</span>
+          </a>
+        
+          <a class="nx-subitem " href="/procurement/costs">
+            <span>Costuri</span>
+          </a>
+        
+          <a class="nx-subitem " href="/procurement/bills">
+            <span>Facturi furnizori</span>
+          </a>
+        
+          </div>
+        
+      </div>
+    
+      <div class="nx-module ">
+        <button class="nx-module-main" type="button" data-nx-toggle>
+          <span class="nx-module-icon">☷</span>
+          <span class="nx-module-label">Resurse Umane</span>
+          <span class="nx-module-chevron">⌄</span>
+        </button>
+
+        
+          <div class="nx-submenu">
+            <a class="nx-subitem nx-module-entry " href="/employees">
+              <span>Deschide modulul</span>
+            </a>
+            
+          <a class="nx-subitem " href="/employees">
+            <span>Angajați</span>
+          </a>
+        
+          <a class="nx-subitem " href="/hr/contracts">
+            <span>Contracte</span>
+          </a>
+        
+          <a class="nx-subitem " href="/hr/payroll">
+            <span>Payroll</span>
+          </a>
+        
+          <a class="nx-subitem " href="/hr/leave">
+            <span>Concedii</span>
+          </a>
+        
+          <a class="nx-subitem " href="/hr/timesheets">
+            <span>Pontaj</span>
+          </a>
+        
+          <a class="nx-subitem " href="/hr/recruitment">
+            <span>Recrutare</span>
+          </a>
+        
+          <a class="nx-subitem " href="/hr/reviews">
+            <span>Evaluări</span>
+          </a>
+        
+          </div>
+        
+      </div>
+    
+      <div class="nx-module ">
+        <button class="nx-module-main" type="button" data-nx-toggle>
+          <span class="nx-module-icon">⚙</span>
+          <span class="nx-module-label">Producție / MRP</span>
+          <span class="nx-module-chevron">⌄</span>
+        </button>
+
+        
+          <div class="nx-submenu">
+            <a class="nx-subitem nx-module-entry " href="/manufacturing">
+              <span>Deschide modulul</span>
+            </a>
+            
+          <a class="nx-subitem " href="/manufacturing/bom">
+            <span>BOM</span>
+          </a>
+        
+          <a class="nx-subitem " href="/manufacturing/orders">
+            <span>Ordine producție</span>
+          </a>
+        
+          <a class="nx-subitem " href="/manufacturing/planning">
+            <span>Planificare</span>
+          </a>
+        
+          <a class="nx-subitem " href="/manufacturing/materials">
+            <span>Consum materiale</span>
+          </a>
+        
+          <a class="nx-subitem " href="/manufacturing/costs">
+            <span>Cost producție</span>
+          </a>
+        
+          <a class="nx-subitem " href="/manufacturing/quality">
+            <span>Quality control</span>
+          </a>
+        
+          </div>
+        
+      </div>
+    
+      <div class="nx-module ">
+        <button class="nx-module-main" type="button" data-nx-toggle>
+          <span class="nx-module-icon">▱</span>
+          <span class="nx-module-label">Supply Chain</span>
+          <span class="nx-module-chevron">⌄</span>
+        </button>
+
+        
+          <div class="nx-submenu">
+            <a class="nx-subitem nx-module-entry " href="/supply-chain">
+              <span>Deschide modulul</span>
+            </a>
+            
+          <a class="nx-subitem " href="/supply-chain/logistics">
+            <span>Logistică</span>
+          </a>
+        
+          <a class="nx-subitem " href="/supply-chain/transport">
+            <span>Transport</span>
+          </a>
+        
+          <a class="nx-subitem " href="/supply-chain/distribution">
+            <span>Distribuție</span>
+          </a>
+        
+          <a class="nx-subitem " href="/supply-chain/forecasting">
+            <span>Forecasting</span>
+          </a>
+        
+          </div>
+        
+      </div>
+    
+      <div class="nx-module ">
+        <button class="nx-module-main" type="button" data-nx-toggle>
+          <span class="nx-module-icon">▥</span>
+          <span class="nx-module-label">Proiecte</span>
+          <span class="nx-module-chevron">⌄</span>
+        </button>
+
+        
+          <div class="nx-submenu">
+            <a class="nx-subitem nx-module-entry " href="/projects">
+              <span>Deschide modulul</span>
+            </a>
+            
+          <a class="nx-subitem " href="/projects">
+            <span>Proiecte</span>
+          </a>
+        
+          <a class="nx-subitem " href="/projects/tasks">
+            <span>Task-uri</span>
+          </a>
+        
+          <a class="nx-subitem " href="/projects/timesheets">
+            <span>Timesheets</span>
+          </a>
+        
+          <a class="nx-subitem " href="/projects/costs">
+            <span>Costuri</span>
+          </a>
+        
+          <a class="nx-subitem " href="/projects/profitability">
+            <span>Profitabilitate</span>
+          </a>
+        
+          </div>
+        
+      </div>
+    
+      <div class="nx-module ">
+        <button class="nx-module-main" type="button" data-nx-toggle>
+          <span class="nx-module-icon">▦</span>
+          <span class="nx-module-label">Rapoarte &amp; BI</span>
+          <span class="nx-module-chevron">⌄</span>
+        </button>
+
+        
+          <div class="nx-submenu">
+            <a class="nx-subitem nx-module-entry " href="/reports">
+              <span>Deschide modulul</span>
+            </a>
+            
+          <a class="nx-subitem " href="/reports/dashboards">
+            <span>Dashboard-uri</span>
+          </a>
+        
+          <a class="nx-subitem " href="/reports/kpi">
+            <span>KPI</span>
+          </a>
+        
+          <a class="nx-subitem " href="/reports">
+            <span>Rapoarte</span>
+          </a>
+        
+          <a class="nx-subitem " href="/reports/exports">
+            <span>Export Excel / PDF</span>
+          </a>
+        
+          <a class="nx-subitem " href="/reports/analytics">
+            <span>Analytics</span>
+          </a>
+        
+          </div>
+        
+      </div>
+    
+      <div class="nx-module ">
+        <button class="nx-module-main" type="button" data-nx-toggle>
+          <span class="nx-module-icon">☑</span>
+          <span class="nx-module-label">Order Management</span>
+          <span class="nx-module-chevron">⌄</span>
+        </button>
+
+        
+          <div class="nx-submenu">
+            <a class="nx-subitem nx-module-entry " href="/orders">
+              <span>Deschide modulul</span>
+            </a>
+            
+          <a class="nx-subitem " href="/orders/lifecycle">
+            <span>Lifecycle comandă</span>
+          </a>
+        
+          <a class="nx-subitem " href="/orders/fulfillment">
+            <span>Fulfillment</span>
+          </a>
+        
+          <a class="nx-subitem " href="/orders/tracking">
+            <span>Tracking</span>
+          </a>
+        
+          <a class="nx-subitem " href="/orders/delivery-status">
+            <span>Status livrare</span>
+          </a>
+        
+          </div>
+        
+      </div>
+    
+      <div class="nx-module ">
+        <button class="nx-module-main" type="button" data-nx-toggle>
+          <span class="nx-module-icon">▧</span>
+          <span class="nx-module-label">Documente / DMS</span>
+          <span class="nx-module-chevron">⌄</span>
+        </button>
+
+        
+          <div class="nx-submenu">
+            <a class="nx-subitem nx-module-entry " href="/tipizate">
+              <span>Deschide modulul</span>
+            </a>
+            
+          <a class="nx-subitem " href="/documents">
+            <span>Documente</span>
+          </a>
+        
+          <a class="nx-subitem " href="/tipizate">
+            <span>Tipizate</span>
+          </a>
+        
+          <a class="nx-subitem " href="/documents/ocr">
+            <span>OCR</span>
+          </a>
+        
+          <a class="nx-subitem " href="/documents/versions">
+            <span>Versiuni</span>
+          </a>
+        
+          <a class="nx-subitem " href="/documents/signatures">
+            <span>Semnături</span>
+          </a>
+        
+          <a class="nx-subitem " href="/documents/invoice-attachments">
+            <span>Atașamente facturi</span>
+          </a>
+        
+          </div>
+        
+      </div>
+    
+      <div class="nx-module ">
+        <button class="nx-module-main" type="button" data-nx-toggle>
+          <span class="nx-module-icon">⟲</span>
+          <span class="nx-module-label">Workflow &amp; Automatizări</span>
+          <span class="nx-module-chevron">⌄</span>
+        </button>
+
+        
+          <div class="nx-submenu">
+            <a class="nx-subitem nx-module-entry " href="/workflow">
+              <span>Deschide modulul</span>
+            </a>
+            
+          <a class="nx-subitem " href="/workflow/approvals">
+            <span>Aprobări</span>
+          </a>
+        
+          <a class="nx-subitem " href="/workflow/automations">
+            <span>Automatizări</span>
+          </a>
+        
+          <a class="nx-subitem " href="/workflow/rules">
+            <span>Reguli business</span>
+          </a>
+        
+          <a class="nx-subitem " href="/workflow/notifications">
+            <span>Notificări</span>
+          </a>
+        
+          </div>
+        
+      </div>
+    
+      <div class="nx-module ">
+        <button class="nx-module-main" type="button" data-nx-toggle>
+          <span class="nx-module-icon">▨</span>
+          <span class="nx-module-label">eCommerce &amp; POS</span>
+          <span class="nx-module-chevron">⌄</span>
+        </button>
+
+        
+          <div class="nx-submenu">
+            <a class="nx-subitem nx-module-entry " href="/ecommerce">
+              <span>Deschide modulul</span>
+            </a>
+            
+          <a class="nx-subitem " href="/ecommerce/store">
+            <span>Magazin online</span>
+          </a>
+        
+          <a class="nx-subitem " href="/pos">
+            <span>POS</span>
+          </a>
+        
+          <a class="nx-subitem " href="/ecommerce/stock-sync">
+            <span>Sincronizare stocuri</span>
+          </a>
+        
+          <a class="nx-subitem " href="/ecommerce/payments">
+            <span>Plăți</span>
+          </a>
+        
+          </div>
+        
+      </div>
+    
+      <div class="nx-module ">
+        <button class="nx-module-main" type="button" data-nx-toggle>
+          <span class="nx-module-icon">⚙</span>
+          <span class="nx-module-label">Setări</span>
+          <span class="nx-module-chevron">⌄</span>
+        </button>
+
+        
+          <div class="nx-submenu">
+            <a class="nx-subitem nx-module-entry " href="/setari">
+              <span>Deschide modulul</span>
+            </a>
+            
+          <a class="nx-subitem " href="/setari">
+            <span>Setări generale</span>
+          </a>
+        
+          <a class="nx-subitem " href="/accounts">
+            <span>Utilizatori &amp; roluri</span>
+          </a>
+        
+          <a class="nx-subitem " href="/setari/subscription">
+            <span>Abonament</span>
+          </a>
+        
+          <a class="nx-subitem " href="/setari/modules">
+            <span>Module active</span>
+          </a>
+        
+          <a class="nx-subitem " href="/setari#anaf">
+            <span>Integrare ANAF</span>
+          </a>
+        
+          </div>
+        
+      </div>
+    
+      </nav>
+
+      <script>
+        document.addEventListener("click", function(event) {
+          const toggle = event.target.closest("[data-nx-toggle]");
+          if (!toggle) return;
+
+          const item = toggle.closest(".nx-module");
+          if (!item) return;
+
+          const wasOpen = item.classList.contains("open");
+
+          document.querySelectorAll(".nx-module.open, .nx-module.active").forEach(function(openItem) {
+            if (openItem !== item) {
+              openItem.classList.remove("open");
+              openItem.classList.remove("active");
+            }
+          });
+
+          item.classList.toggle("open", !wasOpen);
+          item.classList.toggle("active", !wasOpen);
+        });
+      </script>
+    </aside>
+  
+
+    <main class="nx-main">
+      <header class="nx-topbar">
+        <div>
+          <div style="font-size:13px;color:#6b7280;font-weight:700;">Dashboard</div>
+          <div style="font-size:24px;font-weight:850;">Nexora ERP</div>
+        </div>
+
+        <div class="nx-search">
+          <input placeholder="Caută clienți, facturi, produse, documente..." />
+        </div>
+
+        <div class="nx-actions">
+          <a class="nx-btn" href="/facturi">Facturi</a>
+          <a class="nx-btn primary" href="/clients">Client nou</a>
+        </div>
+      </header>
+
+      <section class="nx-content-card">
+        <h1 style="margin:0 0 8px;font-size:28px;">UI Shell Preview</h1>
+        <p style="margin:0;color:#6b7280;">
+          Acesta este preview-ul noului layout Nexora ERP. Nu afectează încă aplicația live.
+        </p>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

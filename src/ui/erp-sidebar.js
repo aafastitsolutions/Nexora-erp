@@ -1,5 +1,24 @@
 import { ERP_MODULES } from "../config/erp-modules.js";
 
+const ICONS = {
+  home: "⌂",
+  "file-text": "▣",
+  "trending-up": "↗",
+  users: "◉",
+  box: "□",
+  "shopping-cart": "▤",
+  "id-card": "☷",
+  settings: "⚙",
+  truck: "▱",
+  folder: "▥",
+  "bar-chart": "▦",
+  "clipboard-list": "☑",
+  files: "▧",
+  workflow: "⟲",
+  store: "▨",
+  sliders: "⚙"
+};
+
 function escapeHtml(value = "") {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -26,6 +45,8 @@ function renderErpSidebar(options = {}) {
     );
 
     const isActive = isActivePath(currentPath, module.path) || hasActiveChild;
+    const hasChildren = Array.isArray(module.children) && module.children.length > 0;
+    const icon = ICONS[module.icon] || "•";
 
     const childrenHtml = (module.children || [])
       .map((child) => {
@@ -40,12 +61,21 @@ function renderErpSidebar(options = {}) {
       .join("");
 
     return `
-      <div class="nx-module ${isActive ? "active" : ""}">
-        <a class="nx-module-main" href="${escapeHtml(module.path)}">
-          <span class="nx-module-icon">${escapeHtml(module.icon)}</span>
+      <div class="nx-module ${isActive ? "active open" : ""}">
+        <button class="nx-module-main" type="button" data-nx-toggle>
+          <span class="nx-module-icon">${escapeHtml(icon)}</span>
           <span class="nx-module-label">${escapeHtml(module.label)}</span>
-        </a>
-        ${childrenHtml ? `<div class="nx-submenu">${childrenHtml}</div>` : ""}
+          ${hasChildren ? `<span class="nx-module-chevron">⌄</span>` : ""}
+        </button>
+
+        ${hasChildren ? `
+          <div class="nx-submenu">
+            <a class="nx-subitem nx-module-entry ${isActivePath(currentPath, module.path) ? "active" : ""}" href="${escapeHtml(module.path)}">
+              <span>Deschide modulul</span>
+            </a>
+            ${childrenHtml}
+          </div>
+        ` : ""}
       </div>
     `;
   }).join("");
@@ -63,6 +93,28 @@ function renderErpSidebar(options = {}) {
       <nav class="nx-nav">
         ${modulesHtml}
       </nav>
+
+      <script>
+        document.addEventListener("click", function(event) {
+          const toggle = event.target.closest("[data-nx-toggle]");
+          if (!toggle) return;
+
+          const item = toggle.closest(".nx-module");
+          if (!item) return;
+
+          const wasOpen = item.classList.contains("open");
+
+          document.querySelectorAll(".nx-module.open, .nx-module.active").forEach(function(openItem) {
+            if (openItem !== item) {
+              openItem.classList.remove("open");
+              openItem.classList.remove("active");
+            }
+          });
+
+          item.classList.toggle("open", !wasOpen);
+          item.classList.toggle("active", !wasOpen);
+        });
+      </script>
     </aside>
   `;
 }
