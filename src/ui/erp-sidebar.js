@@ -1,4 +1,5 @@
 import { ERP_MODULES } from "../config/erp-modules.js";
+import { toCurrentModuleKeys } from "../../lib/app-config.js";
 
 const ICONS = {
   home: "⌂",
@@ -37,14 +38,38 @@ function isActivePath(currentPath = "", itemPath = "") {
   return item !== "/" && current.startsWith(item + "/");
 }
 
+function normalizeModuleList(value) {
+  if (Array.isArray(value)) return value.map(String);
+  if (typeof value !== "string" || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+function canSeeModule(module = {}, userModules = [], hasExplicitModules = false) {
+  if (!hasExplicitModules) return true;
+  const allowed = new Set(toCurrentModuleKeys(normalizeModuleList(userModules)));
+  if (allowed.has(module.key)) return true;
+  return false;
+}
+
 function renderErpSidebar(options = {}) {
   const currentPath = options.currentPath || "/";
   const appName = options.appName || "Nexora";
   const companyName = options.companyName || "Workspace";
   const isSuperAdmin = Number(options.isSuperAdmin || 0) === 1;
   const isCompanyAdmin = Number(options.isCompanyAdmin || 0) === 1;
+  const hasExplicitModules = Object.prototype.hasOwnProperty.call(options, "userModules");
+  const userModules = normalizeModuleList(options.userModules || []);
 
-  const visibleModules = ERP_MODULES.filter((module) => !module.superAdminOnly || isSuperAdmin);
+  const visibleModules = ERP_MODULES.filter((module) => {
+    if (module.superAdminOnly) return isSuperAdmin;
+    if (isSuperAdmin) return true;
+    return canSeeModule(module, userModules, hasExplicitModules);
+  });
 
   const modulesHtml = visibleModules.map((module) => {
     const visibleChildren = (module.children || []).filter((child) => !child.companyAdminOnly || isCompanyAdmin);

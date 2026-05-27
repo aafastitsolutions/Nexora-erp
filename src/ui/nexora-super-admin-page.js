@@ -371,7 +371,7 @@ function renderNexoraSuperAdminCompanyDetailPage(options = {}) {
             ${module.includedByPlan && module.isCoreModule ? `<input type="hidden" name="module_keys" value="${escapeHtml(module.key)}">` : ""}
             <span>
               <b>${escapeHtml(module.label || module.key)}</b>
-              <small>${escapeHtml(module.includedByPlan ? (module.isCoreModule ? "Inclus implicit în plan." : "Disponibil în abonamentul cumpărat.") : "Indisponibil în planul curent.")}</small>
+              <small>${escapeHtml(module.includedByPlan ? (module.isCoreModule ? "Inclus implicit în plan." : "Disponibil prin contractul companiei.") : "Indisponibil în planul curent.")}</small>
             </span>
           </label>
         `).join("")}
@@ -434,7 +434,7 @@ function renderNexoraSuperAdminCompanyDetailPage(options = {}) {
       <div class="nx-section-head">
         <div>
           <h2>Module active companie</h2>
-          <p>Configurează modulele livrate prin abonamentul ${escapeHtml(subscription.plan_name || company.plan_name || "curent")}.</p>
+          <p>Aici se stabilește pachetul contractual al companiei pentru modulele Nexora. Alocarea pe persoane rămâne în Utilizatori & roluri.</p>
         </div>
         <span class="nx-status-pill neutral">${escapeHtml(activeOptionalModules)} active${companyModuleLimit > 0 ? ` / ${escapeHtml(companyModuleLimit)} permise` : ""}</span>
       </div>

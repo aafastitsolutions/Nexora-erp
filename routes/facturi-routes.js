@@ -1228,7 +1228,8 @@ ${crmShellEnd()}
     const facturiBackLink = isCancelledFactura ? "/facturi?view=anulate" : "/facturi";
     const pdfActionLabel = isDraftFactura ? "Emite factura si genereaza PDF" : "Regenereaza PDF";
     const isDemoCompany = Number(req.session.user?.company_is_demo || 0) === 1;
-    const canAccessSettings = Array.isArray(req.session.user?.module_permissions) && req.session.user.module_permissions.includes("setari");
+    const canAccessSettings = Array.isArray(req.session.user?.module_permissions) &&
+      (req.session.user.module_permissions.includes("settings") || req.session.user.module_permissions.includes("setari"));
     const canManageSpvReauth = Boolean(Number(req.session.user?.is_super_admin || 0)) ||
       String(req.session.user?.role || "").trim().toLowerCase() === "accounting";
     const spvNeedsReauthorization = !isDemoCompany && (reauth === "needed" || spvNeedsManualReauthorization(f.efactura_last_error));

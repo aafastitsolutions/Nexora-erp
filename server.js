@@ -25,7 +25,7 @@ import { renderPdfBuffer } from "./pdf.js";
 
 import { fetchAnafCompany } from "./lib/anaf.js";
 import { anafCheckUploadStatus, anafDownloadMessage, anafUploadFactura, syncAnafInbox } from "./lib/anaf-efactura.js";
-import { COMPANY, MODULE_DEFINITIONS, MODULE_GROUPS, ROLE_MODULES, normalizeCompanyModules, normalizeUserModules, planChargeAmount, planChargeQuantity, registerRoleModules } from "./lib/app-config.js";
+import { COMPANY, CORE_ALWAYS_INCLUDED_MODULES, MODULE_DEFINITIONS, MODULE_GROUPS, ROLE_MODULES, hasModuleKeyAccess, normalizeCompanyModules, normalizeUserModules, planChargeAmount, planChargeQuantity, registerRoleModules } from "./lib/app-config.js";
 import { createTransporter, initApplication, loadTemplates, setupAppMiddleware } from "./lib/bootstrap.js";
 import { maybeGenerateBillingInvoice } from "./lib/billing-invoices.js";
 import { processDmsTemplate } from "./lib/dms-autofill.js";
@@ -2974,23 +2974,22 @@ function resolveWorkspaceHome(user = {}) {
       : [];
   const role = String(user?.role || "").trim().toLowerCase();
 
-  if (role === "accounting" && modules.includes("accounting")) {
+  if (role === "accounting" && hasModuleKeyAccess(modules, "finance")) {
     return "/nexora/accounting";
   }
 
   return [
     ["dashboard", "/nexora-dashboard"],
-    ["accounting", "/nexora/accounting"],
-    ["facturi", "/nexora/facturi"],
-    ["clients", "/nexora/clients"],
-    ["quotes", "/nexora/quotes"],
-    ["contracts", "/nexora/contracts"],
-    ["produse", "/nexora/products"],
-    ["tipizate", "/nexora/documents"],
-    ["employees", "/nexora/employees"],
-    ["accounts", "/nexora/users"],
-    ["setari", "/nexora/settings"]
-  ].find(([moduleKey]) => modules.includes(moduleKey))?.[1] || "/nexora-dashboard";
+    ["finance", "/nexora/accounting"],
+    ["sales", "/nexora/quotes"],
+    ["crm", "/nexora/clients"],
+    ["inventory", "/nexora/inventory"],
+    ["projects", "/nexora/projects"],
+    ["documents", "/nexora/documents"],
+    ["hr", "/nexora/employees"],
+    ["reports", "/nexora/reports"],
+    ["settings", "/nexora/settings"]
+  ].find(([moduleKey]) => hasModuleKeyAccess(modules, moduleKey))?.[1] || "/nexora-dashboard";
 }
 
 function renderPublicLandingPage(req, res) {
@@ -3018,7 +3017,7 @@ function renderPublicLandingPage(req, res) {
   };
 
   const moduleCards = MODULE_DEFINITIONS
-    .filter((item) => !["accounts", "setari"].includes(item.key))
+    .filter((item) => !["dashboard", "settings"].includes(item.key))
     .map((item) => `
       <article class="landing-module-card">
         <div class="landing-module-chip">${escapeHtml(item.group.toUpperCase())}</div>
@@ -5105,16 +5104,67 @@ function getCompanySubscriptionContext(companyId) {
     ORDER BY COALESCE(sort_order, 100) ASC, price_monthly ASC, id ASC
   `).all();
 
-  const planModules = parseJsonArray(subscription?.plan_module_keys, MODULE_DEFINITIONS.map((item) => item.key));
+  const companyIsDemo = Number(company?.is_demo || 0) === 1;
+  const rawPlanModules = parseJsonArray(subscription?.plan_module_keys, MODULE_DEFINITIONS.map((item) => item.key));
+  const planModules = normalizeCompanyModules(rawPlanModules, rawPlanModules, { max_active_modules: 0 }, { companyIsDemo });
   const moduleOverrides = parseJsonArray(subscription?.module_overrides, planModules);
   const activeModules = normalizeCompanyModules(
     moduleOverrides.length ? moduleOverrides : planModules,
     planModules,
     subscription || {},
-    { companyIsDemo: Number(company?.is_demo || 0) === 1 }
+    { companyIsDemo }
   );
 
   return { company, subscription, plans, planModules, moduleOverrides, activeModules };
+}
+
+const MODULE_GROUP_META = {
+  core: ["Bază workspace", "Dashboard și administrarea minimă a companiei."],
+  operations: ["Module operaționale", "Zonele de lucru activate prin contractul companiei."],
+  advanced: ["Extensii Nexora", "Module avansate, automatizări și zone pregătite pentru extindere."]
+};
+
+function isCoreCompanyModule(moduleKey = "") {
+  return CORE_ALWAYS_INCLUDED_MODULES.includes(String(moduleKey || "").trim());
+}
+
+function countOptionalCompanyModules(moduleKeys = []) {
+  return (moduleKeys || []).filter((moduleKey) => !isCoreCompanyModule(moduleKey)).length;
+}
+
+function buildCompanyModuleGroups(companyContext = {}) {
+  const activeModuleSet = new Set(companyContext.activeModules || []);
+  const planModuleSet = new Set(companyContext.planModules || []);
+
+  return Object.entries(MODULE_GROUPS).map(([groupKey, moduleKeys]) => {
+    const [label, description] = MODULE_GROUP_META[groupKey] || [groupKey, ""];
+    const modules = moduleKeys.map((moduleKey) => {
+      const def = MODULE_DEFINITIONS.find((item) => item.key === moduleKey);
+      const includedByPlan = planModuleSet.has(moduleKey);
+      const active = activeModuleSet.has(moduleKey);
+      const isCoreModule = isCoreCompanyModule(moduleKey);
+
+      return {
+        key: moduleKey,
+        label: def?.label || moduleKey,
+        includedByPlan,
+        active,
+        isCoreModule,
+        copy: includedByPlan
+          ? (isCoreModule ? "Inclus implicit pentru administrarea workspace-ului." : "Disponibil în contractul companiei.")
+          : "Indisponibil în planul curent."
+      };
+    });
+
+    return {
+      key: groupKey,
+      label,
+      description,
+      modules,
+      activeCount: modules.filter((item) => item.active).length,
+      totalCount: modules.length
+    };
+  });
 }
 
 function refreshSessionCompanyAccess(req) {
@@ -8110,10 +8160,17 @@ app.get("/nexora/users", requireAuth, requireRole("admin"), (req, res) => {
     ORDER BY id DESC
   `).all(companyId).map((user) => {
     const roleKey = String(user.role || "").trim().toLowerCase();
-    const storedModules = parseJsonArray(user.module_permissions, ROLE_MODULES[roleKey] || []);
+    const roleModules = ROLE_MODULES[roleKey] || [];
+    const storedModules = parseJsonArray(user.module_permissions, roleModules);
     return {
       ...user,
-      modules: storedModules.length ? storedModules : (ROLE_MODULES[roleKey] || [])
+      modules: normalizeUserModules(
+        storedModules.length ? storedModules : roleModules,
+        seatContext.activeModules,
+        seatContext.subscription || {},
+        roleModules,
+        { companyIsDemo: Number(seatContext.company?.is_demo || 0) === 1 }
+      )
     };
   });
 
@@ -8151,7 +8208,13 @@ app.get("/nexora/users/:id/edit", requireAuth, requireRole("admin"), (req, res) 
   const selectableModules = MODULE_DEFINITIONS
     .filter((item) => roleModules.includes(item.key) && activeModuleSet.has(item.key));
   const storedModules = parseJsonArray(user.module_permissions, roleModules);
-  const assignedModules = storedModules.length ? storedModules : roleModules;
+  const assignedModules = normalizeUserModules(
+    storedModules.length ? storedModules : roleModules,
+    seatContext.activeModules,
+    seatContext.subscription || {},
+    roleModules,
+    { companyIsDemo: Number(seatContext.company?.is_demo || 0) === 1 }
+  );
   const perUserModuleLimit = Number(seatContext.subscription?.max_modules_per_user || 0);
 
   return res.type("html").send(renderNexoraUserEditPage({
@@ -8347,11 +8410,18 @@ app.get("/accounts/:id/edit", requireAuth, requireRole("admin"), (req, res) => {
   const activeModuleSet = new Set(companyContext.activeModules);
   const selectableModules = MODULE_DEFINITIONS
     .filter((item) => roleModules.includes(item.key) && activeModuleSet.has(item.key));
-  const assignedModules = parseJsonArray(user.module_permissions, []);
+  const storedModules = parseJsonArray(user.module_permissions, roleModules);
+  const assignedModules = normalizeUserModules(
+    storedModules.length ? storedModules : roleModules,
+    companyContext.activeModules,
+    companyContext.subscription || {},
+    roleModules,
+    { companyIsDemo: Number(companyContext.company?.is_demo || 0) === 1 }
+  );
   const perUserModuleLimit = Number(companyContext.subscription?.max_modules_per_user || 0);
 
   const modulesHtml = selectableModules.map((item) => {
-    const isCoreModule = ["dashboard", "accounts", "setari"].includes(item.key);
+    const isCoreModule = isCoreCompanyModule(item.key);
     const isChecked = assignedModules.includes(item.key) || isCoreModule;
     return `
       <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid #e5e7eb;border-radius:12px;background:#fff">
@@ -9819,30 +9889,7 @@ app.get("/nexora/super-admin/companies/:id", requireAuth, requireSuperAdmin, (re
     tipizate: db.prepare(`SELECT COUNT(*) AS n FROM tipizate_docs WHERE company_id=?`).get(companyId)?.n || 0
   };
   const companyContext = getCompanySubscriptionContext(companyId);
-  const activeModuleSet = new Set(companyContext.activeModules);
-  const groupMeta = {
-    crm: ["CRM", "Clienți, oferte și relații comerciale."],
-    erp: ["ERP", "Facturare, inventar, contabilitate și operațional."],
-    admin: ["Administrare", "Utilizatori, roluri și configurare."]
-  };
-  const moduleGroups = Object.entries(MODULE_GROUPS).map(([groupKey, moduleKeys]) => {
-    const [label, description] = groupMeta[groupKey] || [groupKey, ""];
-    const modules = moduleKeys.map((moduleKey) => ({
-      key: moduleKey,
-      label: MODULE_DEFINITIONS.find((item) => item.key === moduleKey)?.label || moduleKey,
-      includedByPlan: companyContext.planModules.includes(moduleKey),
-      active: activeModuleSet.has(moduleKey),
-      isCoreModule: ["dashboard", "accounts", "setari"].includes(moduleKey)
-    }));
-    return {
-      key: groupKey,
-      label,
-      description,
-      modules,
-      activeCount: modules.filter((module) => module.active).length,
-      totalCount: modules.length
-    };
-  });
+  const moduleGroups = buildCompanyModuleGroups(companyContext);
 
   return res.type("html").send(renderNexoraSuperAdminCompanyDetailPage({
     company,
@@ -9981,13 +10028,12 @@ const canAccessSpvSettings = canAccessSpvUser(req.session.user);
 const companyContext = getCompanySubscriptionContext(companyId);
 const companyDetails = companyContext.company || {};
 const activeSubscription = companyContext.subscription || null;
-const activeModuleSet = new Set(companyContext.activeModules);
 const companyStatus = String(companyDetails.status || activeSubscription?.status || "active").toLowerCase();
 const stripeBillingConfigured = Boolean(String(process.env.STRIPE_SECRET_KEY || "").trim());
 const stripeWebhookConfigured = Boolean(String(process.env.STRIPE_WEBHOOK_SECRET || "").trim());
 const activeUserCount = Number(activeSubscription?.seats_used ?? 1) || 1;
 const companyModuleLimit = Number(activeSubscription?.max_active_modules || 0);
-const activeOptionalModuleCount = companyContext.activeModules.filter((key) => !["dashboard", "accounts", "setari"].includes(key)).length;
+const activeOptionalModuleCount = countOptionalCompanyModules(companyContext.activeModules);
 const settings = {
   company_name: companyDetails.name || getSetting("company_name", "QR-LAB SRL"),
   company_cui: companyDetails.cui || getSetting("company_cui", ""),
@@ -10031,38 +10077,7 @@ const plans = companyContext.plans.map((plan) => {
     chargeCopy: `${String(chargePreview)} EUR estimat / lună${pricingModel === "per_user" ? ` pentru ${String(chargeQuantity)} utilizatori` : ""}`
   };
 });
-const groupMeta = {
-  crm: ["CRM", "Clienți, oferte și relații comerciale."],
-  erp: ["ERP", "Facturare, inventar, contabilitate și operațional."],
-  admin: ["Administrare", "Utilizatori, roluri și configurare."]
-};
-const moduleGroups = Object.entries(MODULE_GROUPS).map(([groupKey, moduleKeys]) => {
-  const [label, description] = groupMeta[groupKey] || [groupKey, ""];
-  const modules = moduleKeys.map((moduleKey) => {
-    const def = MODULE_DEFINITIONS.find((item) => item.key === moduleKey);
-    const includedByPlan = companyContext.planModules.includes(moduleKey);
-    const active = activeModuleSet.has(moduleKey);
-    const isCoreModule = ["dashboard", "accounts", "setari"].includes(moduleKey);
-    return {
-      key: moduleKey,
-      label: def?.label || moduleKey,
-      includedByPlan,
-      active,
-      isCoreModule,
-      copy: includedByPlan
-        ? (isCoreModule ? "Inclus implicit în plan." : "Disponibil în planul curent.")
-        : "Necesită upgrade de plan."
-    };
-  });
-  return {
-    key: groupKey,
-    label,
-    description,
-    modules,
-    activeCount: modules.filter((item) => item.active).length,
-    totalCount: modules.length
-  };
-});
+const moduleGroups = buildCompanyModuleGroups(companyContext);
 
 res.type("html").send(renderNexoraSettingsPage({
   companyName: req.session.user.company_name || companyDetails.name || "",
@@ -10094,13 +10109,12 @@ const canAccessSpvSettings = canAccessSpvUser(req.session.user);
 const companyContext = getCompanySubscriptionContext(companyId);
 const companyDetails = companyContext.company || {};
 const activeSubscription = companyContext.subscription || null;
-const activeModuleSet = new Set(companyContext.activeModules);
 const companyStatus = String(companyDetails.status || activeSubscription?.status || "active").toLowerCase();
 const stripeBillingConfigured = Boolean(String(process.env.STRIPE_SECRET_KEY || "").trim());
 const stripeWebhookConfigured = Boolean(String(process.env.STRIPE_WEBHOOK_SECRET || "").trim());
 const activeUserCount = Number(activeSubscription?.seats_used ?? 1) || 1;
 const companyModuleLimit = Number(activeSubscription?.max_active_modules || 0);
-const activeOptionalModuleCount = companyContext.activeModules.filter((key) => !["dashboard", "accounts", "setari"].includes(key)).length;
+const activeOptionalModuleCount = countOptionalCompanyModules(companyContext.activeModules);
 const planOptions = companyContext.plans.map((plan) => {
   const planFeatures = parseJsonArray(plan.features_json, []);
   const pricingLabel = String(plan.pricing_model || "flat").trim().toLowerCase() === "per_user"
@@ -10149,25 +10163,15 @@ const planOptions = companyContext.plans.map((plan) => {
     </label>
   `;
 }).join("");
-const groupedModuleCards = Object.entries(MODULE_GROUPS).map(([groupKey, moduleKeys]) => {
-  const groupLabel = groupKey === "crm" ? "CRM" : groupKey === "erp" ? "ERP" : "Admin";
-  const groupDescription = groupKey === "crm"
-    ? "Lead-uri, relații comerciale și vânzare."
-    : groupKey === "erp"
-      ? "Operațional, facturare și resurse interne."
-      : "Administrare, utilizatori și configurare.";
-  const moduleItems = moduleKeys.map((moduleKey) => {
-    const def = MODULE_DEFINITIONS.find((item) => item.key === moduleKey);
-    const includedByPlan = companyContext.planModules.includes(moduleKey);
-    const active = activeModuleSet.has(moduleKey);
-    const isCoreModule = ["dashboard", "accounts", "setari"].includes(moduleKey);
+const groupedModuleCards = buildCompanyModuleGroups(companyContext).map((group) => {
+  const moduleItems = (group.modules || []).map((module) => {
     return `
-      <label style="display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border:1px solid var(--line);border-radius:14px;background:${active ? "rgba(255,255,255,.96)" : "rgba(248,250,252,.92)"};opacity:${includedByPlan ? "1" : ".65"}">
-        <input type="checkbox" name="module_keys" value="${moduleKey}" ${active ? "checked" : ""} ${includedByPlan && isCompanyAdmin && !isCoreModule ? "" : "disabled"} ${includedByPlan && !isCoreModule ? `data-company-module="1"` : ""}>
-        ${includedByPlan && isCoreModule ? `<input type="hidden" name="module_keys" value="${moduleKey}">` : ``}
+      <label style="display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border:1px solid var(--line);border-radius:14px;background:${module.active ? "rgba(255,255,255,.96)" : "rgba(248,250,252,.92)"};opacity:${module.includedByPlan ? "1" : ".65"}">
+        <input type="checkbox" name="module_keys" value="${module.key}" ${module.active ? "checked" : ""} disabled ${module.includedByPlan && !module.isCoreModule ? `data-company-module="1"` : ""}>
+        ${module.includedByPlan && module.isCoreModule ? `<input type="hidden" name="module_keys" value="${module.key}">` : ``}
         <span>
-          <span style="display:block;font-weight:700">${escapeHtml(def?.label || moduleKey)}</span>
-          <span class="crm-muted" style="display:block;margin-top:4px;font-size:12px">${includedByPlan ? (isCoreModule ? "Modul administrativ inclus implicit in plan." : "Disponibil in planul curent.") : "Necesita upgrade de plan."}</span>
+          <span style="display:block;font-weight:700">${escapeHtml(module.label || module.key)}</span>
+          <span class="crm-muted" style="display:block;margin-top:4px;font-size:12px">${escapeHtml(module.copy || "")}</span>
         </span>
       </label>
     `;
@@ -10176,10 +10180,10 @@ const groupedModuleCards = Object.entries(MODULE_GROUPS).map(([groupKey, moduleK
     <div style="padding:16px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.7)">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px">
         <div>
-          <div style="font-weight:800">${groupLabel}</div>
-          <div class="crm-muted" style="margin-top:4px;font-size:13px">${groupDescription}</div>
+          <div style="font-weight:800">${escapeHtml(group.label)}</div>
+          <div class="crm-muted" style="margin-top:4px;font-size:13px">${escapeHtml(group.description)}</div>
         </div>
-        <div class="crm-badge crm-badge-blue">${moduleKeys.filter((key) => activeModuleSet.has(key)).length}/${moduleKeys.length}</div>
+        <div class="crm-badge crm-badge-blue">${escapeHtml(group.activeCount)}/${escapeHtml(group.totalCount)}</div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">
         ${moduleItems}
@@ -10531,8 +10535,8 @@ ${crmShellStart("setari", "Setări", "Configurare firmă, facturi și identitate
         <form method="post" action="/setari/modules" class="crm-stack" data-company-module-form>
           <div>
             <label class="crm-label">Module active pentru companie</label>
-            <div class="crm-muted" style="margin-bottom:12px">Poti activa doar module incluse in planul curent. Drepturile pe utilizator raman in <code>Utilizatori</code>.</div>
-            ${companyModuleLimit > 0 ? `<div class="crm-card" style="margin-bottom:12px;border:1px solid #bfdbfe;background:#eff6ff"><div style="font-weight:800;color:#1d4ed8;margin-bottom:6px">Limita plan</div><div class="crm-muted">Planul curent permite maximum ${escapeHtml(String(companyModuleLimit))} module operationale active. Dashboard, Utilizatori si Setari raman incluse separat.</div></div>` : ``}
+            <div class="crm-muted" style="margin-bottom:12px">Modulele companiei sunt stabilite de super admin prin contract. Drepturile pe utilizator raman in <code>Utilizatori</code>.</div>
+            ${companyModuleLimit > 0 ? `<div class="crm-card" style="margin-bottom:12px;border:1px solid #bfdbfe;background:#eff6ff"><div style="font-weight:800;color:#1d4ed8;margin-bottom:6px">Limita plan</div><div class="crm-muted">Planul curent permite maximum ${escapeHtml(String(companyModuleLimit))} module operationale active. Dashboard si Setari raman incluse separat.</div></div>` : ``}
             <div class="crm-stack">
               ${groupedModuleCards}
             </div>
@@ -10544,7 +10548,8 @@ ${crmShellStart("setari", "Setări", "Configurare firmă, facturi și identitate
             </div>
           </div>
           <div>
-            <button class="crm-btn" type="submit" ${isCompanyAdmin ? "" : "disabled"}>Salvează modulele active</button>
+            <button class="crm-btn" type="submit" disabled>Salvează modulele active</button>
+            <a class="crm-btn crm-btn-secondary" href="/nexora/users">Utilizatori & roluri</a>
           </div>
         </form>
       </div>
@@ -10798,6 +10803,11 @@ app.post("/setari/subscription", requireAuth, requireRole("admin"), (req, res) =
 app.post("/setari/modules", requireAuth, requireRole("admin"), (req, res) => {
   const companyId = Number(req.session.user.company_id || 0);
   if (!companyId) return res.status(400).send("Companie invalidă");
+  if (!Number(req.session.user.is_super_admin || 0)) {
+    return res.redirect(req.body?.return_to === "nexora"
+      ? "/nexora/settings?tab=subscription&err=modules_contract"
+      : "/setari");
+  }
 
   let moduleKeys = req.body?.module_keys || [];
   if (!Array.isArray(moduleKeys)) moduleKeys = [moduleKeys];

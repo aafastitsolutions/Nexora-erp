@@ -188,7 +188,7 @@ function renderNexoraUsersPage(options = {}) {
 function renderModuleCheckboxes({ selectableModules = [], assignedModules = [] } = {}) {
   return selectableModules.length
     ? selectableModules.map((item) => {
-      const isCoreModule = ["dashboard", "accounts", "setari"].includes(item.key);
+      const isCoreModule = ["dashboard", "settings"].includes(item.key);
       const isChecked = assignedModules.includes(item.key) || isCoreModule;
       return `
         <label class="nx-check-row">

@@ -1,5 +1,5 @@
 import bcrypt from "bcrypt";
-import { DEMO_PLAN_CODE, ROLE_MODULES, normalizeCompanyModules, normalizeUserModules, parseModuleList } from "../lib/app-config.js";
+import { DEMO_PLAN_CODE, ROLE_MODULES, hasModuleKeyAccess, normalizeCompanyModules, normalizeUserModules, parseModuleList } from "../lib/app-config.js";
 import { renderPlanCards } from "../lib/plan-cards.js";
 
 function escapeHtml(value) {
@@ -149,23 +149,22 @@ function resolvePostLoginPath(user) {
       ? user.module_permissions
       : [];
 
-  if (String(user?.role || "").trim().toLowerCase() === "accounting" && modules.includes("accounting")) {
+  if (String(user?.role || "").trim().toLowerCase() === "accounting" && hasModuleKeyAccess(modules, "finance")) {
     return "/nexora/accounting";
   }
 
   const firstAllowedPath = [
     ["dashboard", "/nexora-dashboard"],
-    ["accounting", "/nexora/accounting"],
-    ["facturi", "/nexora/facturi"],
-    ["clients", "/nexora/clients"],
-    ["quotes", "/nexora/quotes"],
-    ["contracts", "/nexora/contracts"],
-    ["produse", "/nexora/products"],
-    ["tipizate", "/nexora/documents"],
-    ["employees", "/nexora/employees"],
-    ["accounts", "/nexora/users"],
-    ["setari", "/nexora/settings"]
-  ].find(([moduleKey]) => modules.includes(moduleKey));
+    ["finance", "/nexora/accounting"],
+    ["sales", "/nexora/quotes"],
+    ["crm", "/nexora/clients"],
+    ["inventory", "/nexora/inventory"],
+    ["projects", "/nexora/projects"],
+    ["documents", "/nexora/documents"],
+    ["hr", "/nexora/employees"],
+    ["reports", "/nexora/reports"],
+    ["settings", "/nexora/settings"]
+  ].find(([moduleKey]) => hasModuleKeyAccess(modules, moduleKey));
 
   return firstAllowedPath ? firstAllowedPath[1] : "/nexora-dashboard";
 }

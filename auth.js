@@ -1,7 +1,7 @@
 // auth.js (ESM)
 import bcrypt from "bcrypt";
 import { db } from "./db.js";
-import { ALL_MODULE_KEYS, ROLE_MODULES, isDemoExpired, normalizeUserModules, parseModuleList } from "./lib/app-config.js";
+import { ALL_MODULE_KEYS, ROLE_MODULES, expandModuleKeysForAccess, isDemoExpired, normalizeCompanyModules, normalizeUserModules, parseModuleList } from "./lib/app-config.js";
 
 function superAdminEmails() {
   return String(process.env.SUPER_ADMIN_EMAILS || process.env.ADMIN_EMAIL || "")
@@ -59,8 +59,12 @@ function resolveCompanyAccess(companyId) {
 
   const planModules = parseModuleList(subscription?.plan_module_keys, ALL_MODULE_KEYS);
   const overrideModules = parseModuleList(subscription?.module_overrides, planModules);
-  const allowedModules = (overrideModules.length ? overrideModules : planModules)
-    .filter((moduleKey) => !(Number(company?.is_demo || 0) === 1 && moduleKey === "setari"));
+  const allowedModules = normalizeCompanyModules(
+    overrideModules.length ? overrideModules : planModules,
+    planModules,
+    subscription || {},
+    { companyIsDemo: Number(company?.is_demo || 0) === 1 }
+  );
 
   return {
     company,
@@ -75,14 +79,24 @@ function resolveRequestModule(req) {
   if (path.startsWith("/nexora/clients")) return "clients";
   if (path.startsWith("/nexora/quotes")) return "quotes";
   if (path.startsWith("/nexora/contracts")) return "contracts";
+  if (path.startsWith("/nexora/sales")) return "sales";
+  if (path.startsWith("/nexora/crm")) return "crm";
   if (path.startsWith("/nexora/products")) return "produse";
   if (path.startsWith("/nexora/facturi")) return "facturi";
   if (path.startsWith("/nexora/accounting")) return "accounting";
   if (path.startsWith("/nexora/anaf")) return "accounting";
   if (path.startsWith("/nexora/inventory")) return "inventory";
+  if (path.startsWith("/nexora/procurement")) return "procurement";
   if (path.startsWith("/nexora/projects")) return "projects";
+  if (path.startsWith("/nexora/hr")) return "hr";
   if (path.startsWith("/nexora/documents")) return "tipizate";
   if (path.startsWith("/nexora/employees")) return "employees";
+  if (path.startsWith("/nexora/manufacturing")) return "manufacturing";
+  if (path.startsWith("/nexora/supply-chain")) return "scm";
+  if (path.startsWith("/nexora/reports")) return "reports";
+  if (path.startsWith("/nexora/orders")) return "orders";
+  if (path.startsWith("/nexora/workflow")) return "workflow";
+  if (path.startsWith("/nexora/ecommerce") || path.startsWith("/nexora/pos")) return "ecommerce";
   if (path.startsWith("/nexora/users") || path.startsWith("/nexora/roles")) return "accounts";
   if (path.startsWith("/nexora/settings")) return "setari";
   if (path.startsWith("/export/contracts.csv")) return "contracts";
@@ -110,7 +124,7 @@ function userHasModule(user, moduleKey) {
     : Array.isArray(user?.module_permissions)
       ? user.module_permissions
       : [];
-  return modules.includes(moduleKey);
+  return expandModuleKeysForAccess(modules).includes(moduleKey);
 }
 
 function refreshSessionUserAccess(sessionUser) {

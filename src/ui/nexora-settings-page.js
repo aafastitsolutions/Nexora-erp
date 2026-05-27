@@ -46,7 +46,8 @@ function renderFlash(ok = "", err = "") {
     logo: "Logo-ul de factură a fost actualizat."
   };
   const errMessages = {
-    no_file: "Alege un fișier înainte de upload."
+    no_file: "Alege un fișier înainte de upload.",
+    modules_contract: "Modulele companiei sunt gestionate de super admin pe baza contractului."
   };
 
   return [
@@ -99,7 +100,7 @@ function renderPlanCards({ plans = [], activePlanId = null, isCompanyAdmin = fal
   }).join("");
 }
 
-function renderModuleGroups({ groups = [], isCompanyAdmin = false, companyModuleLimit = 0 } = {}) {
+function renderModuleGroups({ groups = [], canManageCompanyModules = false, companyModuleLimit = 0 } = {}) {
   if (!groups.length) {
     return `<div class="nx-empty-state">Nu există module configurate pentru companie.</div>`;
   }
@@ -121,7 +122,7 @@ function renderModuleGroups({ groups = [], isCompanyAdmin = false, companyModule
               name="module_keys"
               value="${escapeHtml(item.key)}"
               ${checked(item.active)}
-              ${item.includedByPlan && isCompanyAdmin && !item.isCoreModule ? "" : "disabled"}
+              ${item.includedByPlan && canManageCompanyModules && !item.isCoreModule ? "" : "disabled"}
               ${item.includedByPlan && !item.isCoreModule ? `data-company-module="1"` : ""}
             >
             ${item.includedByPlan && item.isCoreModule ? `<input type="hidden" name="module_keys" value="${escapeHtml(item.key)}">` : ""}
@@ -160,6 +161,7 @@ function renderNexoraSettingsPage(options = {}) {
   const isCompanyAdmin = Boolean(options.isCompanyAdmin);
   const companyModuleLimit = Number(options.companyModuleLimit || 0);
   const activeOptionalModuleCount = Number(options.activeOptionalModuleCount || 0);
+  const canManageCompanyModules = Boolean(options.canManageCompanyModules);
   const stripeBillingConfigured = Boolean(options.stripeBillingConfigured);
   const stripeWebhookConfigured = Boolean(options.stripeWebhookConfigured);
   const activeUserCount = Number(options.activeUserCount || subscription.seats_used || 0);
@@ -259,15 +261,20 @@ function renderNexoraSettingsPage(options = {}) {
         <form method="post" action="/setari/modules" class="nx-form nx-content-card">
           <input type="hidden" name="return_to" value="nexora">
           <div class="nx-panel-head compact-head">
-            <div><h2>Module active</h2><span>${companyModuleLimit > 0 ? `limită plan: ${escapeHtml(companyModuleLimit)} module operaționale` : "fără plafon pe companie"}</span></div>
+            <div><h2>Module active</h2><span>${companyModuleLimit > 0 ? `limită contract: ${escapeHtml(companyModuleLimit)} module operaționale` : "stabilite prin contract"}</span></div>
+          </div>
+          <div class="nx-settings-note">
+            <b>Contract companie</b>
+            <span>Modulele active sunt setate de super admin pentru companie. Accesul pentru fiecare persoană se acordă în Utilizatori & roluri.</span>
           </div>
           ${renderModuleGroups({
             groups: options.moduleGroups || [],
-            isCompanyAdmin,
+            canManageCompanyModules,
             companyModuleLimit
           })}
           <div class="nx-form-actions">
-            <button class="nx-btn primary" type="submit" ${isCompanyAdmin ? "" : "disabled"}>Salvează modulele</button>
+            <button class="nx-btn primary" type="submit" ${canManageCompanyModules ? "" : "disabled"}>Salvează modulele</button>
+            <a class="nx-btn" href="/nexora/users">Utilizatori & roluri</a>
           </div>
         </form>
       </div>

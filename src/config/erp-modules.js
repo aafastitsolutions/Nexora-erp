@@ -166,7 +166,7 @@ const ERP_MODULES = [
     label: "Rapoarte & BI",
     icon: "bar-chart",
     path: "/nexora/reports",
-    legacyModuleKeys: ["dashboard"],
+    legacyModuleKeys: [],
     children: [
       { label: "Dashboard-uri", path: "/nexora/reports/dashboards" },
       { label: "KPI", path: "/nexora/reports/kpi" },
