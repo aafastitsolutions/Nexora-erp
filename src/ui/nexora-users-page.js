@@ -1,4 +1,5 @@
 import { renderNexoraShell } from "./nexora-shell.js";
+import { toCurrentModuleKeys } from "../../lib/app-config.js";
 
 function escapeHtml(value = "") {
   return String(value)
@@ -42,7 +43,7 @@ function roleOptions(selectedRole = "operator") {
 
 function moduleNames(moduleKeys = [], moduleDefinitions = []) {
   const byKey = new Map(moduleDefinitions.map((item) => [String(item.key), item.label || item.key]));
-  return (moduleKeys || []).map((key) => byKey.get(String(key)) || String(key));
+  return toCurrentModuleKeys(moduleKeys || []).map((key) => byKey.get(String(key)) || String(key));
 }
 
 function renderRoleMatrix(roleModules = {}, moduleDefinitions = []) {

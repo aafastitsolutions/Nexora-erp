@@ -1973,8 +1973,8 @@ function buildWorkspaceNavigation(active, userModules = [], userEmail = "") {
   const settingsItems = [
     hasModuleAccess(userModules, "accounts") ? workspaceNavItem({ href: "/accounts", label: "Utilizatori", iconKey: "accounts", isActive: activeKey === "accounts" }) : "",
     hasModuleAccess(userModules, "setari") ? workspaceNavItem({ href: "/nexora/settings", label: "Setări", iconKey: "setari", isActive: activeKey === "setari" }) : "",
-    isSuperAdmin ? workspaceNavItem({ href: "/super-admin/companies", label: "Companii", iconKey: "superadmin", isActive: activeKey === "superadmin" }) : "",
-    isSuperAdmin ? workspaceNavItem({ href: "/super-admin/payments", label: "Plăți", iconKey: "facturi", isActive: activeKey === "superadmin-payments" }) : ""
+    isSuperAdmin ? workspaceNavItem({ href: "/nexora/super-admin/companies", label: "Companii", iconKey: "superadmin", isActive: activeKey === "superadmin" }) : "",
+    isSuperAdmin ? workspaceNavItem({ href: "/nexora/super-admin/payments", label: "Plăți", iconKey: "facturi", isActive: activeKey === "superadmin-payments" }) : ""
   ].join("");
 
   const favoriteLinksHtml = favoriteModules
@@ -2208,8 +2208,8 @@ function buildClassicNavigation(active, userModules = [], userEmail = "") {
         hasModuleAccess(userModules, "setari") ? classicMenuLink({ href: "/nexora/settings", label: "Setări companie", iconKey: "setari", isActive: activeKey === "setari" }) : ""
       ].join("")),
       classicMenuSection("Super admin", [
-        isSuperAdmin ? classicMenuLink({ href: "/super-admin/companies", label: "Companii", iconKey: "superadmin", isActive: activeKey === "superadmin" }) : "",
-        isSuperAdmin ? classicMenuLink({ href: "/super-admin/payments", label: "Plăți", iconKey: "facturi", isActive: activeKey === "superadmin-payments" }) : ""
+        isSuperAdmin ? classicMenuLink({ href: "/nexora/super-admin/companies", label: "Companii", iconKey: "superadmin", isActive: activeKey === "superadmin" }) : "",
+        isSuperAdmin ? classicMenuLink({ href: "/nexora/super-admin/payments", label: "Plăți", iconKey: "facturi", isActive: activeKey === "superadmin-payments" }) : ""
       ].join(""))
     ].join("")
   });
@@ -8655,7 +8655,21 @@ ${crmShellEnd()}
   res.send(html);
 });
 
+function redirectToNexoraSuperAdmin(req, res, targetPath) {
+  const queryIndex = String(req.originalUrl || "").indexOf("?");
+  const query = queryIndex >= 0 ? String(req.originalUrl || "").slice(queryIndex) : "";
+  return res.redirect(302, `${targetPath}${query}`);
+}
+
 app.get("/super-admin/companies", requireAuth, requireSuperAdmin, (req, res) => {
+  return redirectToNexoraSuperAdmin(req, res, "/nexora/super-admin/companies");
+});
+
+app.get("/super-admin/companies/:id", requireAuth, requireSuperAdmin, (req, res) => {
+  return redirectToNexoraSuperAdmin(req, res, `/nexora/super-admin/companies/${encodeURIComponent(req.params.id)}`);
+});
+
+app.get("/super-admin/companies-legacy", requireAuth, requireSuperAdmin, (req, res) => {
   const q = String(req.query?.q || "").trim();
   const status = String(req.query?.status || "").trim().toLowerCase();
   const plan = String(req.query?.plan || "").trim().toLowerCase();
@@ -8834,7 +8848,7 @@ ${crmShellEnd()}
   res.send(html);
 });
 
-app.get("/super-admin/companies/:id", requireAuth, requireSuperAdmin, (req, res) => {
+app.get("/super-admin/companies-legacy/:id", requireAuth, requireSuperAdmin, (req, res) => {
   const companyId = Number(req.params.id);
   if (!Number.isFinite(companyId)) return res.status(400).send("Bad id");
 
@@ -9250,6 +9264,10 @@ app.post(["/super-admin/companies/:id/delete", "/nexora/super-admin/companies/:i
 });
 
 app.get("/super-admin/payments", requireAuth, requireSuperAdmin, (req, res) => {
+  return redirectToNexoraSuperAdmin(req, res, "/nexora/super-admin/payments");
+});
+
+app.get("/super-admin/payments-legacy", requireAuth, requireSuperAdmin, (req, res) => {
   const q = String(req.query?.q || "").trim();
   const status = String(req.query?.status || "").trim().toLowerCase();
   const source = String(req.query?.source || "").trim().toLowerCase();
