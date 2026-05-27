@@ -19,6 +19,7 @@ function renderNexoraShell(options = {}) {
   const pageTitle = options.pageTitle || title;
   const actionsHtml = options.actionsHtml || "";
   const isSuperAdmin = Number(options.isSuperAdmin || options.user?.is_super_admin || 0) === 1;
+  const isCompanyAdmin = Number(options.isCompanyAdmin || options.user?.is_company_admin || 0) === 1;
   const logoutHtml = `
     <form method="post" action="/logout" class="nx-logout-form">
       <button class="nx-btn nx-logout-btn" type="submit">Logout</button>
@@ -29,7 +30,8 @@ function renderNexoraShell(options = {}) {
     currentPath,
     appName,
     companyName,
-    isSuperAdmin
+    isSuperAdmin,
+    isCompanyAdmin
   });
 
   return `<!doctype html>

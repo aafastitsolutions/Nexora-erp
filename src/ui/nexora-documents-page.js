@@ -10,13 +10,13 @@ function escapeHtml(value = "") {
 }
 
 const TEMPLATE_LINKS = [
-  ["/nexora/documents/templates/proces-verbal", "Proces verbal"],
-  ["/nexora/documents/templates/adeverinta", "Adeverință salariat"],
-  ["/nexora/documents/templates/decizie-interna", "Decizie internă"],
-  ["/nexora/documents/templates/notificare-client", "Notificare client"],
-  ["/nexora/documents/templates/cerere-concediu", "Cerere concediu"],
-  ["/nexora/documents/templates/ordin-deplasare", "Ordin de deplasare"],
-  ["/nexora/documents/templates/fisa-hr", "Fișă HR"]
+  ["/tipizate/proces-verbal", "Proces verbal"],
+  ["/tipizate/adeverinta", "Adeverință salariat"],
+  ["/tipizate/decizie-interna", "Decizie internă"],
+  ["/tipizate/notificare-client", "Notificare client"],
+  ["/tipizate/cerere-concediu", "Cerere concediu"],
+  ["/tipizate/ordin-deplasare", "Ordin de deplasare"],
+  ["/tipizate/fisa-hr", "Fișă HR"]
 ];
 
 function renderNexoraDocumentsPage(options = {}) {
@@ -27,6 +27,14 @@ function renderNexoraDocumentsPage(options = {}) {
   const summary = options.summary || {};
   const ok = options.ok || "";
   const err = options.err || "";
+  const isCompanyAdmin = Number(options.isCompanyAdmin || 0) === 1;
+  const clients = Array.isArray(options.clients) ? options.clients : [];
+  const clientSelectHtml = isCompanyAdmin ? `
+    <label class="nx-field"><span>Client asociat (opțional)</span><select name="client_id">
+      <option value="">Fără asociere</option>
+      ${clients.map((client) => `<option value="${escapeHtml(client.id)}">${escapeHtml(client.name || "-")} ${client.cui ? `(${escapeHtml(client.cui)})` : ""}</option>`).join("")}
+    </select></label>
+  ` : "";
 
   const okMessages = {
     uploaded: "Documentul a fost încărcat și înregistrat.",
@@ -129,6 +137,7 @@ function renderNexoraDocumentsPage(options = {}) {
           </div>
           <form method="post" action="/nexora/documents/autofill" enctype="multipart/form-data" class="nx-form">
             <label class="nx-field"><span>Titlu intern</span><input name="title" placeholder="Declarație / cerere completată"></label>
+            ${clientSelectHtml}
             <label class="nx-field">
               <span>Formular DOCX sau PDF</span>
               <input type="file" name="template" accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required>
@@ -212,6 +221,7 @@ function renderNexoraDocumentsPage(options = {}) {
         </div>
         <form method="post" action="/nexora/documents/upload" enctype="multipart/form-data" class="nx-form">
           <label class="nx-field"><span>Titlu document</span><input name="title" required placeholder="Proces verbal recepție"></label>
+          ${clientSelectHtml}
           <label class="nx-field">
             <span>Categorie</span>
             <select name="category">
@@ -243,6 +253,7 @@ function renderNexoraDocumentsPage(options = {}) {
           <p>Biblioteca documentelor tipizate încărcate manual sau generate.</p>
         </div>
         <div class="nx-form-actions">
+          ${isCompanyAdmin ? `<a class="nx-btn primary" href="/nexora/documents/client-files">Dosar Client</a>` : ""}
           <a class="nx-btn" href="/nexora/documents/register">Registru evidență</a>
           <a class="nx-btn" href="/nexora/documents/register/export.xls">Export registru</a>
         </div>
@@ -270,8 +281,131 @@ function renderNexoraDocumentsPage(options = {}) {
     appName: "Nexora ERP",
     companyName,
     currentPath: "/nexora/documents",
+    isCompanyAdmin,
     eyebrow: "Documente",
     pageTitle: "Documente / DMS",
+    body
+  });
+}
+
+function renderNexoraClientDossiersPage(options = {}) {
+  const companyName = options.companyName || "Workspace";
+  const rows = Array.isArray(options.rows) ? options.rows : [];
+  const q = options.q || "";
+  const rowsHtml = rows.map((client) => `
+    <tr>
+      <td><a class="nx-table-main-link" href="/nexora/documents/client-files/${escapeHtml(client.id)}">${escapeHtml(client.name || "-")}</a><div class="nx-table-sub">${escapeHtml(client.cui || "-")}</div></td>
+      <td>${escapeHtml(client.contracts_count || 0)}</td>
+      <td>${escapeHtml(client.quotes_count || 0)}</td>
+      <td>${escapeHtml(client.invoices_count || 0)}</td>
+      <td>${escapeHtml(client.files_count || 0)}</td>
+      <td><b>${escapeHtml(client.documents_count || 0)}</b></td>
+      <td><a class="nx-btn primary" href="/nexora/documents/client-files/${escapeHtml(client.id)}">Deschide dosar</a></td>
+    </tr>
+  `).join("");
+  const body = `
+    <section class="nx-content-card">
+      <div class="nx-section-head">
+        <div>
+          <h1>Dosar Client</h1>
+          <p>Arhiva documentelor pentru fiecare client: contracte, oferte, facturi, tipizate și fișiere importate.</p>
+        </div>
+        <a class="nx-btn" href="/nexora/documents">Documente / DMS</a>
+      </div>
+      <form class="nx-inline-form" method="get" action="/nexora/documents/client-files">
+        <label class="nx-field"><span>Caută client</span><input name="q" value="${escapeHtml(q)}" placeholder="nume sau CUI"></label>
+        <div class="nx-form-actions"><button class="nx-btn primary" type="submit">Caută</button><a class="nx-btn" href="/nexora/documents/client-files">Reset</a></div>
+      </form>
+      <div class="nx-table-wrap" style="margin-top:18px">
+        <table class="nx-table">
+          <thead><tr><th>Client</th><th>Contracte</th><th>Oferte</th><th>Facturi</th><th>Fișiere</th><th>Total documente</th><th></th></tr></thead>
+          <tbody>${rowsHtml || `<tr><td colspan="7"><div class="nx-empty-state">Nu există clienți pentru căutarea curentă.</div></td></tr>`}</tbody>
+        </table>
+      </div>
+    </section>
+  `;
+  return renderNexoraShell({
+    title: "Dosar Client",
+    appName: "Nexora ERP",
+    companyName,
+    currentPath: "/nexora/documents/client-files",
+    eyebrow: "Documente / DMS",
+    pageTitle: "Dosar Client",
+    isCompanyAdmin: true,
+    body
+  });
+}
+
+function renderNexoraClientDossierDetailPage(options = {}) {
+  const companyName = options.companyName || "Workspace";
+  const client = options.client || {};
+  const documents = Array.isArray(options.documents) ? options.documents : [];
+  const ok = String(options.ok || "");
+  const err = String(options.err || "");
+  const groups = documents.reduce((result, document) => {
+    const key = String(document.category || "ALTELE").toUpperCase();
+    if (!result[key]) result[key] = [];
+    result[key].push(document);
+    return result;
+  }, {});
+  const categoryOrder = ["CONTRACTE", "OFERTE", "FACTURI", "E-FACTURA", "TIPIZATE", "FORMULARE", "PROIECTE", "CORESPONDENTA", "ALTELE"];
+  const orderedCategories = [...categoryOrder.filter((key) => groups[key]), ...Object.keys(groups).filter((key) => !categoryOrder.includes(key))];
+  const groupsHtml = orderedCategories.map((category) => `
+    <section class="nx-panel" style="margin-top:18px">
+      <div class="nx-panel-head"><div><h2>${escapeHtml(category)}</h2><span>${escapeHtml(groups[category].length)} documente</span></div></div>
+      <div class="nx-table-wrap">
+        <table class="nx-table">
+          <thead><tr><th>Document</th><th>Tip</th><th>Dată</th><th></th></tr></thead>
+          <tbody>${groups[category].map((document) => `
+            <tr>
+              <td><b>${escapeHtml(document.title || "-")}</b><div class="nx-table-sub">${escapeHtml(document.fileName || "")}</div></td>
+              <td>${escapeHtml(document.kind || category)}</td>
+              <td>${escapeHtml(document.createdAt || "-")}</td>
+              <td class="nx-table-actions">${document.openHref ? `<a class="nx-btn" href="${escapeHtml(document.openHref)}">Detalii</a>` : ""}${document.downloadHref ? `<a class="nx-btn primary" href="${escapeHtml(document.downloadHref)}" target="_blank">Deschide</a>` : ""}</td>
+            </tr>`).join("")}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `).join("");
+  const body = `
+    ${ok === "uploaded" ? `<div class="nx-alert success">Fișierul a fost adăugat în dosarul clientului.</div>` : ""}
+    ${err ? `<div class="nx-alert danger">Fișierul nu a putut fi salvat în dosar.</div>` : ""}
+    <section class="nx-content-card">
+      <div class="nx-section-head">
+        <div><h1>${escapeHtml(client.name || "Client")}</h1><p>CUI: ${escapeHtml(client.cui || "-")} · ${escapeHtml(client.address || "")}</p></div>
+        <a class="nx-btn" href="/nexora/documents/client-files">Toate dosarele</a>
+      </div>
+      <div class="nx-two-column-grid">
+        <section class="nx-panel">
+          <div class="nx-panel-head"><div><h2>Adaugă document</h2><span>fișier arhivat la acest client</span></div></div>
+          <form class="nx-form" method="post" action="/nexora/documents/client-files/${escapeHtml(client.id)}/upload" enctype="multipart/form-data">
+            <label class="nx-field"><span>Titlu</span><input name="title" required placeholder="Contract semnat / corespondență"></label>
+            <label class="nx-field"><span>Categorie</span><select name="category">
+              ${["CONTRACTE", "OFERTE", "FACTURI", "TIPIZATE", "FORMULARE", "PROIECTE", "CORESPONDENTA", "ALTELE"].map((category) => `<option value="${category}">${category}</option>`).join("")}
+            </select></label>
+            <label class="nx-field"><span>Fișier</span><input type="file" name="file" required></label>
+            <label class="nx-field"><span>Observații</span><textarea name="notes" rows="3"></textarea></label>
+            <div class="nx-form-actions"><button class="nx-btn primary" type="submit">Încarcă în dosar</button></div>
+          </form>
+        </section>
+        <section class="nx-panel">
+          <div class="nx-panel-head"><div><h2>Arhivă</h2><span>documente găsite automat</span></div></div>
+          <div class="nx-kpi-value">${escapeHtml(documents.length)}</div>
+          <p class="nx-field-hint">Sunt reunite documentele deja asociate clientului și încărcările făcute direct în dosar.</p>
+        </section>
+      </div>
+    </section>
+    ${groupsHtml || `<section class="nx-content-card"><div class="nx-empty-state">Acest client nu are documente asociate încă.</div></section>`}
+  `;
+  return renderNexoraShell({
+    title: `Dosar ${client.name || "Client"}`,
+    appName: "Nexora ERP",
+    companyName,
+    currentPath: "/nexora/documents/client-files",
+    eyebrow: "Documente / DMS",
+    pageTitle: "Dosar Client",
+    isCompanyAdmin: true,
     body
   });
 }
@@ -281,6 +415,7 @@ function renderNexoraDocumentsRegisterPage(options = {}) {
   const rows = Array.isArray(options.rows) ? options.rows : [];
   const summary = options.summary || {};
   const ok = options.ok || "";
+  const isCompanyAdmin = Number(options.isCompanyAdmin || 0) === 1;
 
   const rowsHtml = rows.length
     ? rows.map((row) => `
@@ -354,6 +489,7 @@ function renderNexoraDocumentsRegisterPage(options = {}) {
     appName: "Nexora ERP",
     companyName,
     currentPath: "/nexora/documents",
+    isCompanyAdmin,
     eyebrow: "Documente / DMS",
     pageTitle: "Registru evidență",
     body
@@ -361,6 +497,8 @@ function renderNexoraDocumentsRegisterPage(options = {}) {
 }
 
 export {
+  renderNexoraClientDossierDetailPage,
+  renderNexoraClientDossiersPage,
   renderNexoraDocumentsPage,
   renderNexoraDocumentsRegisterPage
 };

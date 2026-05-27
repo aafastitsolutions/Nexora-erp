@@ -18,7 +18,7 @@ function statusBadge(status = "") {
   const normalized = String(status || "active").trim().toLowerCase();
   const tone = normalized === "active" || normalized === "paid"
     ? "success"
-    : normalized === "suspended" || normalized === "failed"
+    : normalized === "suspended" || normalized === "failed" || normalized === "archived"
       ? "danger"
       : normalized === "past_due" || normalized === "pending_verification"
         ? "warn"
@@ -101,7 +101,7 @@ function renderNexoraSuperAdminDashboardPage(options = {}) {
 
   const body = `
     ${renderKpis([
-      { icon: "ORG", label: "Companii", value: stats.totalCompanies || 0, hint: `${stats.activeCompanies || 0} active`, trend: "up" },
+      { icon: "ORG", label: "Companii", value: stats.totalCompanies || 0, hint: `${stats.activeCompanies || 0} active / ${stats.archivedCompanies || 0} arhivate`, trend: "up" },
       { icon: "TR", label: "Trial", value: stats.trialCompanies || 0 },
       { icon: "PD", label: "Past due", value: stats.pastDueCompanies || 0, trend: "warn" },
       { icon: "USR", label: "Utilizatori", value: stats.totalUsers || 0 },
@@ -167,7 +167,9 @@ function renderNexoraSuperAdminCompaniesPage(options = {}) {
   const err = String(options.err || "");
 
   const okMessages = {
-    created: "Compania a fost verificată în ANAF și tenant-ul a fost creat."
+    created: "Compania a fost verificată în ANAF și tenant-ul a fost creat.",
+    archived: "Compania a fost arhivată. Datele sunt păstrate pentru restaurare.",
+    restored: "Compania a fost restaurată din arhivă."
   };
   const errorMessages = {
     invalid_cui: "Introdu un CUI valid pentru căutarea în ANAF.",
@@ -178,7 +180,11 @@ function renderNexoraSuperAdminCompaniesPage(options = {}) {
     short_password: "Parola administratorului trebuie să aibă minimum 8 caractere.",
     user_exists: "Există deja un utilizator cu acest email.",
     invalid_plan: "Planul selectat nu mai este disponibil.",
-    create_failed: "Compania nu a putut fi creată."
+    create_failed: "Compania nu a putut fi creată.",
+    archive_status: "Doar companiile suspendate sau cu plata restantă pot fi arhivate.",
+    archived: "Compania este arhivată. Restaureaz-o înainte de a schimba statusul.",
+    already_archived: "Compania este deja arhivată.",
+    not_archived: "Compania nu este arhivată."
   };
   const alertHtml = [
     ok ? `<div class="nx-alert success">${escapeHtml(okMessages[ok] || "Operațiunea a fost finalizată.")}</div>` : "",
@@ -238,6 +244,15 @@ function renderNexoraSuperAdminCompaniesPage(options = {}) {
       <td>${escapeHtml(row.facturi_count || 0)}</td>
       <td class="nx-table-actions">
         <a class="nx-btn" href="/nexora/super-admin/companies/${escapeHtml(row.id)}">Audit</a>
+        ${String(row.status || "").toLowerCase() === "archived" || row.archived_at ? `
+          <form method="post" action="/nexora/super-admin/companies/${escapeHtml(row.id)}/restore" onsubmit="return confirm('Restaurezi compania din arhivă?');">
+            <button class="nx-btn primary" type="submit">Restaurează</button>
+          </form>
+        ` : ["suspended", "past_due"].includes(String(row.status || "").toLowerCase()) ? `
+          <form method="post" action="/nexora/super-admin/companies/${escapeHtml(row.id)}/archive" onsubmit="return confirm('Arhivezi compania? Datele rămân în baza de date și pot fi restaurate.');">
+            <button class="nx-btn danger" type="submit">Arhivează</button>
+          </form>
+        ` : ""}
       </td>
     </tr>
   `).join("");
@@ -253,6 +268,7 @@ function renderNexoraSuperAdminCompaniesPage(options = {}) {
         </div>
         <div class="nx-form-actions">
           <a class="nx-btn" href="/nexora/super-admin">Dashboard</a>
+          <a class="nx-btn" href="/nexora/super-admin/companies?status=archived">Arhivate</a>
           <a class="nx-btn primary" href="/nexora/super-admin/payments">Plăți</a>
         </div>
       </div>
@@ -284,7 +300,7 @@ function renderNexoraSuperAdminCompaniesPage(options = {}) {
       <form method="get" action="/nexora/super-admin/companies" class="nx-inline-form">
         <label class="nx-field"><span>Căutare</span><input name="q" value="${escapeHtml(filters.q || "")}" placeholder="nume, slug sau CUI"></label>
         <label class="nx-field"><span>Status</span><select name="status">
-          ${["all", "trial", "active", "past_due", "suspended"].map((status) => `<option value="${status}" ${String(filters.status || "all") === status ? "selected" : ""}>${status}</option>`).join("")}
+          ${["all", "trial", "active", "past_due", "suspended", "archived"].map((status) => `<option value="${status}" ${String(filters.status || "all") === status ? "selected" : ""}>${status}</option>`).join("")}
         </select></label>
         <label class="nx-field"><span>Plan</span><select name="plan">
           <option value="all" ${!filters.plan || filters.plan === "all" ? "selected" : ""}>Toate</option>
@@ -319,6 +335,15 @@ function renderNexoraSuperAdminCompanyDetailPage(options = {}) {
   const invoices = Array.isArray(options.invoices) ? options.invoices : [];
   const payments = Array.isArray(options.payments) ? options.payments : [];
   const events = Array.isArray(options.events) ? options.events : [];
+  const ok = String(options.ok || "");
+  const err = String(options.err || "");
+  const archived = Boolean(company.archived_at) || String(company.status || "").toLowerCase() === "archived";
+  const archivable = ["suspended", "past_due"].includes(String(company.status || "").toLowerCase()) && !archived;
+  const alertHtml = ok
+    ? `<div class="nx-alert success">${escapeHtml(ok === "archived" ? "Compania a fost arhivată fără ștergerea datelor." : ok === "restored" ? "Compania a fost restaurată din arhivă." : "Statusul companiei a fost actualizat.")}</div>`
+    : err
+      ? `<div class="nx-alert danger">${escapeHtml(err === "archive_status" ? "Arhivarea este disponibilă doar pentru companii suspendate sau past_due." : "Operațiunea nu a putut fi finalizată.")}</div>`
+      : "";
 
   const userRows = users.map((row) => `<tr><td>${escapeHtml(row.email || "-")}</td><td>${escapeHtml(row.role || "-")}</td><td>${statusBadge(row.status)}</td><td>${escapeHtml(row.created_at || "-")}</td></tr>`).join("");
   const clientRows = clients.map((row) => `<tr><td>${escapeHtml(row.name || "-")}</td><td>${escapeHtml(row.cui || "-")}</td><td>${escapeHtml(row.created_at || "-")}</td></tr>`).join("");
@@ -327,6 +352,7 @@ function renderNexoraSuperAdminCompanyDetailPage(options = {}) {
   const eventRows = events.map((row) => `<tr><td>${escapeHtml(row.created_at || "-")}</td><td>${escapeHtml(row.actor_email || "-")}</td><td>${escapeHtml(row.event_type || "-")}</td><td>${escapeHtml(row.status_from || "-")} -> ${escapeHtml(row.status_to || "-")}</td><td>${escapeHtml(row.reason || "-")}</td></tr>`).join("");
 
   const body = `
+    ${alertHtml}
     <section class="nx-content-card">
       <div class="nx-section-head">
         <div>
@@ -350,14 +376,26 @@ function renderNexoraSuperAdminCompanyDetailPage(options = {}) {
 
     <section class="nx-content-card">
       <div class="nx-section-head"><div><h2>Status tenant</h2><p>${statusBadge(company.status)} ${Number(company.is_demo || 0) ? " · demo" : ""}</p></div></div>
-      <form method="post" action="/nexora/super-admin/companies/${escapeHtml(company.id)}/status" class="nx-inline-form">
+      ${archived ? `
+        <div class="nx-alert danger">Compania este arhivată din ${escapeHtml(company.archived_at || "-")} de ${escapeHtml(company.archived_by_email || "-")}. Datele și documentele rămân păstrate.</div>
+        ${company.archive_reason ? `<p class="nx-table-sub">Motiv: ${escapeHtml(company.archive_reason)}</p>` : ""}
+        <form method="post" action="/nexora/super-admin/companies/${escapeHtml(company.id)}/restore" onsubmit="return confirm('Restaurezi compania și accesul ei din arhivă?');">
+          <button class="nx-btn primary" type="submit">Restaurează compania</button>
+        </form>
+      ` : `<form method="post" action="/nexora/super-admin/companies/${escapeHtml(company.id)}/status" class="nx-inline-form">
         <label class="nx-field"><span>Status nou</span><select name="status">
           ${["trial", "active", "past_due", "suspended"].map((status) => `<option value="${status}" ${String(company.status || "").toLowerCase() === status ? "selected" : ""}>${status}</option>`).join("")}
         </select></label>
         <label class="nx-field nx-field-wide"><span>Motiv</span><input name="reason" value="${escapeHtml(company.suspension_reason || "")}" placeholder="motiv suspendare / reactivare"></label>
         <div class="nx-form-actions"><button class="nx-btn primary" type="submit">Salvează statusul</button></div>
-      </form>
-      ${Number(company.is_demo || 0) === 1 ? `
+      </form>`}
+      ${archivable ? `
+        <form method="post" action="/nexora/super-admin/companies/${escapeHtml(company.id)}/archive" class="nx-inline-form" onsubmit="return confirm('Arhivezi compania? Datele rămân în baza de date și pot fi restaurate.');">
+          <label class="nx-field nx-field-wide"><span>Motiv arhivare</span><input name="reason" placeholder="companie inactivă / neplată / suspendare"></label>
+          <div class="nx-form-actions"><button class="nx-btn danger" type="submit">Arhivează compania</button></div>
+        </form>
+      ` : ""}
+      ${Number(company.is_demo || 0) === 1 && !archived ? `
         <form method="post" action="/nexora/super-admin/companies/${escapeHtml(company.id)}/delete" onsubmit="return confirm('Ștergi definitiv tenantul demo și toate datele lui?');">
           <button class="nx-btn danger" type="submit">Șterge tenant demo</button>
         </form>

@@ -1,7 +1,7 @@
 import { renderNexoraAnafInboxPage } from "./src/ui/nexora-anaf-inbox-page.js";
 import { renderNexoraAnafOutboxPage } from "./src/ui/nexora-anaf-outbox-page.js";
 import { renderNexoraAnafStatusPage } from "./src/ui/nexora-anaf-status-page.js";
-import { renderNexoraDocumentsPage, renderNexoraDocumentsRegisterPage } from "./src/ui/nexora-documents-page.js";
+import { renderNexoraClientDossierDetailPage, renderNexoraClientDossiersPage, renderNexoraDocumentsPage, renderNexoraDocumentsRegisterPage } from "./src/ui/nexora-documents-page.js";
 import { renderNexoraEmployeesPage } from "./src/ui/nexora-employees-page.js";
 import { renderNexoraHubPage } from "./src/ui/nexora-hub-page.js";
 import { renderNexoraProductEditPage, renderNexoraProductsPage } from "./src/ui/nexora-products-page.js";
@@ -4536,6 +4536,7 @@ function ensureFacturaXmlGenerated(id, companyId = null){
 import multer from "multer";
 const upload = multer({ dest: "uploads/" });
 const dmsAutofillUpload = multer({ dest: "uploads/", limits: { fileSize: 20 * 1024 * 1024 } });
+const dmsClientUpload = multer({ dest: "uploads/", limits: { fileSize: 30 * 1024 * 1024 } });
 
 registerAccountingRoutes(app, { db, requireAuth, requireSpvAccess, canAccessSpvUser, escapeHtml, fmtMoney, crmShellStart, crmShellEnd, fs, path, __dirname, upload });
 registerInventoryRoutes(app, { db, requireAuth, escapeHtml, fmtMoney, crmShellStart, crmShellEnd, fs, path, __dirname, upload });
@@ -4922,6 +4923,32 @@ function removeDmsAutofillStoredFile(companyId, relativePath) {
   if (absolutePath && fs.existsSync(absolutePath)) fs.unlinkSync(absolutePath);
 }
 
+function isCompanyAdminUser(user) {
+  return Number(user?.company_id || 0) > 0 && (
+    String(user?.role || "").trim().toLowerCase() === "admin"
+    || Number(user?.is_company_admin || 0) === 1
+  );
+}
+
+function requireCompanyAdmin(req, res, next) {
+  if (!isCompanyAdminUser(req.session?.user)) return res.status(403).send("Forbidden");
+  return next();
+}
+
+function dmsClientStorageDirectory(companyId, clientId) {
+  return path.join(__dirname, "uploads", "client-files", `company-${Number(companyId || 0)}`, `client-${Number(clientId || 0)}`);
+}
+
+function resolveDmsClientStoredPath(companyId, clientId, relativePath = "") {
+  const expectedPrefix = `company-${Number(companyId || 0)}/client-${Number(clientId || 0)}/`;
+  const normalizedRelativePath = String(relativePath || "").replaceAll("\\", "/").replace(/^\/+/, "");
+  if (!normalizedRelativePath.startsWith(expectedPrefix)) return "";
+
+  const storageRoot = path.resolve(path.join(__dirname, "uploads", "client-files"));
+  const absolutePath = path.resolve(storageRoot, normalizedRelativePath);
+  return absolutePath.startsWith(storageRoot + path.sep) ? absolutePath : "";
+}
+
 function backfillTipizateRegisterForCompany(companyId, req) {
   const normalizedCompanyId = Number(companyId || 0);
   if (!normalizedCompanyId) return;
@@ -5258,6 +5285,10 @@ function deleteCompanyWorkspace(companyId) {
   if (fs.existsSync(projectsDir)) {
     fs.rmSync(projectsDir, { recursive: true, force: true });
   }
+  const clientFilesDir = path.join(__dirname, "uploads", "client-files", `company-${normalizedCompanyId}`);
+  if (fs.existsSync(clientFilesDir)) {
+    fs.rmSync(clientFilesDir, { recursive: true, force: true });
+  }
 
   const companyScopedTables = db.prepare(`
     SELECT name
@@ -5386,7 +5417,7 @@ function syncManualPaymentToSubscription(companyId, paymentStatus) {
       UPDATE companies
       SET status='active',
           updated_at=datetime('now')
-      WHERE id=?
+      WHERE id=? AND archived_at IS NULL
     `).run(companyId);
     return;
   }
@@ -5404,7 +5435,7 @@ function syncManualPaymentToSubscription(companyId, paymentStatus) {
       UPDATE companies
       SET status='past_due',
           updated_at=datetime('now')
-      WHERE id=?
+      WHERE id=? AND archived_at IS NULL
     `).run(companyId);
     return;
   }
@@ -5629,6 +5660,7 @@ ${crmShellEnd()}
 
 app.get("/nexora/documents", requireAuth, (req, res) => {
   const companyId = Number(req.session.user.company_id || 0);
+  const isCompanyAdmin = isCompanyAdminUser(req.session.user);
   const docs = db.prepare(`
     SELECT id, title, category, file_name, file_path, mime_type,
            registration_number, registered_at, created_at
@@ -5654,25 +5686,296 @@ app.get("/nexora/documents", requireAuth, (req, res) => {
     matchedFields: parseJsonArray(document.matched_fields, [])
   }));
   const summary = getTipizateRegisterSummary(companyId);
+  const clients = isCompanyAdmin ? db.prepare(`
+    SELECT id, name, cui
+    FROM clients
+    WHERE company_id=?
+    ORDER BY name COLLATE NOCASE ASC
+  `).all(companyId) : [];
 
   return res.type("html").send(renderNexoraDocumentsPage({
     companyName: req.session.user.company_name || "",
     docs,
     autofillDocuments,
     autofillProfile: getDmsAutofillProfile(companyId),
+    isCompanyAdmin,
+    clients,
     summary,
     ok: String(req.query?.ok || ""),
     err: String(req.query?.err || "")
   }));
 });
 
+app.get("/nexora/documents/client-files", requireAuth, requireCompanyAdmin, (req, res) => {
+  const companyId = Number(req.session.user.company_id || 0);
+  const q = String(req.query?.q || "").trim();
+  const params = [companyId];
+  const searchSql = q ? "AND (LOWER(cl.name) LIKE ? OR LOWER(COALESCE(cl.cui,'')) LIKE ?)" : "";
+  if (q) {
+    const token = `%${q.toLowerCase()}%`;
+    params.push(token, token);
+  }
+  const rows = db.prepare(`
+    SELECT cl.id, cl.name, cl.cui,
+      (SELECT COUNT(*) FROM contracts ct WHERE ct.company_id=cl.company_id AND ct.client_id=cl.id AND TRIM(COALESCE(ct.pdf_path,'')) <> '') AS contracts_count,
+      (SELECT COUNT(*) FROM quotes qt WHERE qt.company_id=cl.company_id AND qt.client_id=cl.id AND TRIM(COALESCE(qt.pdf_path,'')) <> '') AS quotes_count,
+      (SELECT COUNT(*) FROM facturi f WHERE f.company_id=cl.company_id AND f.client_id=cl.id AND TRIM(COALESCE(f.pdf_path,'')) <> '') AS invoices_count,
+      (
+        (SELECT COUNT(*) FROM dms_client_files df WHERE df.company_id=cl.company_id AND df.client_id=cl.id AND df.archived_at IS NULL)
+        + (SELECT COUNT(*) FROM tipizate_docs td WHERE td.company_id=cl.company_id AND td.client_id=cl.id)
+        + (SELECT COUNT(*) FROM dms_autofill_documents da WHERE da.company_id=cl.company_id AND da.client_id=cl.id)
+        + (SELECT COUNT(*) FROM project_files pf JOIN projects p ON p.id=pf.project_id AND p.company_id=pf.company_id WHERE pf.company_id=cl.company_id AND p.client_id=cl.id)
+      ) AS files_count,
+      (
+        (SELECT COUNT(*) FROM contracts ct WHERE ct.company_id=cl.company_id AND ct.client_id=cl.id AND TRIM(COALESCE(ct.pdf_path,'')) <> '')
+        + (SELECT COUNT(*) FROM quotes qt WHERE qt.company_id=cl.company_id AND qt.client_id=cl.id AND TRIM(COALESCE(qt.pdf_path,'')) <> '')
+        + (SELECT COUNT(*) FROM facturi f WHERE f.company_id=cl.company_id AND f.client_id=cl.id AND TRIM(COALESCE(f.pdf_path,'')) <> '')
+        + (SELECT COUNT(*) FROM dms_client_files df WHERE df.company_id=cl.company_id AND df.client_id=cl.id AND df.archived_at IS NULL)
+        + (SELECT COUNT(*) FROM tipizate_docs td WHERE td.company_id=cl.company_id AND td.client_id=cl.id)
+        + (SELECT COUNT(*) FROM dms_autofill_documents da WHERE da.company_id=cl.company_id AND da.client_id=cl.id)
+        + (SELECT COUNT(*) FROM project_files pf JOIN projects p ON p.id=pf.project_id AND p.company_id=pf.company_id WHERE pf.company_id=cl.company_id AND p.client_id=cl.id)
+      ) AS documents_count
+    FROM clients cl
+    WHERE cl.company_id=? ${searchSql}
+    ORDER BY cl.name COLLATE NOCASE ASC
+  `).all(...params);
+
+  return res.type("html").send(renderNexoraClientDossiersPage({
+    companyName: req.session.user.company_name || "",
+    rows,
+    q
+  }));
+});
+
+app.get("/nexora/documents/client-files/:clientId", requireAuth, requireCompanyAdmin, (req, res) => {
+  const companyId = Number(req.session.user.company_id || 0);
+  const clientId = Number(req.params.clientId || 0);
+  const client = db.prepare("SELECT id, name, cui, address FROM clients WHERE id=? AND company_id=?").get(clientId, companyId);
+  if (!client) return res.status(404).send("Clientul nu a fost gasit.");
+
+  const documents = [];
+  db.prepare(`
+    SELECT id, title, category, original_file_name, created_at
+    FROM dms_client_files
+    WHERE client_id=? AND company_id=? AND archived_at IS NULL
+  `).all(clientId, companyId).forEach((row) => documents.push({
+    category: row.category || "ALTELE",
+    title: row.title,
+    kind: "Fișier încărcat",
+    fileName: row.original_file_name,
+    createdAt: row.created_at,
+    downloadHref: `/nexora/documents/client-files/${clientId}/uploads/${row.id}/download`
+  }));
+  db.prepare(`
+    SELECT id, contract_number, pdf_path, created_at
+    FROM contracts
+    WHERE client_id=? AND company_id=? AND TRIM(COALESCE(pdf_path,'')) <> ''
+  `).all(clientId, companyId).forEach((row) => documents.push({
+    category: "CONTRACTE",
+    title: `Contract ${row.contract_number || ""}`,
+    kind: "Contract",
+    fileName: row.pdf_path,
+    createdAt: row.created_at,
+    downloadHref: `/${row.pdf_path}`,
+    openHref: `/nexora/contracts/${row.id}`
+  }));
+  db.prepare(`
+    SELECT id, quote_number, title, pdf_path, created_at
+    FROM quotes
+    WHERE client_id=? AND company_id=? AND TRIM(COALESCE(pdf_path,'')) <> ''
+  `).all(clientId, companyId).forEach((row) => documents.push({
+    category: "OFERTE",
+    title: row.title || `Ofertă ${row.quote_number || ""}`,
+    kind: "Ofertă",
+    fileName: row.pdf_path,
+    createdAt: row.created_at,
+    downloadHref: `/${row.pdf_path}`,
+    openHref: `/nexora/quotes/${row.id}`
+  }));
+  db.prepare(`
+    SELECT id, factura_nr, pdf_path, efactura_xml_path, efactura_response_zip_path, created_at
+    FROM facturi
+    WHERE client_id=? AND company_id=?
+  `).all(clientId, companyId).forEach((row) => {
+    if (row.pdf_path) documents.push({
+      category: "FACTURI",
+      title: `Factură ${row.factura_nr || ""}`,
+      kind: "Factură PDF",
+      fileName: row.pdf_path,
+      createdAt: row.created_at,
+      downloadHref: `/${row.pdf_path}`,
+      openHref: `/nexora/facturi/${row.id}`
+    });
+    if (row.efactura_xml_path) documents.push({
+      category: "E-FACTURA",
+      title: `XML ${row.factura_nr || ""}`,
+      kind: "XML e-Factura",
+      fileName: row.efactura_xml_path,
+      createdAt: row.created_at,
+      downloadHref: `/nexora/documents/client-files/${clientId}/invoices/${row.id}/xml/download`,
+      openHref: `/nexora/facturi/${row.id}`
+    });
+    if (row.efactura_response_zip_path) documents.push({
+      category: "E-FACTURA",
+      title: `Răspuns ANAF ${row.factura_nr || ""}`,
+      kind: "Arhivă ANAF",
+      fileName: row.efactura_response_zip_path,
+      createdAt: row.created_at,
+      downloadHref: `/nexora/facturi/${row.id}/efactura/raspuns`,
+      openHref: `/nexora/facturi/${row.id}`
+    });
+  });
+  db.prepare(`
+    SELECT id, title, category, file_name, file_path, created_at
+    FROM tipizate_docs
+    WHERE client_id=? AND company_id=?
+  `).all(clientId, companyId).forEach((row) => documents.push({
+    category: "TIPIZATE",
+    title: row.title,
+    kind: row.category || "Tipizat",
+    fileName: row.file_name,
+    createdAt: row.created_at,
+    downloadHref: `/${row.file_path}`
+  }));
+  db.prepare(`
+    SELECT id, title, output_file_name, template_type, created_at
+    FROM dms_autofill_documents
+    WHERE client_id=? AND company_id=?
+  `).all(clientId, companyId).forEach((row) => documents.push({
+    category: "FORMULARE",
+    title: row.title,
+    kind: row.template_type || "Completat automat",
+    fileName: row.output_file_name,
+    createdAt: row.created_at,
+    downloadHref: `/nexora/documents/autofill/${row.id}/download`
+  }));
+  db.prepare(`
+    SELECT pf.id, pf.project_id, pf.original_file_name, pf.category, pf.created_at, p.title AS project_title
+    FROM project_files pf
+    JOIN projects p ON p.id=pf.project_id AND p.company_id=pf.company_id
+    WHERE pf.company_id=? AND p.client_id=?
+  `).all(companyId, clientId).forEach((row) => documents.push({
+    category: "PROIECTE",
+    title: `${row.project_title || "Proiect"} - ${row.original_file_name || "Fișier"}`,
+    kind: row.category || "Proiect",
+    fileName: row.original_file_name,
+    createdAt: row.created_at,
+    downloadHref: `/nexora/projects/${row.project_id}/files/${row.id}/download`,
+    openHref: `/nexora/projects/${row.project_id}`
+  }));
+
+  documents.sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")));
+  return res.type("html").send(renderNexoraClientDossierDetailPage({
+    companyName: req.session.user.company_name || "",
+    client,
+    documents,
+    ok: String(req.query?.ok || ""),
+    err: String(req.query?.err || "")
+  }));
+});
+
+app.get("/nexora/documents/client-files/:clientId/invoices/:invoiceId/xml/download", requireAuth, requireCompanyAdmin, (req, res) => {
+  const companyId = Number(req.session.user.company_id || 0);
+  const clientId = Number(req.params.clientId || 0);
+  const invoiceId = Number(req.params.invoiceId || 0);
+  const invoice = db.prepare(`
+    SELECT factura_nr, efactura_xml_path
+    FROM facturi
+    WHERE id=? AND client_id=? AND company_id=?
+  `).get(invoiceId, clientId, companyId);
+  if (!invoice?.efactura_xml_path) return res.status(404).send("XML-ul nu a fost gasit.");
+
+  const storageRoot = path.resolve(__dirname);
+  const absolutePath = path.resolve(__dirname, String(invoice.efactura_xml_path));
+  if (!absolutePath.startsWith(storageRoot + path.sep) || !fs.existsSync(absolutePath)) {
+    return res.status(404).send("XML-ul nu a fost gasit.");
+  }
+  return res.download(absolutePath, `${safeStoredFileName(invoice.factura_nr, "factura")}.xml`);
+});
+
+app.post("/nexora/documents/client-files/:clientId/upload", requireAuth, requireCompanyAdmin, dmsClientUpload.single("file"), (req, res) => {
+  const companyId = Number(req.session.user.company_id || 0);
+  const clientId = Number(req.params.clientId || 0);
+  const client = db.prepare("SELECT id FROM clients WHERE id=? AND company_id=?").get(clientId, companyId);
+  const file = req.file;
+  if (!client) {
+    if (file) { try { fs.unlinkSync(file.path); } catch {} }
+    return res.status(404).send("Clientul nu a fost gasit.");
+  }
+  if (!file) return res.redirect(`/nexora/documents/client-files/${clientId}?err=no_file`);
+
+  const title = String(req.body?.title || "").trim();
+  if (!title) {
+    try { fs.unlinkSync(file.path); } catch {}
+    return res.redirect(`/nexora/documents/client-files/${clientId}?err=missing_title`);
+  }
+  const allowedCategories = new Set(["CONTRACTE", "OFERTE", "FACTURI", "TIPIZATE", "FORMULARE", "PROIECTE", "CORESPONDENTA", "ALTELE"]);
+  const requestedCategory = String(req.body?.category || "ALTELE").trim().toUpperCase();
+  const category = allowedCategories.has(requestedCategory) ? requestedCategory : "ALTELE";
+  const safeOriginalName = safeStoredFileName(file.originalname, "document");
+  const storedFileName = `${Date.now()}-${safeOriginalName}`;
+  const relativePath = `company-${companyId}/client-${clientId}/${storedFileName}`;
+  const directory = dmsClientStorageDirectory(companyId, clientId);
+  const destinationPath = path.join(directory, storedFileName);
+
+  try {
+    fs.mkdirSync(directory, { recursive: true });
+    fs.renameSync(file.path, destinationPath);
+    db.prepare(`
+      INSERT INTO dms_client_files (
+        company_id, client_id, title, category, original_file_name, stored_file_name,
+        stored_path, mime_type, file_size, notes, uploaded_by_email
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      companyId,
+      clientId,
+      title,
+      category,
+      String(file.originalname || safeOriginalName),
+      storedFileName,
+      relativePath,
+      String(file.mimetype || "application/octet-stream"),
+      Number(file.size || 0),
+      String(req.body?.notes || "").trim() || null,
+      String(req.session.user.email || "")
+    );
+    return res.redirect(`/nexora/documents/client-files/${clientId}?ok=uploaded`);
+  } catch (error) {
+    console.error("DMS client file upload failed:", error);
+    try { if (fs.existsSync(file.path)) fs.unlinkSync(file.path); } catch {}
+    try { if (fs.existsSync(destinationPath)) fs.unlinkSync(destinationPath); } catch {}
+    return res.redirect(`/nexora/documents/client-files/${clientId}?err=upload`);
+  }
+});
+
+app.get("/nexora/documents/client-files/:clientId/uploads/:fileId/download", requireAuth, requireCompanyAdmin, (req, res) => {
+  const companyId = Number(req.session.user.company_id || 0);
+  const clientId = Number(req.params.clientId || 0);
+  const fileId = Number(req.params.fileId || 0);
+  const file = db.prepare(`
+    SELECT original_file_name, stored_path
+    FROM dms_client_files
+    WHERE id=? AND client_id=? AND company_id=? AND archived_at IS NULL
+  `).get(fileId, clientId, companyId);
+  if (!file) return res.status(404).send("Fisierul nu a fost gasit.");
+  const absolutePath = resolveDmsClientStoredPath(companyId, clientId, file.stored_path);
+  if (!absolutePath || !fs.existsSync(absolutePath)) return res.status(404).send("Fisierul nu a fost gasit.");
+  return res.download(absolutePath, String(file.original_file_name || "document"));
+});
+
 app.post("/nexora/documents/autofill", requireAuth, dmsAutofillUpload.single("template"), async (req, res) => {
   const companyId = Number(req.session.user.company_id || 0);
   const file = req.file;
+  const requestedClientId = Number(req.body?.client_id || 0) || null;
   let sourcePath = "";
   let outputPath = "";
 
   if (!file) return res.redirect(`/nexora/documents?err=no_file#autofill`);
+  if (requestedClientId && !db.prepare("SELECT id FROM clients WHERE id=? AND company_id=?").get(requestedClientId, companyId)) {
+    try { fs.unlinkSync(file.path); } catch {}
+    return res.status(400).send("Client invalid.");
+  }
 
   const originalName = String(file.originalname || "formular");
   const extension = path.extname(originalName).toLowerCase();
@@ -5708,9 +6011,9 @@ app.post("/nexora/documents/autofill", requireAuth, dmsAutofillUpload.single("te
       INSERT INTO dms_autofill_documents (
         company_id, title, source_file_name, source_file_path, output_file_name,
         output_file_path, output_mime_type, template_type, matched_fields,
-        replacement_count, created_by_email
+        replacement_count, created_by_email, client_id
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       companyId,
       title,
@@ -5722,7 +6025,8 @@ app.post("/nexora/documents/autofill", requireAuth, dmsAutofillUpload.single("te
       extension.slice(1).toUpperCase(),
       JSON.stringify(completed.matchedFields),
       Number(completed.replacementCount || 0),
-      String(req.session.user.email || "")
+      String(req.session.user.email || ""),
+      requestedClientId
     );
 
     return res.redirect(`/nexora/documents?ok=autofilled#autofill`);
@@ -5794,6 +6098,7 @@ app.get("/nexora/documents/register", requireAuth, (req, res) => {
 
   return res.type("html").send(renderNexoraDocumentsRegisterPage({
     companyName: req.session.user.company_name || "",
+    isCompanyAdmin: isCompanyAdminUser(req.session.user),
     rows,
     summary,
     ok: String(req.query?.ok || "")
@@ -6200,6 +6505,13 @@ ${crmShellEnd()}
 });
 
 app.get("/tipizate/notificare-client", requireAuth, (req, res) => {
+  const companyId = Number(req.session.user.company_id || 0);
+  const clients = db.prepare(`
+    SELECT id, name, cui
+    FROM clients
+    WHERE company_id=?
+    ORDER BY name COLLATE NOCASE ASC
+  `).all(companyId);
   res.type("html").send(`
 <!doctype html>
 <html>
@@ -6221,7 +6533,10 @@ ${crmShellStart("tipizate", "Notificare client", "Completează formularul și ge
     <div class="crm-grid-2">
       <div>
         <label class="crm-label">Client</label>
-        <input class="crm-input" name="client_name" required>
+        <select class="crm-input" name="client_id" required>
+          <option value="">Selectează clientul</option>
+          ${clients.map((client) => `<option value="${escapeHtml(client.id)}">${escapeHtml(client.name)}${client.cui ? ` (${escapeHtml(client.cui)})` : ""}</option>`).join("")}
+        </select>
       </div>
       <div>
         <label class="crm-label">Data</label>
@@ -7193,14 +7508,16 @@ app.post("/tipizate/notificare-client/generate", requireAuth, async (req, res) =
   try {
     const companyId = Number(req.session.user.company_id || 0);
     const title = String(req.body?.title || "").trim();
-    const client_name = String(req.body?.client_name || "").trim();
+    const clientId = Number(req.body?.client_id || 0) || null;
+    const client = clientId ? db.prepare("SELECT id, name FROM clients WHERE id=? AND company_id=?").get(clientId, companyId) : null;
+    const client_name = String(client?.name || req.body?.client_name || "").trim();
     const doc_date = String(req.body?.doc_date || "").trim() || todayISO();
     const subject = String(req.body?.subject || "").trim();
     const content = String(req.body?.content || "").trim();
     const prepared_by = String(req.body?.prepared_by || "").trim();
 
     if (!title) return res.status(400).send("Titlul este obligatoriu.");
-    if (!client_name) return res.status(400).send("Clientul este obligatoriu.");
+    if (!clientId || !client) return res.status(400).send("Selectează un client valid.");
     if (!subject) return res.status(400).send("Subiectul este obligatoriu.");
     if (!content) return res.status(400).send("Mesajul este obligatoriu.");
 
@@ -7242,9 +7559,9 @@ h1{margin-bottom:20px}
     const file_path = `uploads/tipizate/${finalName}`;
 
     const insertInfo = db.prepare(`
-      INSERT INTO tipizate_docs (title, category, file_name, file_path, mime_type, company_id)
-      VALUES (?,?,?,?,?,?)
-    `).run(title, "NOTIFICARE_CLIENT", finalName, file_path, "application/pdf", companyId);
+      INSERT INTO tipizate_docs (title, category, file_name, file_path, mime_type, company_id, client_id)
+      VALUES (?,?,?,?,?,?,?)
+    `).run(title, "NOTIFICARE_CLIENT", finalName, file_path, "application/pdf", companyId, clientId);
     const registration = registerTipizateDocument(insertInfo.lastInsertRowid, companyId, req);
     if (registration?.registration_number) {
       fs.writeFileSync(path.join(dir, finalName), await renderPdfBuffer(stampTipizateRegistrationHtml(html, registration)));
@@ -7707,7 +8024,12 @@ app.post(["/tipizate/upload", "/nexora/documents/upload"], requireAuth, upload.s
 
   const title = String(req.body?.title || "").trim();
   const category = String(req.body?.category || "ALTELE").trim().toUpperCase();
+  const clientId = Number(req.body?.client_id || 0) || null;
   if (!title) return res.status(400).send("Titlul documentului este obligatoriu.");
+  if (clientId && !db.prepare("SELECT id FROM clients WHERE id=? AND company_id=?").get(clientId, companyId)) {
+    try { fs.unlinkSync(req.file.path); } catch {}
+    return res.status(400).send("Client invalid.");
+  }
 
   const uploadsDir = path.join(__dirname, "public", "uploads", "tipizate");
   fs.mkdirSync(uploadsDir, { recursive: true });
@@ -7718,15 +8040,16 @@ app.post(["/tipizate/upload", "/nexora/documents/upload"], requireAuth, upload.s
   fs.renameSync(req.file.path, finalPath);
 
   const insertInfo = db.prepare(`
-    INSERT INTO tipizate_docs (title, category, file_name, file_path, mime_type, company_id)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO tipizate_docs (title, category, file_name, file_path, mime_type, company_id, client_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(
     title,
     category,
     finalName,
     `uploads/tipizate/${finalName}`,
     req.file.mimetype || "application/pdf",
-    companyId
+    companyId,
+    clientId
   );
   registerTipizateDocument(insertInfo.lastInsertRowid, companyId, req);
 
@@ -8692,11 +9015,16 @@ app.post(["/super-admin/companies/:id/status", "/nexora/super-admin/companies/:i
   if (!["trial", "active", "past_due", "suspended"].includes(nextStatus)) return res.status(400).send("Status invalid");
 
   const existingCompany = db.prepare(`
-    SELECT id, status, suspension_reason
+    SELECT id, status, suspension_reason, archived_at
     FROM companies
     WHERE id=?
   `).get(companyId);
   if (!existingCompany) return res.status(404).send("Company not found");
+  if (existingCompany.archived_at || String(existingCompany.status || "").toLowerCase() === "archived") {
+    return req.path.startsWith("/nexora/")
+      ? res.redirect(`/nexora/super-admin/companies/${companyId}?err=archived`)
+      : res.status(400).send("Compania arhivata trebuie restaurata inainte de schimbarea statusului.");
+  }
 
   db.prepare(`
     UPDATE companies
@@ -8733,6 +9061,94 @@ app.post(["/super-admin/companies/:id/status", "/nexora/super-admin/companies/:i
   });
 
   res.redirect(req.path.startsWith("/nexora/") ? `/nexora/super-admin/companies/${companyId}?ok=status` : "/super-admin/companies");
+});
+
+app.post(["/super-admin/companies/:id/archive", "/nexora/super-admin/companies/:id/archive"], requireAuth, requireSuperAdmin, (req, res) => {
+  const companyId = Number(req.params.id);
+  const reason = String(req.body?.reason || "").trim();
+  if (!Number.isFinite(companyId)) return res.status(400).send("Bad id");
+
+  const company = db.prepare(`
+    SELECT id, status, suspension_reason, archived_at
+    FROM companies
+    WHERE id=?
+  `).get(companyId);
+  if (!company) return res.status(404).send("Company not found");
+  if (company.archived_at || String(company.status || "").toLowerCase() === "archived") {
+    return res.redirect(`/nexora/super-admin/companies/${companyId}?err=already_archived`);
+  }
+
+  const previousStatus = String(company.status || "active").toLowerCase();
+  if (!["suspended", "past_due"].includes(previousStatus)) {
+    return res.redirect(`/nexora/super-admin/companies/${companyId}?err=archive_status`);
+  }
+
+  const archiveReason = reason || String(company.suspension_reason || "").trim() || "Arhivat de super admin.";
+  db.prepare(`
+    UPDATE companies
+    SET archived_previous_status=status,
+        status='archived',
+        archived_at=datetime('now'),
+        archived_by_email=?,
+        archive_reason=?,
+        updated_at=datetime('now')
+    WHERE id=? AND archived_at IS NULL
+  `).run(String(req.session.user.email || ""), archiveReason, companyId);
+
+  logCompanyAdminEvent({
+    companyId,
+    actorUserId: Number(req.session.user.id || 0),
+    actorEmail: req.session.user.email,
+    eventType: "company_archived",
+    statusFrom: previousStatus,
+    statusTo: "archived",
+    reason: archiveReason
+  });
+
+  return res.redirect(`/nexora/super-admin/companies/${companyId}?ok=archived`);
+});
+
+app.post(["/super-admin/companies/:id/restore", "/nexora/super-admin/companies/:id/restore"], requireAuth, requireSuperAdmin, (req, res) => {
+  const companyId = Number(req.params.id);
+  if (!Number.isFinite(companyId)) return res.status(400).send("Bad id");
+
+  const company = db.prepare(`
+    SELECT id, status, archived_at, archived_previous_status, archive_reason
+    FROM companies
+    WHERE id=?
+  `).get(companyId);
+  if (!company) return res.status(404).send("Company not found");
+  if (!company.archived_at && String(company.status || "").toLowerCase() !== "archived") {
+    return res.redirect(`/nexora/super-admin/companies/${companyId}?err=not_archived`);
+  }
+
+  const requestedStatus = String(company.archived_previous_status || "").toLowerCase();
+  const restoredStatus = ["trial", "active", "past_due", "suspended"].includes(requestedStatus)
+    ? requestedStatus
+    : "suspended";
+
+  db.prepare(`
+    UPDATE companies
+    SET status=?,
+        archived_at=NULL,
+        archived_by_email=NULL,
+        archived_previous_status=NULL,
+        archive_reason=NULL,
+        updated_at=datetime('now')
+    WHERE id=?
+  `).run(restoredStatus, companyId);
+
+  logCompanyAdminEvent({
+    companyId,
+    actorUserId: Number(req.session.user.id || 0),
+    actorEmail: req.session.user.email,
+    eventType: "company_restored",
+    statusFrom: "archived",
+    statusTo: restoredStatus,
+    reason: String(company.archive_reason || "")
+  });
+
+  return res.redirect(`/nexora/super-admin/companies/${companyId}?ok=restored`);
 });
 
 app.post(["/super-admin/companies/:id/delete", "/nexora/super-admin/companies/:id/delete"], requireAuth, requireSuperAdmin, (req, res) => {
@@ -9120,11 +9536,12 @@ app.post(["/super-admin/payments/op", "/nexora/super-admin/payments/op"], requir
 
 app.get("/nexora/super-admin", requireAuth, requireSuperAdmin, (req, res) => {
   const stats = {
-    activeCompanies: db.prepare(`SELECT COUNT(*) AS n FROM companies WHERE LOWER(COALESCE(status,'active'))='active'`).get()?.n || 0,
-    trialCompanies: db.prepare(`SELECT COUNT(*) AS n FROM companies WHERE LOWER(COALESCE(status,''))='trial'`).get()?.n || 0,
-    pastDueCompanies: db.prepare(`SELECT COUNT(*) AS n FROM companies WHERE LOWER(COALESCE(status,''))='past_due'`).get()?.n || 0,
-    suspendedCompanies: db.prepare(`SELECT COUNT(*) AS n FROM companies WHERE LOWER(COALESCE(status,''))='suspended'`).get()?.n || 0,
-    totalCompanies: db.prepare(`SELECT COUNT(*) AS n FROM companies`).get()?.n || 0,
+    activeCompanies: db.prepare(`SELECT COUNT(*) AS n FROM companies WHERE archived_at IS NULL AND LOWER(COALESCE(status,'active'))='active'`).get()?.n || 0,
+    trialCompanies: db.prepare(`SELECT COUNT(*) AS n FROM companies WHERE archived_at IS NULL AND LOWER(COALESCE(status,''))='trial'`).get()?.n || 0,
+    pastDueCompanies: db.prepare(`SELECT COUNT(*) AS n FROM companies WHERE archived_at IS NULL AND LOWER(COALESCE(status,''))='past_due'`).get()?.n || 0,
+    suspendedCompanies: db.prepare(`SELECT COUNT(*) AS n FROM companies WHERE archived_at IS NULL AND LOWER(COALESCE(status,''))='suspended'`).get()?.n || 0,
+    archivedCompanies: db.prepare(`SELECT COUNT(*) AS n FROM companies WHERE archived_at IS NOT NULL OR LOWER(COALESCE(status,''))='archived'`).get()?.n || 0,
+    totalCompanies: db.prepare(`SELECT COUNT(*) AS n FROM companies WHERE archived_at IS NULL`).get()?.n || 0,
     totalUsers: db.prepare(`SELECT COUNT(*) AS n FROM users`).get()?.n || 0,
     totalPayments: db.prepare(`SELECT COUNT(*) AS n FROM billing_payments`).get()?.n || 0
   };
@@ -9137,6 +9554,7 @@ app.get("/nexora/super-admin", requireAuth, requireSuperAdmin, (req, res) => {
       ON cs.company_id=c.id
      AND cs.id=(SELECT cs2.id FROM company_subscriptions cs2 WHERE cs2.company_id=c.id ORDER BY cs2.id DESC LIMIT 1)
     LEFT JOIN plans p ON p.id=cs.plan_id
+    WHERE c.archived_at IS NULL
     ORDER BY c.id DESC
     LIMIT 10
   `).all();
@@ -9200,12 +9618,17 @@ app.get("/nexora/super-admin/companies", requireAuth, requireSuperAdmin, async (
 
   const where = [];
   const params = [];
+  if (status === "archived") {
+    where.push("(c.archived_at IS NOT NULL OR LOWER(COALESCE(c.status,''))='archived')");
+  } else {
+    where.push("c.archived_at IS NULL");
+  }
   if (q) {
     where.push("(LOWER(c.name) LIKE ? OR LOWER(COALESCE(c.slug,'')) LIKE ? OR LOWER(COALESCE(c.cui,'')) LIKE ?)");
     const token = `%${q.toLowerCase()}%`;
     params.push(token, token, token);
   }
-  if (status && status !== "all") {
+  if (status && status !== "all" && status !== "archived") {
     where.push("LOWER(COALESCE(c.status,'active')) = ?");
     params.push(status);
   }
@@ -9216,7 +9639,8 @@ app.get("/nexora/super-admin/companies", requireAuth, requireSuperAdmin, async (
 
   const rows = db.prepare(`
     SELECT c.id, c.name, c.slug, c.cui, c.status, c.is_demo, c.demo_expires_at,
-           c.suspension_reason, c.created_at, c.max_users, p.name AS plan_name,
+           c.suspension_reason, c.archived_at, c.archived_by_email, c.archive_reason,
+           c.created_at, c.max_users, p.name AS plan_name,
            cs.status AS subscription_status, cs.seats_included, cs.seats_used,
            (SELECT COUNT(*) FROM users u WHERE u.company_id=c.id) AS users_count,
            (SELECT COUNT(*) FROM clients cl WHERE cl.company_id=c.id) AS clients_count,
@@ -9392,7 +9816,9 @@ app.get("/nexora/super-admin/companies/:id", requireAuth, requireSuperAdmin, (re
     clients,
     invoices,
     payments,
-    events
+    events,
+    ok: String(req.query?.ok || ""),
+    err: String(req.query?.err || "")
   }));
 });
 
@@ -9456,6 +9882,7 @@ app.get("/nexora/super-admin/payments", requireAuth, requireSuperAdmin, (req, re
   const companies = db.prepare(`
     SELECT id, name
     FROM companies
+    WHERE archived_at IS NULL
     ORDER BY name COLLATE NOCASE ASC
   `).all();
   const plans = db.prepare(`

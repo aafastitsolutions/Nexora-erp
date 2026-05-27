@@ -42,30 +42,33 @@ function renderErpSidebar(options = {}) {
   const appName = options.appName || "Nexora";
   const companyName = options.companyName || "Workspace";
   const isSuperAdmin = Number(options.isSuperAdmin || 0) === 1;
+  const isCompanyAdmin = Number(options.isCompanyAdmin || 0) === 1;
 
   const visibleModules = ERP_MODULES.filter((module) => !module.superAdminOnly || isSuperAdmin);
 
   const modulesHtml = visibleModules.map((module) => {
-    const hasActiveChild = (module.children || []).some((child) =>
+    const visibleChildren = (module.children || []).filter((child) => !child.companyAdminOnly || isCompanyAdmin);
+    const hasActiveChild = visibleChildren.some((child) =>
       isActivePath(currentPath, child.path) ||
-      (child.children || []).some((nestedChild) => isActivePath(currentPath, nestedChild.path))
+      (child.children || []).filter((nestedChild) => !nestedChild.companyAdminOnly || isCompanyAdmin).some((nestedChild) => isActivePath(currentPath, nestedChild.path))
     );
 
     const isActive = isActivePath(currentPath, module.path) || hasActiveChild;
-    const hasChildren = Array.isArray(module.children) && module.children.length > 0;
+    const hasChildren = visibleChildren.length > 0;
     const icon = ICONS[module.icon] || "•";
 
-    const childrenHtml = (module.children || [])
+    const childrenHtml = visibleChildren
       .map((child) => {
         const childActive = isActivePath(currentPath, child.path);
 
-        const hasNestedChildren = Array.isArray(child.children) && child.children.length > 0;
-        const hasActiveNestedChild = (child.children || []).some((nestedChild) =>
+        const visibleNestedChildren = (child.children || []).filter((nestedChild) => !nestedChild.companyAdminOnly || isCompanyAdmin);
+        const hasNestedChildren = visibleNestedChildren.length > 0;
+        const hasActiveNestedChild = visibleNestedChildren.some((nestedChild) =>
           isActivePath(currentPath, nestedChild.path)
         );
         const childIsActive = childActive || hasActiveNestedChild;
 
-        const nestedHtml = (child.children || [])
+        const nestedHtml = visibleNestedChildren
           .map((nestedChild) => {
             const nestedActive = isActivePath(currentPath, nestedChild.path);
 

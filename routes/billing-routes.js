@@ -83,7 +83,7 @@ function syncCompanyStatusFromSubscription(db, companyId) {
     SET status=?,
         max_users=COALESCE(?, max_users),
         updated_at=datetime('now')
-    WHERE id=?
+    WHERE id=? AND archived_at IS NULL
   `).run(
     subscription.status || "active",
     subscription.seats_included || null,

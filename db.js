@@ -590,6 +590,23 @@ export function migrate() {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS dms_client_files (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      client_id INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'ALTELE',
+      original_file_name TEXT NOT NULL,
+      stored_file_name TEXT NOT NULL,
+      stored_path TEXT NOT NULL,
+      mime_type TEXT,
+      file_size INTEGER NOT NULL DEFAULT 0,
+      notes TEXT,
+      uploaded_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      archived_at TEXT
+    );
+
     CREATE TABLE IF NOT EXISTS projects (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       company_id INTEGER NOT NULL,
@@ -969,6 +986,10 @@ export function migrate() {
   ensureColumn("companies", "suspension_reason", "TEXT");
   ensureColumn("companies", "suspended_at", "TEXT");
   ensureColumn("companies", "suspended_by_email", "TEXT");
+  ensureColumn("companies", "archived_at", "TEXT");
+  ensureColumn("companies", "archived_by_email", "TEXT");
+  ensureColumn("companies", "archived_previous_status", "TEXT");
+  ensureColumn("companies", "archive_reason", "TEXT");
   ensureColumn("plans", "pricing_model", "TEXT NOT NULL DEFAULT 'flat'");
   ensureColumn("plans", "max_modules_per_user", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn("plans", "max_active_modules", "INTEGER NOT NULL DEFAULT 0");
@@ -988,6 +1009,8 @@ export function migrate() {
   ensureColumn("company_subscriptions", "current_period_end", "TEXT");
   ensureColumn("company_subscriptions", "last_payment_status", "TEXT");
   ensureColumn("billing_payments", "provider_event_type", "TEXT");
+  ensureColumn("tipizate_docs", "client_id", "INTEGER");
+  ensureColumn("dms_autofill_documents", "client_id", "INTEGER");
   ensureColumn("billing_payments", "payment_kind", "TEXT NOT NULL DEFAULT 'subscription'");
   ensureColumn("billing_payments", "payer_name", "TEXT");
   ensureColumn("billing_payments", "payer_email", "TEXT");
@@ -1235,6 +1258,7 @@ export function migrate() {
     CREATE INDEX IF NOT EXISTS idx_billing_payments_stripe_invoice_id ON billing_payments(stripe_invoice_id);
     CREATE INDEX IF NOT EXISTS idx_billing_payments_stripe_payment_intent_id ON billing_payments(stripe_payment_intent_id);
     CREATE INDEX IF NOT EXISTS idx_companies_stripe_customer_id ON companies(stripe_customer_id);
+    CREATE INDEX IF NOT EXISTS idx_companies_archived_at ON companies(archived_at);
     CREATE INDEX IF NOT EXISTS idx_company_subscriptions_stripe_subscription_id ON company_subscriptions(stripe_subscription_id);
     CREATE INDEX IF NOT EXISTS idx_users_company_id ON users(company_id);
     CREATE INDEX IF NOT EXISTS idx_company_subscriptions_company_id ON company_subscriptions(company_id);
@@ -1242,6 +1266,9 @@ export function migrate() {
     CREATE INDEX IF NOT EXISTS idx_clients_cui ON clients(cui);
     CREATE INDEX IF NOT EXISTS idx_clients_company_id ON clients(company_id);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_clients_company_cui_unique ON clients(company_id, cui);
+    CREATE INDEX IF NOT EXISTS idx_tipizate_docs_client_id ON tipizate_docs(client_id);
+    CREATE INDEX IF NOT EXISTS idx_dms_autofill_client_id ON dms_autofill_documents(client_id);
+    CREATE INDEX IF NOT EXISTS idx_dms_client_files_company_client ON dms_client_files(company_id, client_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_accounting_expenses_company_id ON accounting_expenses(company_id);
     CREATE INDEX IF NOT EXISTS idx_accounting_expenses_issue_date ON accounting_expenses(issue_date DESC);
     CREATE INDEX IF NOT EXISTS idx_accounting_expenses_payment_status ON accounting_expenses(payment_status);

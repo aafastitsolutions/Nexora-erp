@@ -31,7 +31,7 @@ function resolveCompanyAccess(companyId) {
   }
 
   const company = db.prepare(`
-    SELECT id, name, slug, status, max_users, suspension_reason, is_demo, demo_expires_at
+    SELECT id, name, slug, status, max_users, suspension_reason, is_demo, demo_expires_at, archived_at
     FROM companies
     WHERE id=?
   `).get(companyId) || null;
@@ -132,7 +132,11 @@ function refreshSessionUserAccess(sessionUser) {
   if (!isSuperAdmin && Number(companyAccess.company?.is_demo || 0) === 1 && isDemoExpired(companyAccess.company)) {
     return null;
   }
-  if (!isSuperAdmin && companyAccess.company && String(companyAccess.company.status || "active").toLowerCase() === "suspended") {
+  if (!isSuperAdmin && companyAccess.company && (
+    String(companyAccess.company.status || "active").toLowerCase() === "suspended"
+    || String(companyAccess.company.status || "").toLowerCase() === "archived"
+    || Boolean(companyAccess.company.archived_at)
+  )) {
     return null;
   }
   const effectiveModules = isSuperAdmin
@@ -246,12 +250,17 @@ export function verifyUserAttempt(email, password) {
       detail: "Perioada demo de 7 zile a expirat. Contacteaza administratorul platformei pentru activare sau recreare demo."
     };
   }
-  if (!isSuperAdmin && companyAccess.company && String(companyAccess.company.status || "active").toLowerCase() === "suspended") {
+  if (!isSuperAdmin && companyAccess.company && (
+    String(companyAccess.company.status || "active").toLowerCase() === "suspended"
+    || String(companyAccess.company.status || "").toLowerCase() === "archived"
+    || Boolean(companyAccess.company.archived_at)
+  )) {
+    const archived = String(companyAccess.company.status || "").toLowerCase() === "archived" || Boolean(companyAccess.company.archived_at);
     return {
       ok: false,
       reason: companyAccess.company?.suspension_reason ? "company_suspended_with_reason" : "company_suspended",
       company_name: companyAccess.company?.name || null,
-      detail: companyAccess.company?.suspension_reason || ""
+      detail: archived ? "Compania este arhivata. Contacteaza administratorul platformei pentru restaurare." : companyAccess.company?.suspension_reason || ""
     };
   }
   const effectiveModules = isSuperAdmin
