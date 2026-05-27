@@ -3,7 +3,7 @@ import path from "path";
 import { renderErpSidebar } from "./erp-sidebar.js";
 
 const sidebar = renderErpSidebar({
-  currentPath: "/dashboard",
+  currentPath: "/nexora-dashboard",
   appName: "Nexora ERP",
   companyName: "A&A Fast IT Solutions"
 });
@@ -32,8 +32,11 @@ const html = `<!doctype html>
         </div>
 
         <div class="nx-actions">
-          <a class="nx-btn" href="/facturi">Facturi</a>
-          <a class="nx-btn primary" href="/clients">Client nou</a>
+          <a class="nx-btn" href="/nexora/facturi">Facturi</a>
+          <a class="nx-btn primary" href="/nexora/clients/new">Client nou</a>
+          <form method="post" action="/logout" class="nx-logout-form">
+            <button class="nx-btn nx-logout-btn" type="submit">Logout</button>
+          </form>
         </div>
       </header>
 
@@ -125,12 +128,12 @@ const html = `<!doctype html>
           </div>
 
           <div class="nx-shortcuts">
-            <a href="/facturi">Factură nouă</a>
-            <a href="/quotes">Ofertă nouă</a>
-            <a href="/clients">Client nou</a>
-            <a href="/produse">Produs nou</a>
-            <a href="/employees">Angajat nou</a>
-            <a href="/reports">Dashboard BI</a>
+            <a href="/nexora/facturi/new">Factură nouă</a>
+            <a href="/nexora/quotes">Ofertă nouă</a>
+            <a href="/nexora/clients/new">Client nou</a>
+            <a href="/nexora/products">Produs nou</a>
+            <a href="/nexora/employees">Angajat nou</a>
+            <a href="/nexora/reports">Dashboard BI</a>
           </div>
         </div>
       </section>
@@ -140,6 +143,6 @@ const html = `<!doctype html>
 </html>`;
 
 const outputPath = path.join(process.cwd(), "public", "nexora-preview.html");
-fs.writeFileSync(outputPath, html);
+fs.writeFileSync(outputPath, html.replace(/[ \t]+$/gm, ""));
 
 console.log(`Preview generated: ${outputPath}`);

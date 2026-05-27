@@ -34,7 +34,7 @@ function renderNexoraAnafInboxPage(options = {}) {
   const sync = options.sync || {};
 
   const sidebar = renderErpSidebar({
-    currentPath: "/anaf/inbox",
+    currentPath: "/nexora/anaf/inbox",
     appName: "Nexora ERP",
     companyName
   });
@@ -140,7 +140,6 @@ function renderNexoraAnafInboxPage(options = {}) {
         </div>
 
         <div class="nx-actions">
-          <a class="nx-btn" href="/anaf/inbox">UI vechi</a>
           <a class="nx-btn" href="/nexora/anaf/status">Status ANAF</a>
           <form method="post" action="/anaf/inbox/sync" style="margin:0">
             <input type="hidden" name="redirect_to" value="/nexora/anaf/inbox">

@@ -16,7 +16,7 @@ function renderNexoraClientsPage(options = {}) {
   const q = options.q || "";
 
   const sidebar = renderErpSidebar({
-    currentPath: "/clients",
+    currentPath: "/nexora/clients",
     appName: "Nexora ERP",
     companyName
   });
@@ -70,7 +70,6 @@ function renderNexoraClientsPage(options = {}) {
         </form>
 
         <div class="nx-actions">
-          <a class="nx-btn" href="/clients">UI vechi</a>
           <a class="nx-btn primary" href="/nexora/clients/new">Client nou</a>
         </div>
       </header>
@@ -112,7 +111,7 @@ function renderNexoraClientNewPage(options = {}) {
   const companyName = user.company_name || options.companyName || "Workspace";
 
   const sidebar = renderErpSidebar({
-    currentPath: "/clients",
+    currentPath: "/nexora/clients",
     appName: "Nexora ERP",
     companyName
   });
@@ -138,7 +137,6 @@ function renderNexoraClientNewPage(options = {}) {
 
         <div class="nx-actions">
           <a class="nx-btn" href="/nexora/clients">Înapoi la clienți</a>
-          <a class="nx-btn" href="/clients">UI vechi</a>
         </div>
       </header>
 

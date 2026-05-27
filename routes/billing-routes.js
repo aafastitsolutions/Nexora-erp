@@ -353,6 +353,14 @@ function renderBillingResult(message, href = "/setari") {
 `;
 }
 
+function wantsNexoraReturn(req) {
+  return String(req.query?.return_to || "").trim().toLowerCase() === "nexora";
+}
+
+function settingsReturnHref(req) {
+  return wantsNexoraReturn(req) ? "/nexora/settings?tab=subscription" : "/setari";
+}
+
 export function registerBillingWebhook(app, { db }) {
   const stripe = createStripeClient();
   const webhookSecret = String(process.env.STRIPE_WEBHOOK_SECRET || "").trim();
@@ -565,27 +573,28 @@ export function registerBillingRoutes(app, { db, requireAuth, requireRole, getSe
   const stripe = createStripeClient();
 
   app.get("/billing/checkout", requireAuth, requireRole("admin"), async (req, res) => {
+    const settingsHref = settingsReturnHref(req);
     if (!stripeConfigured() || !stripe) {
-      return res.status(400).type("html").send(renderBillingResult("Stripe nu este configurat încă pe server."));
+      return res.status(400).type("html").send(renderBillingResult("Stripe nu este configurat încă pe server.", settingsHref));
     }
 
     const companyId = Number(req.session?.user?.company_id || 0);
     const email = String(req.session?.user?.email || "").trim().toLowerCase();
     const subscription = latestSubscriptionRow(db, companyId);
     if (!companyId || !subscription) {
-      return res.status(404).type("html").send(renderBillingResult("Nu am găsit abonamentul companiei."));
+      return res.status(404).type("html").send(renderBillingResult("Nu am găsit abonamentul companiei.", settingsHref));
     }
 
     try {
       const customerId = await ensureStripeCustomer(db, stripe, companyId, email);
       const currency = String(process.env.STRIPE_CURRENCY || subscription.billing_currency || "eur").toLowerCase();
-      const successUrl = `${appBaseUrl(req)}/billing/success?session_id={CHECKOUT_SESSION_ID}`;
-      const cancelUrl = `${appBaseUrl(req)}/setari?billing=cancelled`;
+      const successUrl = `${appBaseUrl(req)}/billing/success?session_id={CHECKOUT_SESSION_ID}${wantsNexoraReturn(req) ? "&return_to=nexora" : ""}`;
+      const cancelUrl = `${appBaseUrl(req)}${wantsNexoraReturn(req) ? "/nexora/settings?tab=subscription&billing=cancelled" : "/setari?billing=cancelled"}`;
       const unitAmount = toStripeAmount(subscription.price_monthly || 0);
       const quantity = planChargeQuantity(subscription, subscription.seats_used || 1);
       const estimatedAmount = planChargeAmount(subscription, subscription.seats_used || 1);
       if (!unitAmount) {
-        return res.status(400).type("html").send(renderBillingResult("Planul selectat nu are preț lunar configurat."));
+        return res.status(400).type("html").send(renderBillingResult("Planul selectat nu are preț lunar configurat.", settingsHref));
       }
 
       const session = await stripe.checkout.sessions.create({
@@ -657,15 +666,16 @@ export function registerBillingRoutes(app, { db, requireAuth, requireRole, getSe
       return res.redirect(session.url);
     } catch (error) {
       console.error("Stripe checkout create failed:", error?.message || error);
-      return res.status(500).type("html").send(renderBillingResult(`Nu am putut crea sesiunea Stripe: ${error?.message || "eroare necunoscută"}`));
+      return res.status(500).type("html").send(renderBillingResult(`Nu am putut crea sesiunea Stripe: ${error?.message || "eroare necunoscută"}`, settingsHref));
     }
   });
 
   app.get("/billing/success", requireAuth, async (req, res) => {
+    const settingsHref = settingsReturnHref(req);
     const stripeClient = createStripeClient();
     const sessionId = String(req.query?.session_id || "");
     if (!stripeClient || !sessionId) {
-      return res.type("html").send(renderBillingResult("Plata a fost finalizată, dar sesiunea Stripe nu a putut fi verificată."));
+      return res.type("html").send(renderBillingResult("Plata a fost finalizată, dar sesiunea Stripe nu a putut fi verificată.", settingsHref));
     }
 
     try {
@@ -680,16 +690,17 @@ export function registerBillingRoutes(app, { db, requireAuth, requireRole, getSe
         }
         refreshSessionCompanyAccess(req);
       }
-      return res.type("html").send(renderBillingResult("Plata a fost confirmată. Abonamentul companiei a fost sincronizat cu Stripe.", "/setari"));
+      return res.type("html").send(renderBillingResult("Plata a fost confirmată. Abonamentul companiei a fost sincronizat cu Stripe.", settingsHref));
     } catch (error) {
       console.error("Stripe success sync failed:", error?.message || error);
-      return res.type("html").send(renderBillingResult("Plata a fost finalizată, dar sincronizarea finală se va face prin webhook în câteva momente.", "/setari"));
+      return res.type("html").send(renderBillingResult("Plata a fost finalizată, dar sincronizarea finală se va face prin webhook în câteva momente.", settingsHref));
     }
   });
 
   app.get("/billing/portal", requireAuth, requireRole("admin"), async (req, res) => {
+    const settingsHref = settingsReturnHref(req);
     if (!stripeConfigured() || !stripe) {
-      return res.status(400).type("html").send(renderBillingResult("Stripe nu este configurat încă pe server."));
+      return res.status(400).type("html").send(renderBillingResult("Stripe nu este configurat încă pe server.", settingsHref));
     }
 
     const companyId = Number(req.session?.user?.company_id || 0);
@@ -700,18 +711,18 @@ export function registerBillingRoutes(app, { db, requireAuth, requireRole, getSe
     `).get(companyId);
 
     if (!company?.stripe_customer_id) {
-      return res.type("html").send(renderBillingResult("Compania nu are încă un client Stripe activ. Finalizează mai întâi prima plată.", "/setari"));
+      return res.type("html").send(renderBillingResult("Compania nu are încă un client Stripe activ. Finalizează mai întâi prima plată.", settingsHref));
     }
 
     try {
       const session = await stripe.billingPortal.sessions.create({
         customer: company.stripe_customer_id,
-        return_url: `${appBaseUrl(req)}/setari`
+        return_url: `${appBaseUrl(req)}${wantsNexoraReturn(req) ? "/nexora/settings?tab=subscription" : "/setari"}`
       });
       return res.redirect(session.url);
     } catch (error) {
       console.error("Stripe portal session failed:", error?.message || error);
-      return res.status(500).type("html").send(renderBillingResult(`Nu am putut deschide portalul Stripe: ${error?.message || "eroare necunoscută"}`, "/setari"));
+      return res.status(500).type("html").send(renderBillingResult(`Nu am putut deschide portalul Stripe: ${error?.message || "eroare necunoscută"}`, settingsHref));
     }
   });
 

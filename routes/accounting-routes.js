@@ -1,4 +1,10 @@
 import { formatInvoiceDisplayNumber } from "../lib/invoice-numbering.js";
+import {
+  renderNexoraAccountingDeclarationDetailPage,
+  renderNexoraAccountingDeclarationsPage,
+  renderNexoraAccountingExpensesPage
+} from "../src/ui/nexora-accounting-pages.js";
+import { renderNexoraHubPage } from "../src/ui/nexora-hub-page.js";
 
 function parseDateFilter(value) {
   const normalized = String(value || "").trim();
@@ -153,6 +159,177 @@ function buildInboxWhereClause(filters, companyId) {
 }
 
 export function registerAccountingRoutes(app, { db, requireAuth, requireSpvAccess, canAccessSpvUser, escapeHtml, fmtMoney, crmShellStart, crmShellEnd, fs, path, __dirname, upload }) {
+  app.get("/nexora/accounting", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const invoiceStats = db.prepare(`
+      SELECT COUNT(*) AS total_count,
+             IFNULL(SUM(total), 0) AS total_amount,
+             SUM(CASE WHEN UPPER(COALESCE(status,'')) NOT IN ('INCASATA', 'ANULATA') THEN 1 ELSE 0 END) AS open_count
+      FROM facturi
+      WHERE company_id=?
+    `).get(companyId) || {};
+    const expenses = db.prepare(`
+      SELECT COUNT(*) AS total_count, IFNULL(SUM(total), 0) AS total_amount
+      FROM accounting_expenses
+      WHERE company_id=?
+    `).get(companyId) || {};
+    const declarations = db.prepare(`
+      SELECT COUNT(*) AS total_count,
+             SUM(CASE WHEN UPPER(COALESCE(status,'')) NOT IN ('DEPUSA', 'FINALIZATA', 'ANULATA') THEN 1 ELSE 0 END) AS open_count
+      FROM accounting_declarations
+      WHERE company_id=?
+    `).get(companyId) || {};
+    const inbox = db.prepare(`
+      SELECT COUNT(*) AS total_count,
+             SUM(CASE WHEN processed=0 THEN 1 ELSE 0 END) AS new_count
+      FROM anaf_inbox
+      WHERE company_id=?
+    `).get(companyId) || {};
+
+    return res.type("html").send(renderNexoraHubPage({
+      companyName: req.session.user.company_name || "",
+      currentPath: "/nexora/accounting",
+      eyebrow: "Financiar & Contabilitate",
+      title: "Contabilitate",
+      description: "Hub Nexora pentru facturi, cheltuieli, declarații, bonuri de consum și e-Factura.",
+      stats: [
+        { icon: "F", label: "Facturi", value: invoiceStats.total_count || 0, hint: `${fmtMoney(invoiceStats.total_amount || 0)} total` },
+        { icon: "O", label: "Deschise", value: invoiceStats.open_count || 0 },
+        { icon: "C", label: "Cheltuieli", value: expenses.total_count || 0, hint: `${fmtMoney(expenses.total_amount || 0)} total` },
+        { icon: "D", label: "Declarații deschise", value: declarations.open_count || 0 },
+        { icon: "SPV", label: "Inbox nou", value: inbox.new_count || 0 }
+      ],
+      links: [
+        { label: "Facturi Nexora", href: "/nexora/facturi" },
+        { label: "ANAF Status", href: "/nexora/anaf/status" },
+        { label: "Inbox e-Factura", href: "/nexora/anaf/inbox" },
+        { label: "Cheltuieli", href: "/nexora/accounting/expenses" },
+        { label: "Declarații", href: "/nexora/accounting/declarations" },
+        { label: "Bonuri de consum", href: "/nexora/accounting/consumption" },
+        { label: "Receivables", href: "/nexora/accounting/receivables" }
+      ]
+    }));
+  });
+
+  app.get("/nexora/accounting/expenses", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const search = String(req.query?.search || "").trim();
+    const paymentStatus = String(req.query?.payment_status || "").trim().toUpperCase();
+    const category = String(req.query?.category || "").trim().toUpperCase();
+
+    const where = ["company_id=?"];
+    const params = [companyId];
+    if (paymentStatus) {
+      where.push("UPPER(COALESCE(payment_status,''))=?");
+      params.push(paymentStatus);
+    }
+    if (category) {
+      where.push("UPPER(COALESCE(category,''))=?");
+      params.push(category);
+    }
+    if (search) {
+      const like = `%${search.toLowerCase()}%`;
+      where.push("(LOWER(COALESCE(supplier_name,'')) LIKE ? OR LOWER(COALESCE(supplier_cui,'')) LIKE ? OR LOWER(COALESCE(doc_number,'')) LIKE ?)");
+      params.push(like, like, like);
+    }
+
+    const rows = db.prepare(`
+      SELECT id, expense_type, category, supplier_name, supplier_cui, doc_number, issue_date, due_date,
+             payment_status, deductible_percent, currency, subtotal, vat_amount, total, attachment_path
+      FROM accounting_expenses
+      WHERE ${where.join(" AND ")}
+      ORDER BY date(COALESCE(issue_date, created_at)) DESC, id DESC
+      LIMIT 200
+    `).all(...params);
+
+    const stats = db.prepare(`
+      SELECT
+        COUNT(*) AS total_count,
+        IFNULL(SUM(total),0) AS total_amount,
+        SUM(CASE WHEN UPPER(COALESCE(payment_status,''))='PLATITA' THEN 1 ELSE 0 END) AS paid_count,
+        SUM(CASE WHEN UPPER(COALESCE(payment_status,''))<>'PLATITA' THEN 1 ELSE 0 END) AS unpaid_count
+      FROM accounting_expenses
+      WHERE company_id=?
+    `).get(companyId) || {};
+
+    return res.type("html").send(renderNexoraAccountingExpensesPage({
+      companyName: req.session.user.company_name || "",
+      rows,
+      stats,
+      fmtMoney,
+      ok: String(req.query?.ok || ""),
+      filters: { search, paymentStatus, category }
+    }));
+  });
+
+  app.get("/nexora/accounting/declarations", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const statusFilter = String(req.query?.status || "").trim().toUpperCase();
+    const typeFilter = String(req.query?.type || "").trim().toUpperCase();
+    const search = String(req.query?.search || "").trim();
+    const where = ["company_id=?"];
+    const params = [companyId];
+
+    if (statusFilter) {
+      where.push("UPPER(COALESCE(status,''))=?");
+      params.push(statusFilter);
+    }
+    if (typeFilter) {
+      where.push("UPPER(COALESCE(declaration_type,''))=?");
+      params.push(typeFilter);
+    }
+    if (search) {
+      const like = `%${search.toLowerCase()}%`;
+      where.push("(LOWER(COALESCE(period_label,'')) LIKE ? OR LOWER(COALESCE(reference_number,'')) LIKE ? OR LOWER(COALESCE(declaration_type,'')) LIKE ?)");
+      params.push(like, like, like);
+    }
+
+    const rows = db.prepare(`
+      SELECT id, declaration_type, period_label, period_start, period_end, due_date, status, submission_channel,
+             reference_number, attachment_path, receipt_path, created_at, updated_at
+      FROM accounting_declarations
+      WHERE ${where.join(" AND ")}
+      ORDER BY date(COALESCE(due_date, created_at)) DESC, id DESC
+      LIMIT 200
+    `).all(...params);
+
+    const stats = db.prepare(`
+      SELECT
+        COUNT(*) AS total_count,
+        SUM(CASE WHEN UPPER(COALESCE(status,''))='PREGATITA' THEN 1 ELSE 0 END) AS pregatita_count,
+        SUM(CASE WHEN UPPER(COALESCE(status,''))='TRIMISA' THEN 1 ELSE 0 END) AS trimisa_count,
+        SUM(CASE WHEN UPPER(COALESCE(status,''))='VALIDATA' THEN 1 ELSE 0 END) AS validata_count,
+        SUM(CASE WHEN UPPER(COALESCE(status,''))='RESPINSA' THEN 1 ELSE 0 END) AS respinsa_count
+      FROM accounting_declarations
+      WHERE company_id=?
+    `).get(companyId) || {};
+
+    return res.type("html").send(renderNexoraAccountingDeclarationsPage({
+      companyName: req.session.user.company_name || "",
+      rows,
+      stats,
+      ok: String(req.query?.ok || ""),
+      filters: { statusFilter, typeFilter, search }
+    }));
+  });
+
+  app.get("/nexora/accounting/declarations/:id", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const id = Number(req.params.id || 0);
+    const row = db.prepare(`
+      SELECT *
+      FROM accounting_declarations
+      WHERE id=? AND company_id=?
+    `).get(id, companyId);
+    if (!row) return res.status(404).send("Declarație inexistentă");
+
+    return res.type("html").send(renderNexoraAccountingDeclarationDetailPage({
+      companyName: req.session.user.company_name || "",
+      row,
+      ok: String(req.query?.ok || "")
+    }));
+  });
+
   app.get("/accounting/export/facturi.csv", requireAuth, (req, res) => {
     const companyId = Number(req.session.user.company_id || 0);
     const filters = buildInvoiceFilterState(req.query);
@@ -175,7 +352,7 @@ export function registerAccountingRoutes(app, { db, requireAuth, requireSpvAcces
         f.efactura_download_id,
         f.efactura_last_error
       FROM facturi f
-      JOIN clients c ON c.id = f.client_id
+      JOIN clients c ON c.id = f.client_id AND c.company_id = f.company_id
       WHERE ${whereSql}
       ORDER BY date(COALESCE(f.data_emitere, f.created_at)) DESC, f.id DESC
       LIMIT 5000
@@ -535,7 +712,7 @@ ${crmShellEnd()}`);
       attachmentPath || null,
       String(req.session.user.email || "").trim().toLowerCase()
     );
-    res.redirect("/accounting/expenses");
+    res.redirect(req.body?.return_to === "nexora" ? "/nexora/accounting/expenses?ok=created" : "/accounting/expenses");
   });
 
   app.get("/accounting/declarations", requireAuth, (req, res) => {
@@ -771,7 +948,7 @@ ${crmShellEnd()}`);
       String(req.body?.notes || "").trim(),
       String(req.session.user.email || "").trim().toLowerCase()
     );
-    res.redirect("/accounting/declarations");
+    res.redirect(req.body?.return_to === "nexora" ? "/nexora/accounting/declarations?ok=created" : "/accounting/declarations");
   });
 
   app.post("/accounting/declarations/:id/update", requireAuth, upload.fields([{ name: "attachment", maxCount: 1 }, { name: "receipt", maxCount: 1 }]), (req, res) => {
@@ -803,7 +980,7 @@ ${crmShellEnd()}`);
       companyId
     );
 
-    res.redirect(`/accounting/declarations/${id}`);
+    res.redirect(req.body?.return_to === "nexora" ? `/nexora/accounting/declarations/${id}?ok=updated` : `/accounting/declarations/${id}`);
   });
 
   app.post("/accounting/declarations/:id/status", requireAuth, (req, res) => {
@@ -823,7 +1000,7 @@ ${crmShellEnd()}`);
       WHERE id=? AND company_id=?
     `).run(status, id, companyId);
 
-    res.redirect(`/accounting/declarations/${id}`);
+    res.redirect(req.body?.return_to === "nexora" ? `/nexora/accounting/declarations/${id}?ok=updated` : `/accounting/declarations/${id}`);
   });
 
   app.get("/accounting/consumption", requireAuth, (req, res) => {
@@ -1060,7 +1237,7 @@ ${crmShellEnd()}`);
         c.name AS client_name,
         c.cui AS client_cui
       FROM facturi f
-      JOIN clients c ON c.id = f.client_id
+      JOIN clients c ON c.id = f.client_id AND c.company_id = f.company_id
       LEFT JOIN billing_payments bp ON bp.generated_factura_id = f.id
       WHERE ${where.join(" AND ")}
       ORDER BY
@@ -1302,7 +1479,7 @@ ${crmShellEnd()}`);
         f.efactura_last_error,
         c.name AS client_name
       FROM facturi f
-      JOIN clients c ON c.id = f.client_id
+      JOIN clients c ON c.id = f.client_id AND c.company_id = f.company_id
       WHERE f.company_id=?
       ORDER BY f.id DESC
       LIMIT 5
@@ -1415,7 +1592,7 @@ ${crmShellEnd()}`);
         c.name AS client_name,
         c.cui AS client_cui
       FROM facturi f
-      JOIN clients c ON c.id = f.client_id
+      JOIN clients c ON c.id = f.client_id AND c.company_id = f.company_id
       WHERE ${whereSql}
       ORDER BY date(COALESCE(f.data_emitere, f.created_at)) DESC, f.id DESC
       LIMIT 120
@@ -1428,7 +1605,7 @@ ${crmShellEnd()}`);
         SUM(CASE WHEN f.scadenta IS NOT NULL AND f.scadenta <> '' AND date(f.scadenta) < date('now') AND UPPER(COALESCE(f.status,'')) NOT IN ('INCASATA', 'ANULATA') THEN 1 ELSE 0 END) AS overdue_count,
         IFNULL(SUM(CASE WHEN f.scadenta IS NOT NULL AND f.scadenta <> '' AND date(f.scadenta) < date('now') AND UPPER(COALESCE(f.status,'')) NOT IN ('INCASATA', 'ANULATA') THEN f.total ELSE 0 END), 0) AS overdue_amount
       FROM facturi f
-      JOIN clients c ON c.id = f.client_id
+      JOIN clients c ON c.id = f.client_id AND c.company_id = f.company_id
       WHERE ${whereSql}
     `).get(...params) || {};
 

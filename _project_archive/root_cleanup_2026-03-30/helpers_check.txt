@@ -1,3 +1,0 @@
-3571:function renderFacturaPreviewInner({ f, lines, totals, company }){
-3651:function renderFacturaPreviewPage({ id, f, lines, totals, company, embed }){
-3688:app.get("/factura/:id/preview-pdf", requireAuth, async (req,res)=>{

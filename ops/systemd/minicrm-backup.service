@@ -1,8 +1,0 @@
-[Unit]
-Description=MiniCRM SQLite Backup
-
-[Service]
-Type=oneshot
-User=server
-WorkingDirectory=/home/server/minicrm
-ExecStart=/home/server/minicrm/backup.sh

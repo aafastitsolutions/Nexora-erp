@@ -1,3 +1,4 @@
+import { renderNexoraQuoteDetailPage, renderNexoraQuotesPage } from "../src/ui/nexora-quotes-page.js";
 export function registerQuotesRoutes(app, deps) {
   const {
     COMPANY,
@@ -20,7 +21,31 @@ export function registerQuotesRoutes(app, deps) {
     fs
   } = deps;
 
-  app.get("/quotes", requireAuth, (req, res) => {
+  function createQuote(req, res, redirectTo = "classic") {
+    const companyId = Number(req.session.user.company_id || 0);
+    const client_id = Number(req.body?.client_id);
+    if (!Number.isFinite(client_id)) return res.status(400).send("client_id invalid");
+
+    const title = String(req.body?.title || "").trim();
+    const notes = String(req.body?.notes || "").trim();
+    const valid_until = String(req.body?.valid_until || "").trim();
+
+    const vat_rate = Number(String(req.body?.vat_rate || "0").replace(",", "."));
+    if (!Number.isFinite(vat_rate)) return res.status(400).send("vat_rate invalid");
+
+    const n = nextQuoteNumber();
+
+    const info = db.prepare(`
+      INSERT INTO quotes (quote_number, year, seq, client_id, status, title, notes, vat_rate, valid_until, company_id)
+      VALUES (?,?,?,?, 'DRAFT', ?, ?, ?, ?, ?)
+    `).run(n.quote_number, n.year, n.seq, client_id, title || null, notes || null, vat_rate, valid_until || null, companyId);
+
+    const id = info.lastInsertRowid;
+    return res.redirect(redirectTo === "nexora" ? "/nexora/quotes/" + id : "/quote/" + id);
+  }
+
+
+  app.get("/nexora/quotes", requireAuth, (req, res) => {
     const companyId = Number(req.session.user.company_id || 0);
     const q = String(req.query?.q || "").trim();
     const search = q ? `%${q}%` : null;
@@ -30,7 +55,7 @@ export function registerQuotesRoutes(app, deps) {
           SELECT q.id, q.quote_number, q.status, q.total, q.valid_until, q.created_at,
                  cl.name AS client_name, cl.cui AS client_cui
           FROM quotes q
-          JOIN clients cl ON cl.id = q.client_id
+          JOIN clients cl ON cl.id = q.client_id AND cl.company_id = q.company_id
           WHERE q.company_id = ? AND (
             q.quote_number LIKE ?
             OR cl.name LIKE ?
@@ -43,7 +68,92 @@ export function registerQuotesRoutes(app, deps) {
           SELECT q.id, q.quote_number, q.status, q.total, q.valid_until, q.created_at,
                  cl.name AS client_name, cl.cui AS client_cui
           FROM quotes q
-          JOIN clients cl ON cl.id = q.client_id
+          JOIN clients cl ON cl.id = q.client_id AND cl.company_id = q.company_id
+          WHERE q.company_id = ?
+          ORDER BY q.id DESC
+          LIMIT 300
+        `).all(companyId);
+
+    const clients = db.prepare(`
+      SELECT id, name, cui
+      FROM clients
+      WHERE company_id=?
+      ORDER BY name COLLATE NOCASE ASC
+    `).all(companyId);
+
+    return res.type("html").send(renderNexoraQuotesPage({
+      currentPath: "/nexora/quotes",
+      userEmail: req.session.user.email || "",
+      companyName: req.session.user.company_name || "",
+      quotes,
+      clients,
+      q,
+      fmtMoney
+    }));
+  });
+
+  app.get("/nexora/quotes/:id", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).send("Bad id");
+
+    const quote = db.prepare(`
+      SELECT q.*, cl.name AS client_name, cl.cui AS client_cui
+      FROM quotes q
+      JOIN clients cl ON cl.id=q.client_id AND cl.company_id=q.company_id
+      WHERE q.id=? AND q.company_id=?
+    `).get(id, companyId);
+
+    if (!quote) return res.status(404).send("Quote not found");
+
+    const items = db.prepare(`
+      SELECT id, name, qty, unit, unit_price, line_total
+      FROM quote_items
+      WHERE quote_id=? AND company_id=?
+      ORDER BY sort_order ASC, id ASC
+    `).all(id, companyId);
+
+    recalcQuoteTotals(id, companyId);
+    const totals = db.prepare("SELECT subtotal, vat_rate, vat_amount, total, currency FROM quotes WHERE id=? AND company_id=?").get(id, companyId);
+
+    return res.type("html").send(renderNexoraQuoteDetailPage({
+      quote,
+      items,
+      totals,
+      companyName: req.session.user.company_name || "",
+      currentPath: "/nexora/quotes",
+      fmtMoney
+    }));
+  });
+
+  app.post("/nexora/quotes/create", requireAuth, (req, res) => {
+    return createQuote(req, res, "nexora");
+  });
+
+  app.get("/quotes", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const q = String(req.query?.q || "").trim();
+    const search = q ? `%${q}%` : null;
+
+    const quotes = q
+      ? db.prepare(`
+          SELECT q.id, q.quote_number, q.status, q.total, q.valid_until, q.created_at,
+                 cl.name AS client_name, cl.cui AS client_cui
+          FROM quotes q
+          JOIN clients cl ON cl.id = q.client_id AND cl.company_id = q.company_id
+          WHERE q.company_id = ? AND (
+            q.quote_number LIKE ?
+            OR cl.name LIKE ?
+            OR cl.cui LIKE ?
+          )
+          ORDER BY q.id DESC
+          LIMIT 300
+        `).all(companyId, search, search, search)
+      : db.prepare(`
+          SELECT q.id, q.quote_number, q.status, q.total, q.valid_until, q.created_at,
+                 cl.name AS client_name, cl.cui AS client_cui
+          FROM quotes q
+          JOIN clients cl ON cl.id = q.client_id AND cl.company_id = q.company_id
           WHERE q.company_id = ?
           ORDER BY q.id DESC
           LIMIT 300
@@ -197,25 +307,7 @@ ${crmShellEnd()}
   });
 
   app.post("/quotes/create", requireAuth, (req, res) => {
-    const companyId = Number(req.session.user.company_id || 0);
-    const client_id = Number(req.body?.client_id);
-    if (!Number.isFinite(client_id)) return res.status(400).send("client_id invalid");
-
-    const title = String(req.body?.title || "").trim();
-    const notes = String(req.body?.notes || "").trim();
-    const valid_until = String(req.body?.valid_until || "").trim();
-
-    const vat_rate = Number(String(req.body?.vat_rate || "0").replace(",", "."));
-    if (!Number.isFinite(vat_rate)) return res.status(400).send("vat_rate invalid");
-
-    const n = nextQuoteNumber();
-
-    const info = db.prepare(`
-      INSERT INTO quotes (quote_number, year, seq, client_id, status, title, notes, vat_rate, valid_until, company_id)
-      VALUES (?,?,?,?, 'DRAFT', ?, ?, ?, ?, ?)
-    `).run(n.quote_number, n.year, n.seq, client_id, title || null, notes || null, vat_rate, valid_until || null, companyId);
-
-    return res.redirect("/quote/" + info.lastInsertRowid);
+    return createQuote(req, res, req.body?.return_to === "nexora" ? "nexora" : "classic");
   });
 
   app.get("/quote/:id", requireAuth, (req, res) => {
@@ -226,7 +318,7 @@ ${crmShellEnd()}
     const quote = db.prepare(`
       SELECT q.*, cl.name AS client_name, cl.cui AS client_cui
       FROM quotes q
-      JOIN clients cl ON cl.id=q.client_id
+      JOIN clients cl ON cl.id=q.client_id AND cl.company_id=q.company_id
       WHERE q.id=? AND q.company_id=?
     `).get(id, companyId);
 
@@ -239,7 +331,7 @@ ${crmShellEnd()}
       ORDER BY sort_order ASC, id ASC
     `).all(id, companyId);
 
-    recalcQuoteTotals(id);
+    recalcQuoteTotals(id, companyId);
     const q2 = db.prepare("SELECT subtotal, vat_rate, vat_amount, total FROM quotes WHERE id=? AND company_id=?").get(id, companyId);
 
     const userEmail = req.session.user.email;
@@ -439,9 +531,9 @@ ${crmShellEnd()}
       VALUES (?,?,?,?,?,?,0,?)
     `).run(quote_id, name, qty, unit || null, unit_price, line_total, companyId);
 
-    recalcQuoteTotals(quote_id);
+    recalcQuoteTotals(quote_id, companyId);
 
-    return res.redirect("/quote/" + quote_id);
+    return res.redirect(req.body?.return_to === "nexora" ? "/nexora/quotes/" + quote_id : "/quote/" + quote_id);
   });
 
   app.post("/quote/:id/status", requireAuth, (req, res) => {
@@ -454,7 +546,7 @@ ${crmShellEnd()}
     if (!allowed.has(status)) return res.status(400).send("status invalid");
 
     db.prepare("UPDATE quotes SET status=? WHERE id=? AND company_id=?").run(status, quote_id, companyId);
-    return res.redirect("/quote/" + quote_id);
+    return res.redirect(req.body?.return_to === "nexora" ? "/nexora/quotes/" + quote_id : "/quote/" + quote_id);
   });
 
   app.post("/quote/:id/generate-pdf", requireAuth, async (req, res) => {
@@ -466,7 +558,7 @@ ${crmShellEnd()}
       const quote = db.prepare(`
         SELECT q.*, cl.name AS client_name, cl.cui AS client_cui, cl.address AS client_address
         FROM quotes q
-        JOIN clients cl ON cl.id=q.client_id
+        JOIN clients cl ON cl.id=q.client_id AND cl.company_id=q.company_id
         WHERE q.id=? AND q.company_id=?
       `).get(id, companyId);
 
@@ -479,7 +571,7 @@ ${crmShellEnd()}
         ORDER BY sort_order ASC, id ASC
       `).all(id, companyId);
 
-      recalcQuoteTotals(id);
+      recalcQuoteTotals(id, companyId);
       const totals = db.prepare("SELECT subtotal, vat_rate, vat_amount, total, currency FROM quotes WHERE id=? AND company_id=?").get(id, companyId);
 
       const vm = {
@@ -520,7 +612,7 @@ ${crmShellEnd()}
       const pdf_path = `contracts/quotes/${year}/${fileName}`;
       db.prepare("UPDATE quotes SET pdf_path=? WHERE id=? AND company_id=?").run(pdf_path, id, companyId);
 
-      return res.redirect("/quote/" + id);
+      return res.redirect(req.body?.return_to === "nexora" ? "/nexora/quotes/" + id : "/quote/" + id);
     } catch (error) {
       console.error(`[PDF] generate quote ${id} failed`, error);
       return res.status(error?.code === "PDF_BROWSER_MISSING" ? 503 : 500).send(String(error?.message || "Nu am putut genera PDF-ul ofertei."));
@@ -537,7 +629,7 @@ ${crmShellEnd()}
         SELECT q.*, cl.id AS client_id, cl.cui AS client_cui, cl.name AS client_name,
                cl.address AS client_address, cl.reg_com AS client_reg_com
         FROM quotes q
-        JOIN clients cl ON cl.id=q.client_id
+        JOIN clients cl ON cl.id=q.client_id AND cl.company_id=q.company_id
         WHERE q.id=? AND q.company_id=?
       `).get(quote_id, companyId);
 
@@ -553,7 +645,7 @@ ${crmShellEnd()}
         ORDER BY sort_order ASC, id ASC
       `).all(quote_id, companyId);
 
-      recalcQuoteTotals(quote_id);
+      recalcQuoteTotals(quote_id, companyId);
       const totals = db.prepare("SELECT subtotal, vat_rate, vat_amount, total, currency FROM quotes WHERE id=? AND company_id=?").get(quote_id, companyId);
 
       const lines = (items || []).map((it) => {
@@ -629,6 +721,9 @@ ${crmShellEnd()}
 
       const contract_id = tx();
       const c = db.prepare("SELECT pdf_path FROM contracts WHERE id=? AND company_id=?").get(contract_id, companyId);
+      if (req.body?.return_to === "nexora") {
+        return res.redirect("/nexora/contracts/" + contract_id + "?ok=contract_generat");
+      }
       if (c?.pdf_path) return res.redirect("/" + encodeURI(c.pdf_path));
 
       return res.redirect("/contract/" + contract_id);

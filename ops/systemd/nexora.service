@@ -1,0 +1,18 @@
+[Unit]
+Description=Nexora (Node)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=server
+Group=server
+WorkingDirectory=/home/server/Nexora
+EnvironmentFile=/home/server/.config/nexora/runtime.env
+ExecStart=/usr/bin/node /home/server/Nexora/server.js
+Restart=always
+RestartSec=3
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

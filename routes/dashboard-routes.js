@@ -13,7 +13,7 @@ export function registerDashboardRoutes(app, { db, requireAuth, todayISO, escape
              cl.name AS client_name, cl.cui AS client_cui,
              c.pdf_path
       FROM contracts c
-      JOIN clients cl ON cl.id = c.client_id
+      JOIN clients cl ON cl.id = c.client_id AND cl.company_id = c.company_id
       WHERE IFNULL(c.origin,'DIRECT') <> 'QUOTE'
         AND c.company_id = ?
       ORDER BY c.id DESC
@@ -24,7 +24,7 @@ export function registerDashboardRoutes(app, { db, requireAuth, todayISO, escape
       SELECT a.id, a.subject, a.note, a.due_at, a.created_at,
              cl.id AS client_id, cl.name AS client_name
       FROM activities a
-      JOIN clients cl ON cl.id = a.client_id
+      JOIN clients cl ON cl.id = a.client_id AND cl.company_id = a.company_id
       WHERE a.type='task' AND a.done=0 AND a.company_id=?
       ORDER BY (a.due_at IS NULL) ASC, a.due_at ASC, a.id DESC
       LIMIT 20
@@ -526,7 +526,7 @@ ${crmShellEnd()}
       SELECT a.id, a.subject, a.note, a.due_at, a.created_at,
              cl.id AS client_id, cl.name AS client_name
       FROM activities a
-      JOIN clients cl ON cl.id = a.client_id
+      JOIN clients cl ON cl.id = a.client_id AND cl.company_id = a.company_id
       WHERE a.type='task' AND a.done=0 AND a.company_id=?
       ORDER BY (a.due_at IS NULL) ASC, a.due_at ASC, a.id DESC
       LIMIT 5
@@ -541,7 +541,7 @@ ${crmShellEnd()}
       SELECT f.id, f.factura_nr, f.status, f.total, f.moneda, f.data_emitere,
              cl.name AS client_name
       FROM facturi f
-      LEFT JOIN clients cl ON cl.id = f.client_id
+      LEFT JOIN clients cl ON cl.id = f.client_id AND cl.company_id = f.company_id
       WHERE f.company_id = ?
       ORDER BY f.id DESC
       LIMIT 6

@@ -1,12 +1,25 @@
 import { renderNexoraAnafInboxPage } from "./src/ui/nexora-anaf-inbox-page.js";
 import { renderNexoraAnafOutboxPage } from "./src/ui/nexora-anaf-outbox-page.js";
 import { renderNexoraAnafStatusPage } from "./src/ui/nexora-anaf-status-page.js";
+import { renderNexoraDocumentsPage, renderNexoraDocumentsRegisterPage } from "./src/ui/nexora-documents-page.js";
+import { renderNexoraEmployeesPage } from "./src/ui/nexora-employees-page.js";
+import { renderNexoraHubPage } from "./src/ui/nexora-hub-page.js";
+import { renderNexoraProductEditPage, renderNexoraProductsPage } from "./src/ui/nexora-products-page.js";
+import { renderNexoraSettingsPage } from "./src/ui/nexora-settings-page.js";
+import {
+  renderNexoraSuperAdminCompaniesPage,
+  renderNexoraSuperAdminCompanyDetailPage,
+  renderNexoraSuperAdminDashboardPage,
+  renderNexoraSuperAdminPaymentsPage
+} from "./src/ui/nexora-super-admin-page.js";
+import { renderNexoraUserEditPage, renderNexoraUsersPage } from "./src/ui/nexora-users-page.js";
 import express from "express";
 import dotenv from "dotenv";
 dotenv.config();
 import Mustache from "mustache";
 import fs from "fs";
 import path from "path";
+import { AsyncLocalStorage } from "async_hooks";
 import { fileURLToPath } from "url";
 import { renderPdfBuffer } from "./pdf.js";
 
@@ -15,19 +28,21 @@ import { anafCheckUploadStatus, anafDownloadMessage, anafUploadFactura, syncAnaf
 import { COMPANY, MODULE_DEFINITIONS, MODULE_GROUPS, ROLE_MODULES, normalizeCompanyModules, normalizeUserModules, planChargeAmount, planChargeQuantity, registerRoleModules } from "./lib/app-config.js";
 import { createTransporter, initApplication, loadTemplates, setupAppMiddleware } from "./lib/bootstrap.js";
 import { maybeGenerateBillingInvoice } from "./lib/billing-invoices.js";
+import { processDmsTemplate } from "./lib/dms-autofill.js";
 import { buildDraftInvoiceNumber, ensureOfficialInvoiceNumber, formatInvoiceDisplayNumber, nextConfiguredInvoiceNumber } from "./lib/invoice-numbering.js";
 import { escapeHtml, fmt2, fmtMoney, hasModuleAccess, normalizeCui, todayISO } from "./lib/helpers.js";
 import { renderPlanCards } from "./lib/plan-cards.js";
 import { registerAccountingRoutes } from "./routes/accounting-routes.js";
 import { registerAnafRoutes } from "./routes/anaf-routes.js";
 import { registerAnafOAuthRoutes } from "./routes/anaf-oauth-routes.js";
-import { registerAuthRoutes } from "./routes/auth-routes.js";
+import { createWorkspace, registerAuthRoutes } from "./routes/auth-routes.js";
 import { registerBillingRoutes, registerBillingWebhook } from "./routes/billing-routes.js";
 import { registerClientsRoutes } from "./routes/clients-routes.js";
 import { registerContractsRoutes } from "./routes/contracts-routes.js";
 import { registerDashboardRoutes } from "./routes/dashboard-routes.js";
 import { registerFacturiRoutes } from "./routes/facturi-routes.js";
 import { registerInventoryRoutes } from "./routes/inventory-routes.js";
+import { registerProjectsRoutes } from "./routes/projects-routes.js";
 import { registerQuotesRoutes } from "./routes/quotes-routes.js";
 import { db, migrate } from "./db.js";
 import bcrypt from "bcrypt";
@@ -36,6 +51,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+const requestContext = new AsyncLocalStorage();
 const isProduction = process.env.NODE_ENV === "production";
 const sessionSecret = process.env.SESSION_SECRET || "dev-secret-change-me";
 const transporter = createTransporter();
@@ -44,6 +60,7 @@ registerRoleModules();
 initApplication({ app, isProduction, sessionSecret, migrate, seedAdminFromEnv });
 registerBillingWebhook(app, { db });
 setupAppMiddleware({ app, dirname: __dirname, sessionSecret });
+app.use((req, res, next) => requestContext.run({ req }, next));
 registerAnafRoutes(app, { fetchAnafCompany, normalizeCui });
 registerAnafOAuthRoutes(app, { canAccessSpvUser, db, getSetting, requireAuth, requireSpvAccess, setSetting, transporter });
 registerAuthRoutes(app, { db, verifyUser, verifyUserAttempt });
@@ -146,7 +163,10 @@ function nextQuoteNumber(){
 
 
 function nextFacturaNumber(){
-  return nextConfiguredInvoiceNumber(db, { year: new Date().getFullYear() });
+  return nextConfiguredInvoiceNumber(db, {
+    year: new Date().getFullYear(),
+    companyId: currentRequestCompanyId()
+  });
 }
 
 
@@ -154,12 +174,19 @@ function nextFacturaNumber(){
 // Quotes / Offers (v1)
 // =========================
 
-function recalcQuoteTotals(quote_id){
-  const items = db.prepare(`
-    SELECT id, qty, unit_price
-    FROM quote_items
-    WHERE quote_id=?
-  `).all(quote_id);
+function recalcQuoteTotals(quote_id, companyId = null){
+  const hasTenantScope = Number.isFinite(Number(companyId)) && Number(companyId) > 0;
+  const items = hasTenantScope
+    ? db.prepare(`
+        SELECT id, qty, unit_price
+        FROM quote_items
+        WHERE quote_id=? AND company_id=?
+      `).all(quote_id, Number(companyId))
+    : db.prepare(`
+        SELECT id, qty, unit_price
+        FROM quote_items
+        WHERE quote_id=?
+      `).all(quote_id);
 
   let subtotal = 0;
   for (const it of items) {
@@ -167,33 +194,49 @@ function recalcQuoteTotals(quote_id){
     const p = Number(it.unit_price ?? 0);
     const line = (Number.isFinite(q) ? q : 0) * (Number.isFinite(p) ? p : 0);
     subtotal += line;
-    db.prepare("UPDATE quote_items SET line_total=? WHERE id=?").run(line, it.id);
+    if (hasTenantScope) {
+      db.prepare("UPDATE quote_items SET line_total=? WHERE id=? AND company_id=?").run(line, it.id, Number(companyId));
+    } else {
+      db.prepare("UPDATE quote_items SET line_total=? WHERE id=?").run(line, it.id);
+    }
   }
 
-  const qrow = db.prepare("SELECT vat_rate FROM quotes WHERE id=?").get(quote_id);
+  const qrow = hasTenantScope
+    ? db.prepare("SELECT vat_rate FROM quotes WHERE id=? AND company_id=?").get(quote_id, Number(companyId))
+    : db.prepare("SELECT vat_rate FROM quotes WHERE id=?").get(quote_id);
   const vat_rate = Number(qrow?.vat_rate ?? 0);
   const vat_amount = subtotal * (Number.isFinite(vat_rate) ? vat_rate : 0);
   const total = subtotal + vat_amount;
 
-  db.prepare(`
-    UPDATE quotes
-    SET subtotal=?, vat_amount=?, total=?
-    WHERE id=?
-  `).run(subtotal, vat_amount, total, quote_id);
+  if (hasTenantScope) {
+    db.prepare(`
+      UPDATE quotes
+      SET subtotal=?, vat_amount=?, total=?
+      WHERE id=? AND company_id=?
+    `).run(subtotal, vat_amount, total, quote_id, Number(companyId));
+  } else {
+    db.prepare(`
+      UPDATE quotes
+      SET subtotal=?, vat_amount=?, total=?
+      WHERE id=?
+    `).run(subtotal, vat_amount, total, quote_id);
+  }
 
   return { subtotal, vat_rate, vat_amount, total };
 }
 
 app.get("/export/contracts.csv", requireAuth, (req, res) => {
+  const companyId = Number(req.session.user.company_id || 0);
   const rows = db.prepare(`
     SELECT c.id, c.contract_number, c.created_at, c.year, c.seq,
            c.service_description, c.price, c.duration, c.pdf_path,
            cl.cui AS client_cui, cl.name AS client_name
     FROM contracts c
-    JOIN clients cl ON cl.id = c.client_id
+    JOIN clients cl ON cl.id = c.client_id AND cl.company_id = c.company_id
+    WHERE c.company_id=?
     ORDER BY c.id DESC
     LIMIT 5000
-  `).all();
+  `).all(companyId);
 
   function csvEscape(v){
     const s = String(v ?? "");
@@ -1929,7 +1972,7 @@ function buildWorkspaceNavigation(active, userModules = [], userEmail = "") {
 
   const settingsItems = [
     hasModuleAccess(userModules, "accounts") ? workspaceNavItem({ href: "/accounts", label: "Utilizatori", iconKey: "accounts", isActive: activeKey === "accounts" }) : "",
-    hasModuleAccess(userModules, "setari") ? workspaceNavItem({ href: "/setari", label: "Setări", iconKey: "setari", isActive: activeKey === "setari" }) : "",
+    hasModuleAccess(userModules, "setari") ? workspaceNavItem({ href: "/nexora/settings", label: "Setări", iconKey: "setari", isActive: activeKey === "setari" }) : "",
     isSuperAdmin ? workspaceNavItem({ href: "/super-admin/companies", label: "Companii", iconKey: "superadmin", isActive: activeKey === "superadmin" }) : "",
     isSuperAdmin ? workspaceNavItem({ href: "/super-admin/payments", label: "Plăți", iconKey: "facturi", isActive: activeKey === "superadmin-payments" }) : ""
   ].join("");
@@ -2162,7 +2205,7 @@ function buildClassicNavigation(active, userModules = [], userEmail = "") {
     itemsHtml: [
       classicMenuSection("Administrare", [
         hasModuleAccess(userModules, "accounts") ? classicMenuLink({ href: "/accounts", label: "Utilizatori", iconKey: "accounts", isActive: activeKey === "accounts" }) : "",
-        hasModuleAccess(userModules, "setari") ? classicMenuLink({ href: "/setari", label: "Setări companie", iconKey: "setari", isActive: activeKey === "setari" }) : ""
+        hasModuleAccess(userModules, "setari") ? classicMenuLink({ href: "/nexora/settings", label: "Setări companie", iconKey: "setari", isActive: activeKey === "setari" }) : ""
       ].join("")),
       classicMenuSection("Super admin", [
         isSuperAdmin ? classicMenuLink({ href: "/super-admin/companies", label: "Companii", iconKey: "superadmin", isActive: activeKey === "superadmin" }) : "",
@@ -2453,7 +2496,7 @@ function topMenu(active){
         ["/produse","Produse","produse"],
         ["/contracte","Contracte","contracts"],
         ["/facturi","Facturi","facturi"],
-        ["/setari","Setări","setari"],
+        ["/nexora/settings","Setări","setari"],
         ["/contract-form","Form contract","form"]
       ].map(([href,label,key])=>{
         const isActive = String(active||"") === String(key||"");
@@ -2630,6 +2673,57 @@ ${crmShellEnd()}
 </html>`);
 });
 
+app.get("/nexora/products", requireAuth, (req, res) => {
+  const companyId = Number(req.session.user.company_id || 0);
+  const q = String(req.query?.q || "").trim();
+  const ok = String(req.query?.ok || "").trim();
+  const search = q ? `%${q}%` : null;
+
+  const rows = q
+    ? db.prepare(`
+        SELECT id, code, name, unit, price, tva_percent, kind, active, created_at
+        FROM products
+        WHERE company_id=?
+          AND (code LIKE ? OR name LIKE ? OR kind LIKE ?)
+        ORDER BY active DESC, name COLLATE NOCASE ASC, id DESC
+        LIMIT 500
+      `).all(companyId, search, search, search)
+    : db.prepare(`
+        SELECT id, code, name, unit, price, tva_percent, kind, active, created_at
+        FROM products
+        WHERE company_id=?
+        ORDER BY active DESC, name COLLATE NOCASE ASC, id DESC
+        LIMIT 500
+      `).all(companyId);
+
+  return res.type("html").send(renderNexoraProductsPage({
+    companyName: req.session.user.company_name || "",
+    rows,
+    q,
+    ok
+  }));
+});
+
+app.get("/nexora/products/:id/edit", requireAuth, (req, res) => {
+  const companyId = Number(req.session.user.company_id || 0);
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).send("Bad id");
+
+  const row = db.prepare(`
+    SELECT id, code, name, unit, price, tva_percent, kind, active, created_at
+    FROM products
+    WHERE id=? AND company_id=?
+  `).get(id, companyId);
+
+  if (!row) return res.status(404).send("Produs inexistent");
+
+  return res.type("html").send(renderNexoraProductEditPage({
+    companyName: req.session.user.company_name || "",
+    product: row,
+    ok: String(req.query?.ok || "")
+  }));
+});
+
 app.post("/produse/:id/toggle", requireAuth, (req, res) => {
   const companyId = Number(req.session.user.company_id || 0);
   const id = Number(req.params.id);
@@ -2641,7 +2735,7 @@ app.post("/produse/:id/toggle", requireAuth, (req, res) => {
   const nextActive = Number(row.active) ? 0 : 1;
   db.prepare("UPDATE products SET active=? WHERE id=? AND company_id=?").run(nextActive, id, companyId);
 
-  return res.redirect("/produse");
+  return res.redirect(req.body?.return_to === "nexora" ? "/nexora/products?ok=toggled" : "/produse");
 });
 
 
@@ -2767,7 +2861,7 @@ app.post("/produse/:id/edit", requireAuth, (req, res) => {
     WHERE id=? AND company_id=?
   `).run(code || null, name, unit, price, tva_percent, kind, active, id, companyId);
 
-  return res.redirect("/produse");
+  return res.redirect(req.body?.return_to === "nexora" ? `/nexora/products/${id}/edit?ok=saved` : "/produse");
 });
 
 
@@ -2793,22 +2887,32 @@ app.post("/produse/create", requireAuth, (req, res) => {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `).run(code || null, name, unit, price, tva_percent, kind, active, companyId);
 
-  return res.redirect("/produse");
+  return res.redirect(req.body?.return_to === "nexora" ? "/nexora/products?ok=created" : "/produse");
 });
 
 
-function recalcFacturaTotals(factura_id){
+function recalcFacturaTotals(factura_id, companyId = null){
+  const hasTenantScope = Number.isFinite(Number(companyId)) && Number(companyId) > 0;
   // subtotal = SUM(total_linie)
-  const row = db.prepare("SELECT COALESCE(SUM(total_linie),0) AS subtotal FROM facturi_linii WHERE factura_id=?").get(factura_id);
-  const f = db.prepare("SELECT tva_procent FROM facturi WHERE id=?").get(factura_id);
+  const row = hasTenantScope
+    ? db.prepare("SELECT COALESCE(SUM(total_linie),0) AS subtotal FROM facturi_linii WHERE factura_id=? AND company_id=?").get(factura_id, Number(companyId))
+    : db.prepare("SELECT COALESCE(SUM(total_linie),0) AS subtotal FROM facturi_linii WHERE factura_id=?").get(factura_id);
+  const f = hasTenantScope
+    ? db.prepare("SELECT tva_procent FROM facturi WHERE id=? AND company_id=?").get(factura_id, Number(companyId))
+    : db.prepare("SELECT tva_procent FROM facturi WHERE id=?").get(factura_id);
 
   const subtotal = Number(row?.subtotal ?? 0) || 0;
   const tva_procent = Number(f?.tva_procent ?? 0) || 0;
   const tva_valoare = Math.round(subtotal * tva_procent * 100) / 100;
   const total = Math.round((subtotal + tva_valoare) * 100) / 100;
 
-  db.prepare("UPDATE facturi SET subtotal=?, tva_valoare=?, total=? WHERE id=?")
-    .run(subtotal, tva_valoare, total, factura_id);
+  if (hasTenantScope) {
+    db.prepare("UPDATE facturi SET subtotal=?, tva_valoare=?, total=? WHERE id=? AND company_id=?")
+      .run(subtotal, tva_valoare, total, factura_id, Number(companyId));
+  } else {
+    db.prepare("UPDATE facturi SET subtotal=?, tva_valoare=?, total=? WHERE id=?")
+      .run(subtotal, tva_valoare, total, factura_id);
+  }
 
   return { subtotal, tva_procent, tva_valoare, total };
 }
@@ -2838,7 +2942,12 @@ function getInvoiceTheme(){
 }
 
 function getInvoiceLogoDataUri(){
-  const p = path.join(__dirname, "public", "invoice-logo.png");
+  const companyId = currentRequestCompanyId();
+  const scopedCandidates = companyId > 0
+    ? ["png", "jpg", "jpeg", "webp"].map((ext) => path.join(__dirname, "public", "uploads", "company-logos", `company-${companyId}.${ext}`))
+    : [];
+  const p = scopedCandidates.find((candidate) => fs.existsSync(candidate))
+    || path.join(__dirname, "public", "invoice-logo.png");
   try{
     if(!fs.existsSync(p)) return "";
     const buf = fs.readFileSync(p);
@@ -2852,6 +2961,10 @@ function getInvoiceLogoDataUri(){
 }
 
 function resolveWorkspaceHome(user = {}) {
+  if (Number(user?.is_super_admin || 0) === 1) {
+    return "/nexora/super-admin";
+  }
+
   const modules = Array.isArray(user?.effective_module_permissions)
     ? user.effective_module_permissions
     : Array.isArray(user?.module_permissions)
@@ -2860,22 +2973,22 @@ function resolveWorkspaceHome(user = {}) {
   const role = String(user?.role || "").trim().toLowerCase();
 
   if (role === "accounting" && modules.includes("accounting")) {
-    return "/accounting";
+    return "/nexora/accounting";
   }
 
   return [
-    ["dashboard", "/dashboard"],
-    ["accounting", "/accounting"],
-    ["facturi", "/facturi"],
-    ["clients", "/clients"],
-    ["quotes", "/quotes"],
-    ["contracts", "/contracte"],
-    ["produse", "/produse"],
-    ["tipizate", "/tipizate"],
-    ["employees", "/employees"],
-    ["accounts", "/accounts"],
-    ["setari", "/setari"]
-  ].find(([moduleKey]) => modules.includes(moduleKey))?.[1] || "/dashboard";
+    ["dashboard", "/nexora-dashboard"],
+    ["accounting", "/nexora/accounting"],
+    ["facturi", "/nexora/facturi"],
+    ["clients", "/nexora/clients"],
+    ["quotes", "/nexora/quotes"],
+    ["contracts", "/nexora/contracts"],
+    ["produse", "/nexora/products"],
+    ["tipizate", "/nexora/documents"],
+    ["employees", "/nexora/employees"],
+    ["accounts", "/nexora/users"],
+    ["setari", "/nexora/settings"]
+  ].find(([moduleKey]) => modules.includes(moduleKey))?.[1] || "/nexora-dashboard";
 }
 
 function renderPublicLandingPage(req, res) {
@@ -3939,13 +4052,14 @@ app.listen(3000, "0.0.0.0", () => console.log("MiniCRM running on :3000"));
 
 
 
-function buildFacturaXmlContent(id){
+function buildFacturaXmlContent(id, companyId = null){
+  const hasTenantScope = Number.isFinite(Number(companyId)) && Number(companyId) > 0;
   const f = db.prepare(`
     SELECT f.*, c.name AS client_name, c.cui AS client_cui, c.address AS client_address, c.reg_com AS client_reg_com, c.vat AS client_vat
     FROM facturi f
-    JOIN clients c ON c.id=f.client_id
-    WHERE f.id=?
-  `).get(id);
+    JOIN clients c ON c.id=f.client_id AND c.company_id=f.company_id
+    WHERE f.id=?${hasTenantScope ? " AND f.company_id=?" : ""}
+  `).get(...(hasTenantScope ? [id, Number(companyId)] : [id]));
 
   if(!f) return { error: "Factura nu exista" };
 
@@ -3956,7 +4070,7 @@ function buildFacturaXmlContent(id){
     ORDER BY sort_order ASC, id ASC
   `).all(id);
 
-  const totals = recalcFacturaTotals(id);
+  const totals = recalcFacturaTotals(id, companyId);
 
   const company_name = getSetting("company_name", COMPANY.name);
   const company_cui = getSetting("company_cui", COMPANY.cui);
@@ -4384,8 +4498,8 @@ function buildFacturaXmlContent(id){
   return { f, lines, totals, xml };
 }
 
-function ensureFacturaXmlGenerated(id){
-  const built = buildFacturaXmlContent(id);
+function ensureFacturaXmlGenerated(id, companyId = null){
+  const built = buildFacturaXmlContent(id, companyId);
   if(built.error) return built;
 
   const xmlDir = path.join(__dirname, "efactura_xml");
@@ -4421,9 +4535,11 @@ function ensureFacturaXmlGenerated(id){
 
 import multer from "multer";
 const upload = multer({ dest: "uploads/" });
+const dmsAutofillUpload = multer({ dest: "uploads/", limits: { fileSize: 20 * 1024 * 1024 } });
 
 registerAccountingRoutes(app, { db, requireAuth, requireSpvAccess, canAccessSpvUser, escapeHtml, fmtMoney, crmShellStart, crmShellEnd, fs, path, __dirname, upload });
 registerInventoryRoutes(app, { db, requireAuth, escapeHtml, fmtMoney, crmShellStart, crmShellEnd, fs, path, __dirname, upload });
+registerProjectsRoutes(app, { db, requireAuth, fs, path, __dirname });
 
 db.prepare(`
 CREATE TABLE IF NOT EXISTS app_settings(
@@ -4470,13 +4586,105 @@ UNIQUE(company_id, registration_number),
 UNIQUE(company_id, doc_id)
 )`).run();
 
-function getSetting(k, def=""){
+function currentRequestCompanyId() {
+  const req = requestContext.getStore()?.req;
+  return Number(req?.session?.user?.company_id || 0) || 0;
+}
+
+function isTenantScopedSettingKey(k = "") {
+  const key = String(k || "").trim();
+  return key.startsWith("company_")
+    || key.startsWith("invoice_")
+    || key.startsWith("anaf_")
+    || key === "capital_social";
+}
+
+function companySettingKey(companyId, k) {
+  return `company:${Number(companyId)}:${String(k || "").trim()}`;
+}
+
+const COMPANY_SETTING_COLUMNS = {
+  company_name: "name",
+  company_cui: "cui",
+  company_rc: "rc",
+  company_address: "address",
+  company_bank: "bank",
+  company_iban: "iban",
+  company_rep: "representative"
+};
+
+function readGlobalSetting(k, def = "") {
   const r = db.prepare("SELECT value FROM app_settings WHERE key=?").get(k);
   return r ? r.value : def;
 }
 
+function resolvePrimaryCompanyIdForGlobalSettings() {
+  const globalCui = String(readGlobalSetting("company_cui", "") || "").trim();
+  if (globalCui) {
+    const byCui = db.prepare("SELECT id FROM companies WHERE cui=? ORDER BY id ASC LIMIT 1").get(globalCui);
+    if (byCui?.id) return Number(byCui.id);
+  }
+
+  return Number(db.prepare("SELECT id FROM companies ORDER BY id ASC LIMIT 1").get()?.id || 0);
+}
+
+function backfillGlobalTenantSettings() {
+  const companyId = resolvePrimaryCompanyIdForGlobalSettings();
+  if (!companyId) return;
+
+  const rows = db.prepare(`
+    SELECT key, value
+    FROM app_settings
+    WHERE key NOT LIKE 'company:%'
+  `).all().filter((row) => isTenantScopedSettingKey(row.key));
+
+  const insert = db.prepare("INSERT OR IGNORE INTO app_settings(key,value) VALUES(?,?)");
+  const tx = db.transaction(() => {
+    for (const row of rows) {
+      insert.run(companySettingKey(companyId, row.key), String(row.value || ""));
+    }
+  });
+  tx();
+}
+
+backfillGlobalTenantSettings();
+
+function getCompanySetting(companyId, k, def = "") {
+  const normalizedCompanyId = Number(companyId || 0);
+  if (normalizedCompanyId > 0 && isTenantScopedSettingKey(k)) {
+    const scoped = db.prepare("SELECT value FROM app_settings WHERE key=?")
+      .get(companySettingKey(normalizedCompanyId, k));
+    if (scoped) return scoped.value;
+
+    const companyColumn = COMPANY_SETTING_COLUMNS[String(k || "").trim()];
+    if (companyColumn) {
+      const companyValue = db.prepare(`SELECT ${companyColumn} AS value FROM companies WHERE id=?`)
+        .get(normalizedCompanyId)?.value;
+      if (companyValue !== null && companyValue !== undefined && String(companyValue).trim() !== "") {
+        return companyValue;
+      }
+    }
+
+    return def;
+  }
+  return readGlobalSetting(k, def);
+}
+
+function setCompanySetting(companyId, k, v) {
+  const normalizedCompanyId = Number(companyId || 0);
+  const key = normalizedCompanyId > 0 && isTenantScopedSettingKey(k)
+    ? companySettingKey(normalizedCompanyId, k)
+    : String(k || "").trim();
+  if (!key) return;
+  db.prepare("INSERT OR REPLACE INTO app_settings(key,value) VALUES(?,?)").run(key, String(v || ""));
+}
+
+function getSetting(k, def=""){
+  return getCompanySetting(currentRequestCompanyId(), k, def);
+}
+
 function setSetting(k,v){
-  db.prepare("INSERT OR REPLACE INTO app_settings(key,value) VALUES(?,?)").run(k,String(v||""));
+  setCompanySetting(currentRequestCompanyId(), k, v);
 }
 
 function tipizateRegisterYear(value) {
@@ -4668,6 +4876,50 @@ function createManualTipizateRegisterEntry(values, req) {
 function safeStoredFileName(originalName, fallback = "document") {
   const raw = path.basename(String(originalName || fallback));
   return raw.replace(/[^A-Za-z0-9._-]/g, "_").replace(/_+/g, "_") || fallback;
+}
+
+function getDmsAutofillProfile(companyId) {
+  const normalizedCompanyId = Number(companyId || 0);
+  const company = db.prepare(`
+    SELECT name, cui, rc, address, bank, iban, representative
+    FROM companies
+    WHERE id=?
+  `).get(normalizedCompanyId) || {};
+
+  return {
+    company_name: String(company.name || getCompanySetting(normalizedCompanyId, "company_name", "") || "").trim(),
+    company_cui: String(company.cui || getCompanySetting(normalizedCompanyId, "company_cui", "") || "").trim(),
+    company_rc: String(company.rc || getCompanySetting(normalizedCompanyId, "company_rc", "") || "").trim(),
+    company_address: String(company.address || getCompanySetting(normalizedCompanyId, "company_address", "") || "").trim(),
+    company_bank: String(company.bank || getCompanySetting(normalizedCompanyId, "company_bank", "") || "").trim(),
+    company_iban: String(company.iban || getCompanySetting(normalizedCompanyId, "company_iban", "") || "").trim(),
+    company_phone: String(getCompanySetting(normalizedCompanyId, "company_phone", "") || "").trim(),
+    company_email: String(getCompanySetting(normalizedCompanyId, "company_email", "") || "").trim(),
+    capital_social: String(getCompanySetting(normalizedCompanyId, "capital_social", "") || "").trim(),
+    legal_representative: String(company.representative || getCompanySetting(normalizedCompanyId, "company_rep", "") || "").trim(),
+    legal_representative_ci_series: String(getCompanySetting(normalizedCompanyId, "company_rep_ci_series", "") || "").trim(),
+    legal_representative_ci_number: String(getCompanySetting(normalizedCompanyId, "company_rep_ci_number", "") || "").trim(),
+    legal_representative_ci_issued_by: String(getCompanySetting(normalizedCompanyId, "company_rep_ci_issued_by", "") || "").trim()
+  };
+}
+
+function dmsAutofillStorageDirectory(companyId) {
+  return path.join(__dirname, "uploads", "dms-autofill", `company-${Number(companyId || 0)}`);
+}
+
+function resolveDmsAutofillStoredPath(companyId, relativePath = "") {
+  const companyFolder = `company-${Number(companyId || 0)}`;
+  const normalizedRelativePath = String(relativePath || "").replaceAll("\\", "/").replace(/^\/+/, "");
+  if (!normalizedRelativePath.startsWith(`${companyFolder}/`)) return "";
+
+  const storageRoot = path.resolve(path.join(__dirname, "uploads", "dms-autofill"));
+  const absolutePath = path.resolve(storageRoot, normalizedRelativePath);
+  return absolutePath.startsWith(storageRoot + path.sep) ? absolutePath : "";
+}
+
+function removeDmsAutofillStoredFile(companyId, relativePath) {
+  const absolutePath = resolveDmsAutofillStoredPath(companyId, relativePath);
+  if (absolutePath && fs.existsSync(absolutePath)) fs.unlinkSync(absolutePath);
 }
 
 function backfillTipizateRegisterForCompany(companyId, req) {
@@ -4998,6 +5250,14 @@ function deleteCompanyWorkspace(companyId) {
   if (fs.existsSync(anafInboxDir)) {
     fs.rmSync(anafInboxDir, { recursive: true, force: true });
   }
+  const dmsAutofillDir = dmsAutofillStorageDirectory(normalizedCompanyId);
+  if (fs.existsSync(dmsAutofillDir)) {
+    fs.rmSync(dmsAutofillDir, { recursive: true, force: true });
+  }
+  const projectsDir = path.join(__dirname, "uploads", "projects", `company-${normalizedCompanyId}`);
+  if (fs.existsSync(projectsDir)) {
+    fs.rmSync(projectsDir, { recursive: true, force: true });
+  }
 
   const companyScopedTables = db.prepare(`
     SELECT name
@@ -5060,6 +5320,17 @@ function logCompanyAdminEvent({ companyId, actorUserId, actorEmail, eventType, s
     String(statusTo || ""),
     String(reason || "").trim()
   );
+}
+
+function findCompanyByCui(cui) {
+  const normalizedCui = normalizeCui(cui);
+  if (!normalizedCui) return null;
+  return db.prepare(`
+    SELECT id, name, cui
+    FROM companies
+    WHERE COALESCE(cui, '') <> ''
+    ORDER BY id DESC
+  `).all().find((company) => normalizeCui(company.cui) === normalizedCui) || null;
 }
 
 function companyStatusBadge(status) {
@@ -5356,6 +5627,179 @@ ${crmShellEnd()}
 </html>`);
 });
 
+app.get("/nexora/documents", requireAuth, (req, res) => {
+  const companyId = Number(req.session.user.company_id || 0);
+  const docs = db.prepare(`
+    SELECT id, title, category, file_name, file_path, mime_type,
+           registration_number, registered_at, created_at
+    FROM tipizate_docs
+    WHERE company_id=?
+    ORDER BY id DESC
+    LIMIT 300
+  `).all(companyId);
+  const autofillDocuments = db.prepare(`
+    SELECT d.id, d.title, d.source_file_name, d.output_file_name, d.output_mime_type,
+           d.template_type, d.matched_fields, d.replacement_count, d.created_by_email,
+           d.created_at, r.registration_number
+    FROM dms_autofill_documents d
+    LEFT JOIN tipizate_register r
+      ON r.company_id=d.company_id
+     AND r.file_path=('nexora/documents/autofill/' || d.id || '/download')
+     AND COALESCE(r.status, 'ACTIV') <> 'STERS'
+    WHERE d.company_id=?
+    ORDER BY d.id DESC
+    LIMIT 100
+  `).all(companyId).map((document) => ({
+    ...document,
+    matchedFields: parseJsonArray(document.matched_fields, [])
+  }));
+  const summary = getTipizateRegisterSummary(companyId);
+
+  return res.type("html").send(renderNexoraDocumentsPage({
+    companyName: req.session.user.company_name || "",
+    docs,
+    autofillDocuments,
+    autofillProfile: getDmsAutofillProfile(companyId),
+    summary,
+    ok: String(req.query?.ok || ""),
+    err: String(req.query?.err || "")
+  }));
+});
+
+app.post("/nexora/documents/autofill", requireAuth, dmsAutofillUpload.single("template"), async (req, res) => {
+  const companyId = Number(req.session.user.company_id || 0);
+  const file = req.file;
+  let sourcePath = "";
+  let outputPath = "";
+
+  if (!file) return res.redirect(`/nexora/documents?err=no_file#autofill`);
+
+  const originalName = String(file.originalname || "formular");
+  const extension = path.extname(originalName).toLowerCase();
+  if (![".docx", ".pdf"].includes(extension)) {
+    try { fs.unlinkSync(file.path); } catch {}
+    return res.redirect(`/nexora/documents?err=unsupported_type#autofill`);
+  }
+
+  try {
+    const completed = await processDmsTemplate({
+      buffer: fs.readFileSync(file.path),
+      extension,
+      profile: getDmsAutofillProfile(companyId)
+    });
+    const safeBase = safeStoredFileName(path.basename(originalName, extension), "formular");
+    const requestedTitle = String(req.body?.title || "").trim();
+    const title = requestedTitle || safeBase.replaceAll("_", " ");
+    const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const directory = dmsAutofillStorageDirectory(companyId);
+    const sourceStoredName = `${stamp}-${safeBase}${extension}`;
+    const outputDownloadName = `${safeBase}-completat${completed.extension}`;
+    const outputStoredName = `${stamp}-${outputDownloadName}`;
+    const sourceRelativePath = `company-${companyId}/${sourceStoredName}`;
+    const outputRelativePath = `company-${companyId}/${outputStoredName}`;
+
+    fs.mkdirSync(directory, { recursive: true });
+    sourcePath = path.join(directory, sourceStoredName);
+    outputPath = path.join(directory, outputStoredName);
+    fs.renameSync(file.path, sourcePath);
+    fs.writeFileSync(outputPath, completed.buffer);
+
+    db.prepare(`
+      INSERT INTO dms_autofill_documents (
+        company_id, title, source_file_name, source_file_path, output_file_name,
+        output_file_path, output_mime_type, template_type, matched_fields,
+        replacement_count, created_by_email
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      companyId,
+      title,
+      safeStoredFileName(originalName, `formular${extension}`),
+      sourceRelativePath,
+      outputDownloadName,
+      outputRelativePath,
+      completed.mimeType,
+      extension.slice(1).toUpperCase(),
+      JSON.stringify(completed.matchedFields),
+      Number(completed.replacementCount || 0),
+      String(req.session.user.email || "")
+    );
+
+    return res.redirect(`/nexora/documents?ok=autofilled#autofill`);
+  } catch (error) {
+    try {
+      if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+      if (sourcePath && fs.existsSync(sourcePath)) fs.unlinkSync(sourcePath);
+      if (outputPath && fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
+    } catch {}
+    const errorCode = ["invalid_docx", "invalid_pdf", "no_fields", "unsupported_type"].includes(String(error?.code || ""))
+      ? String(error.code)
+      : "processing";
+    if (errorCode === "processing") console.error("DMS autofill failed:", error);
+    return res.redirect(`/nexora/documents?err=${encodeURIComponent(errorCode)}#autofill`);
+  }
+});
+
+app.get("/nexora/documents/autofill/:id/download", requireAuth, (req, res) => {
+  const companyId = Number(req.session.user.company_id || 0);
+  const id = Number(req.params.id || 0);
+  const document = db.prepare(`
+    SELECT output_file_name, output_file_path, output_mime_type
+    FROM dms_autofill_documents
+    WHERE id=? AND company_id=?
+  `).get(id, companyId);
+  if (!document) return res.status(404).send("Documentul nu a fost gasit.");
+
+  const absolutePath = resolveDmsAutofillStoredPath(companyId, document.output_file_path);
+  if (!absolutePath || !fs.existsSync(absolutePath)) return res.status(404).send("Fisierul nu a fost gasit.");
+
+  res.setHeader("Content-Type", String(document.output_mime_type || "application/octet-stream"));
+  return res.download(absolutePath, String(document.output_file_name || "document-completat"));
+});
+
+app.post("/nexora/documents/autofill/:id/delete", requireAuth, (req, res) => {
+  const companyId = Number(req.session.user.company_id || 0);
+  const id = Number(req.params.id || 0);
+  const document = db.prepare(`
+    SELECT source_file_path, output_file_path
+    FROM dms_autofill_documents
+    WHERE id=? AND company_id=?
+  `).get(id, companyId);
+  if (!document) return res.status(404).send("Documentul nu a fost gasit.");
+
+  removeDmsAutofillStoredFile(companyId, document.source_file_path);
+  removeDmsAutofillStoredFile(companyId, document.output_file_path);
+  db.prepare(`
+    UPDATE tipizate_register
+    SET status='STERS',
+        file_path=NULL
+    WHERE company_id=? AND file_path=?
+  `).run(companyId, `nexora/documents/autofill/${id}/download`);
+  db.prepare("DELETE FROM dms_autofill_documents WHERE id=? AND company_id=?").run(id, companyId);
+  return res.redirect("/nexora/documents?ok=autofill_deleted#autofill");
+});
+
+app.get("/nexora/documents/register", requireAuth, (req, res) => {
+  const companyId = Number(req.session.user.company_id || 0);
+  const rows = db.prepare(`
+    SELECT id, registration_number, year, seq, doc_id, doc_title, doc_category,
+           file_name, file_path, issued_at, entry_type, recipient, notes,
+           created_by_email, status, created_at
+    FROM tipizate_register
+    WHERE company_id=?
+    ORDER BY year DESC, seq DESC
+    LIMIT 1000
+  `).all(companyId);
+  const summary = getTipizateRegisterSummary(companyId);
+
+  return res.type("html").send(renderNexoraDocumentsRegisterPage({
+    companyName: req.session.user.company_name || "",
+    rows,
+    summary,
+    ok: String(req.query?.ok || "")
+  }));
+});
+
 app.get("/tipizate/registru", requireAuth, (req, res) => {
   const companyId = Number(req.session.user.company_id || 0);
   const rows = db.prepare(`
@@ -5469,7 +5913,7 @@ ${crmShellEnd()}
 </html>`);
 });
 
-app.post("/tipizate/registru/manual", requireAuth, upload.single("attachment"), (req, res) => {
+app.post(["/tipizate/registru/manual", "/nexora/documents/register/manual"], requireAuth, upload.single("attachment"), (req, res) => {
   try {
     const companyId = Number(req.session.user.company_id || 0);
     const title = String(req.body?.title || "").trim();
@@ -5508,13 +5952,13 @@ app.post("/tipizate/registru/manual", requireAuth, upload.single("attachment"), 
       filePath
     }, req);
 
-    return res.redirect("/tipizate/registru");
+    return res.redirect(req.path.startsWith("/nexora/") || req.body?.return_to === "nexora" ? "/nexora/documents/register?ok=manual" : "/tipizate/registru");
   } catch (e) {
     return res.status(500).send("Înregistrare manuală eșuată: " + String(e?.message || e));
   }
 });
 
-app.get("/tipizate/registru/fisa-nr-inregistrare.xls", requireAuth, (req, res) => {
+app.get(["/tipizate/registru/fisa-nr-inregistrare.xls", "/nexora/documents/register/export.xls"], requireAuth, (req, res) => {
   const companyId = Number(req.session.user.company_id || 0);
   const rows = db.prepare(`
     SELECT registration_number, issued_at, entry_type, doc_title, doc_category,
@@ -5627,7 +6071,7 @@ ${crmShellStart("tipizate", "Proces verbal", "Completează formularul și genere
     </div>
 
     <div>
-      
+
 
     </div>
 
@@ -6207,7 +6651,7 @@ app.post("/tipizate/proces-verbal/generate", requireAuth, async (req, res) => {
     if (!content) return res.status(400).send("Conținutul este obligatoriu.");
 
     const esc = (v) => escapeHtml(String(v || ""));
-    
+
     let total = 0;
     if (Array.isArray(expense_rows)) {
       expense_rows.forEach(r => {
@@ -7257,7 +7701,7 @@ h1{margin-bottom:20px}
   }
 });
 
-app.post("/tipizate/upload", requireAuth, upload.single("pdf"), (req, res) => {
+app.post(["/tipizate/upload", "/nexora/documents/upload"], requireAuth, upload.single("pdf"), (req, res) => {
   const companyId = Number(req.session.user.company_id || 0);
   if (!req.file) return res.status(400).send("Fișier PDF obligatoriu.");
 
@@ -7286,10 +7730,10 @@ app.post("/tipizate/upload", requireAuth, upload.single("pdf"), (req, res) => {
   );
   registerTipizateDocument(insertInfo.lastInsertRowid, companyId, req);
 
-  return res.redirect("/tipizate");
+  return res.redirect(req.path.startsWith("/nexora/") || req.body?.return_to === "nexora" ? "/nexora/documents?ok=uploaded" : "/tipizate");
 });
 
-app.post("/tipizate/:id/delete", requireAuth, (req, res) => {
+app.post(["/tipizate/:id/delete", "/nexora/documents/:id/delete"], requireAuth, (req, res) => {
   const companyId = Number(req.session.user.company_id || 0);
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) return res.status(400).send("Bad id");
@@ -7317,9 +7761,77 @@ app.post("/tipizate/:id/delete", requireAuth, (req, res) => {
   `).run(id, companyId);
 
   db.prepare("DELETE FROM tipizate_docs WHERE id=? AND company_id=?").run(id, companyId);
-  return res.redirect("/tipizate");
+  return res.redirect(req.path.startsWith("/nexora/") || req.body?.return_to === "nexora" ? "/nexora/documents?ok=deleted" : "/tipizate");
 });
 
+
+app.get("/nexora/roles", requireAuth, requireRole("admin"), (req, res) => {
+  res.redirect("/nexora/users");
+});
+
+app.get("/nexora/users", requireAuth, requireRole("admin"), (req, res) => {
+  const companyId = Number(req.session?.user?.company_id || 0);
+  const seatContext = companySeatSummary(companyId);
+  const users = db.prepare(`
+    SELECT id, email, role, status, is_company_admin, module_permissions, created_at
+    FROM users
+    WHERE company_id=?
+    ORDER BY id DESC
+  `).all(companyId).map((user) => {
+    const roleKey = String(user.role || "").trim().toLowerCase();
+    const storedModules = parseJsonArray(user.module_permissions, ROLE_MODULES[roleKey] || []);
+    return {
+      ...user,
+      modules: storedModules.length ? storedModules : (ROLE_MODULES[roleKey] || [])
+    };
+  });
+
+  return res.type("html").send(renderNexoraUsersPage({
+    companyName: req.session.user.company_name || "",
+    users,
+    seatContext,
+    roleModules: ROLE_MODULES,
+    moduleDefinitions: MODULE_DEFINITIONS,
+    currentUserId: Number(req.session.user.id || 0),
+    isSuperAdmin: Number(req.session.user.is_super_admin || 0),
+    ok: String(req.query?.ok || "")
+  }));
+});
+
+app.get("/nexora/users/:id/edit", requireAuth, requireRole("admin"), (req, res) => {
+  const id = Number(req.params.id);
+  const companyId = Number(req.session?.user?.company_id || 0);
+
+  const user = db.prepare(`
+    SELECT id, email, role, module_permissions
+    FROM users
+    WHERE id=? AND company_id=?
+  `).get(id, companyId);
+
+  if (!user) {
+    return res.status(404).send("User not found");
+  }
+
+  const seatContext = companySeatSummary(companyId);
+  const roleKey = String(user.role || "").trim().toLowerCase();
+  const roleModules = Array.isArray(ROLE_MODULES[roleKey]) ? ROLE_MODULES[roleKey] : [];
+  const activeModuleSet = new Set(seatContext.activeModules);
+  const selectableModules = MODULE_DEFINITIONS
+    .filter((item) => roleModules.includes(item.key) && activeModuleSet.has(item.key));
+  const storedModules = parseJsonArray(user.module_permissions, roleModules);
+  const assignedModules = storedModules.length ? storedModules : roleModules;
+  const perUserModuleLimit = Number(seatContext.subscription?.max_modules_per_user || 0);
+
+  return res.type("html").send(renderNexoraUserEditPage({
+    companyName: req.session.user.company_name || "",
+    user,
+    selectableModules,
+    assignedModules,
+    seatContext,
+    perUserModuleLimit,
+    ok: String(req.query?.ok || "")
+  }));
+});
 
 app.post("/accounts/create", requireAuth, requireRole("admin"), (req, res) => {
   const email = String(req.body?.email || "").trim().toLowerCase();
@@ -7368,7 +7880,7 @@ app.post("/accounts/create", requireAuth, requireRole("admin"), (req, res) => {
   );
 
   syncCompanySeatUsage(companyId);
-  res.redirect("/accounts");
+  res.redirect(req.body?.return_to === "nexora" ? "/nexora/users?ok=created" : "/accounts");
 });
 
 app.post("/accounts/:id/edit", requireAuth, requireRole("admin"), (req, res) => {
@@ -7439,7 +7951,7 @@ app.post("/accounts/:id/edit", requireAuth, requireRole("admin"), (req, res) => 
     req.session.user.email = email;
   }
 
-  res.redirect("/accounts");
+  res.redirect(req.body?.return_to === "nexora" ? "/nexora/users?ok=saved" : "/accounts");
 });
 
 app.post("/accounts/:id/delete", requireAuth, requireRole("admin"), (req, res) => {
@@ -7479,7 +7991,7 @@ app.post("/accounts/:id/delete", requireAuth, requireRole("admin"), (req, res) =
   `).run(id, companyId);
 
   syncCompanySeatUsage(companyId);
-  res.redirect("/accounts");
+  res.redirect(req.body?.return_to === "nexora" ? "/nexora/users?ok=deleted" : "/accounts");
 });
 
 app.get("/accounts/:id/edit", requireAuth, requireRole("admin"), (req, res) => {
@@ -8172,7 +8684,7 @@ ${crmShellEnd()}
   res.send(html);
 });
 
-app.post("/super-admin/companies/:id/status", requireAuth, requireSuperAdmin, (req, res) => {
+app.post(["/super-admin/companies/:id/status", "/nexora/super-admin/companies/:id/status"], requireAuth, requireSuperAdmin, (req, res) => {
   const companyId = Number(req.params.id);
   const nextStatus = String(req.body?.status || "").trim().toLowerCase();
   const reason = String(req.body?.reason || "").trim();
@@ -8220,10 +8732,10 @@ app.post("/super-admin/companies/:id/status", requireAuth, requireSuperAdmin, (r
     reason
   });
 
-  res.redirect("/super-admin/companies");
+  res.redirect(req.path.startsWith("/nexora/") ? `/nexora/super-admin/companies/${companyId}?ok=status` : "/super-admin/companies");
 });
 
-app.post("/super-admin/companies/:id/delete", requireAuth, requireSuperAdmin, (req, res) => {
+app.post(["/super-admin/companies/:id/delete", "/nexora/super-admin/companies/:id/delete"], requireAuth, requireSuperAdmin, (req, res) => {
   const companyId = Number(req.params.id);
   if (!Number.isFinite(companyId)) return res.status(400).send("Bad id");
 
@@ -8238,7 +8750,7 @@ app.post("/super-admin/companies/:id/delete", requireAuth, requireSuperAdmin, (r
   }
 
   deleteCompanyWorkspace(companyId);
-  res.redirect("/super-admin/companies");
+  res.redirect(req.path.startsWith("/nexora/") ? "/nexora/super-admin/companies?ok=deleted" : "/super-admin/companies");
 });
 
 app.get("/super-admin/payments", requireAuth, requireSuperAdmin, (req, res) => {
@@ -8535,7 +9047,7 @@ ${crmShellEnd()}
   res.send(html);
 });
 
-app.post("/super-admin/payments/op", requireAuth, requireSuperAdmin, (req, res) => {
+app.post(["/super-admin/payments/op", "/nexora/super-admin/payments/op"], requireAuth, requireSuperAdmin, (req, res) => {
   const companyId = Number(req.body?.company_id || 0);
   const amount = Number(req.body?.amount || 0);
   const currency = String(req.body?.currency || "RON").trim().toUpperCase();
@@ -8603,7 +9115,475 @@ app.post("/super-admin/payments/op", requireAuth, requireSuperAdmin, (req, res) 
     reason: `OP ${referenceCode || "fără referință"}${notes ? ` | ${notes}` : ""}`
   });
 
-  res.redirect("/super-admin/payments");
+  res.redirect(req.path.startsWith("/nexora/") ? "/nexora/super-admin/payments" : "/super-admin/payments");
+});
+
+app.get("/nexora/super-admin", requireAuth, requireSuperAdmin, (req, res) => {
+  const stats = {
+    activeCompanies: db.prepare(`SELECT COUNT(*) AS n FROM companies WHERE LOWER(COALESCE(status,'active'))='active'`).get()?.n || 0,
+    trialCompanies: db.prepare(`SELECT COUNT(*) AS n FROM companies WHERE LOWER(COALESCE(status,''))='trial'`).get()?.n || 0,
+    pastDueCompanies: db.prepare(`SELECT COUNT(*) AS n FROM companies WHERE LOWER(COALESCE(status,''))='past_due'`).get()?.n || 0,
+    suspendedCompanies: db.prepare(`SELECT COUNT(*) AS n FROM companies WHERE LOWER(COALESCE(status,''))='suspended'`).get()?.n || 0,
+    totalCompanies: db.prepare(`SELECT COUNT(*) AS n FROM companies`).get()?.n || 0,
+    totalUsers: db.prepare(`SELECT COUNT(*) AS n FROM users`).get()?.n || 0,
+    totalPayments: db.prepare(`SELECT COUNT(*) AS n FROM billing_payments`).get()?.n || 0
+  };
+
+  const latestCompanies = db.prepare(`
+    SELECT c.id, c.name, c.slug, c.cui, c.status, c.created_at, p.name AS plan_name,
+           (SELECT COUNT(*) FROM users u WHERE u.company_id=c.id) AS users_count
+    FROM companies c
+    LEFT JOIN company_subscriptions cs
+      ON cs.company_id=c.id
+     AND cs.id=(SELECT cs2.id FROM company_subscriptions cs2 WHERE cs2.company_id=c.id ORDER BY cs2.id DESC LIMIT 1)
+    LEFT JOIN plans p ON p.id=cs.plan_id
+    ORDER BY c.id DESC
+    LIMIT 10
+  `).all();
+
+  const planUsage = db.prepare(`
+    SELECT p.name, p.code, COUNT(cs.id) AS companies_count,
+           IFNULL(SUM(cs.seats_used), 0) AS users_count,
+           IFNULL(SUM(cs.seats_included), 0) AS seats_total
+    FROM plans p
+    LEFT JOIN company_subscriptions cs
+      ON cs.plan_id=p.id
+     AND cs.id=(SELECT cs2.id FROM company_subscriptions cs2 WHERE cs2.company_id=cs.company_id ORDER BY cs2.id DESC LIMIT 1)
+    WHERE p.status='active'
+    GROUP BY p.id, p.name, p.code
+    ORDER BY p.price_monthly ASC, p.id ASC
+  `).all();
+
+  const recentPayments = db.prepare(`
+    SELECT bp.status, bp.amount, bp.currency, bp.payer_name, bp.payer_email, bp.created_at, bp.paid_at,
+           c.name AS company_name, p.name AS plan_name
+    FROM billing_payments bp
+    JOIN companies c ON c.id=bp.company_id
+    LEFT JOIN company_subscriptions cs ON cs.id=bp.company_subscription_id
+    LEFT JOIN plans p ON p.id=cs.plan_id
+    ORDER BY bp.id DESC
+    LIMIT 10
+  `).all();
+
+  return res.type("html").send(renderNexoraSuperAdminDashboardPage({
+    stats,
+    latestCompanies,
+    planUsage,
+    recentPayments
+  }));
+});
+
+app.get("/nexora/super-admin/companies", requireAuth, requireSuperAdmin, async (req, res) => {
+  const q = String(req.query?.q || "").trim();
+  const status = String(req.query?.status || "").trim().toLowerCase();
+  const plan = String(req.query?.plan || "").trim().toLowerCase();
+  const lookupInput = String(req.query?.lookup_cui || "").trim();
+  const lookupCui = normalizeCui(lookupInput);
+  const lookup = { cui: lookupCui || lookupInput };
+  let lookupError = "";
+
+  if (lookupInput) {
+    if (!lookupCui) {
+      lookupError = "invalid_cui";
+    } else {
+      try {
+        lookup.company = await fetchAnafCompany(lookupCui);
+        lookup.existingCompany = findCompanyByCui(lookupCui);
+      } catch (error) {
+        const details = String(error?.message || error || "");
+        lookupError = /raspuns invalid|not found|neg[aă]sit/i.test(details)
+          ? "anaf_not_found"
+          : "anaf_unavailable";
+      }
+    }
+  }
+
+  const where = [];
+  const params = [];
+  if (q) {
+    where.push("(LOWER(c.name) LIKE ? OR LOWER(COALESCE(c.slug,'')) LIKE ? OR LOWER(COALESCE(c.cui,'')) LIKE ?)");
+    const token = `%${q.toLowerCase()}%`;
+    params.push(token, token, token);
+  }
+  if (status && status !== "all") {
+    where.push("LOWER(COALESCE(c.status,'active')) = ?");
+    params.push(status);
+  }
+  if (plan && plan !== "all") {
+    where.push("LOWER(COALESCE(p.code,'')) = ?");
+    params.push(plan);
+  }
+
+  const rows = db.prepare(`
+    SELECT c.id, c.name, c.slug, c.cui, c.status, c.is_demo, c.demo_expires_at,
+           c.suspension_reason, c.created_at, c.max_users, p.name AS plan_name,
+           cs.status AS subscription_status, cs.seats_included, cs.seats_used,
+           (SELECT COUNT(*) FROM users u WHERE u.company_id=c.id) AS users_count,
+           (SELECT COUNT(*) FROM clients cl WHERE cl.company_id=c.id) AS clients_count,
+           (SELECT COUNT(*) FROM contracts ct WHERE ct.company_id=c.id) AS contracts_count,
+           (SELECT COUNT(*) FROM facturi f WHERE f.company_id=c.id) AS facturi_count
+    FROM companies c
+    LEFT JOIN company_subscriptions cs
+      ON cs.company_id=c.id
+     AND cs.id=(SELECT cs2.id FROM company_subscriptions cs2 WHERE cs2.company_id=c.id ORDER BY cs2.id DESC LIMIT 1)
+    LEFT JOIN plans p ON p.id=cs.plan_id
+    ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+    ORDER BY c.id DESC
+  `).all(...params);
+
+  const plans = db.prepare(`
+    SELECT code, name
+    FROM plans
+    WHERE status='active'
+    ORDER BY price_monthly ASC, id ASC
+  `).all();
+  const createPlans = db.prepare(`
+    SELECT id, code, name
+    FROM plans
+    WHERE status='active'
+      AND COALESCE(is_public, 1)=1
+    ORDER BY COALESCE(sort_order, 100) ASC, price_monthly ASC, id ASC
+  `).all();
+
+  return res.type("html").send(renderNexoraSuperAdminCompaniesPage({
+    rows,
+    plans,
+    createPlans,
+    filters: { q, status: status || "all", plan: plan || "all" },
+    lookup,
+    ok: String(req.query?.ok || ""),
+    err: String(req.query?.err || lookupError)
+  }));
+});
+
+app.post("/nexora/super-admin/companies/create-from-anaf", requireAuth, requireSuperAdmin, async (req, res) => {
+  const cui = normalizeCui(req.body?.company_cui);
+  const adminEmail = String(req.body?.admin_email || "").trim().toLowerCase();
+  const adminPassword = String(req.body?.admin_password || "");
+  const companyRep = String(req.body?.company_rep || "").trim();
+  const planId = Number(req.body?.plan_id || 0);
+  const redirectWithError = (code) => {
+    const query = new URLSearchParams({ lookup_cui: cui || String(req.body?.company_cui || "").trim(), err: code });
+    return res.redirect(`/nexora/super-admin/companies?${query.toString()}#anaf-create`);
+  };
+
+  if (!cui) return redirectWithError("invalid_cui");
+  if (!adminEmail || !adminPassword || !Number.isFinite(planId) || planId < 1) {
+    return redirectWithError("missing_fields");
+  }
+  if (adminPassword.length < 8) return redirectWithError("short_password");
+  if (findCompanyByCui(cui)) return redirectWithError("company_exists");
+  if (db.prepare("SELECT id FROM users WHERE LOWER(email)=?").get(adminEmail)) {
+    return redirectWithError("user_exists");
+  }
+
+  const selectedPlan = db.prepare(`
+    SELECT id, name, code, max_users, pricing_model, price_monthly,
+           max_modules_per_user, max_active_modules, module_keys
+    FROM plans
+    WHERE id=? AND status='active' AND COALESCE(is_public, 1)=1
+  `).get(planId);
+  if (!selectedPlan) return redirectWithError("invalid_plan");
+
+  let anafCompany;
+  try {
+    anafCompany = await fetchAnafCompany(cui);
+  } catch (error) {
+    const details = String(error?.message || error || "");
+    return redirectWithError(/raspuns invalid|not found|neg[aă]sit/i.test(details) ? "anaf_not_found" : "anaf_unavailable");
+  }
+
+  if (!anafCompany?.name || findCompanyByCui(anafCompany.cui)) {
+    return redirectWithError(anafCompany?.name ? "company_exists" : "anaf_not_found");
+  }
+
+  try {
+    const created = createWorkspace(db, {
+      companyName: String(anafCompany.name || "").trim(),
+      companyCui: String(anafCompany.cui || cui).trim(),
+      companyRc: String(anafCompany.reg_com || "").trim(),
+      companyRep,
+      companyAddress: String(anafCompany.address || "").trim(),
+      adminEmail,
+      adminPassword,
+      plan: selectedPlan,
+      isDemo: false
+    });
+    logCompanyAdminEvent({
+      companyId: created.companyId,
+      actorUserId: Number(req.session.user.id || 0),
+      actorEmail: req.session.user.email,
+      eventType: "company_created_from_anaf",
+      statusTo: "trial",
+      reason: `CUI ${String(anafCompany.cui || cui)} verificat in ANAF`
+    });
+
+    const query = new URLSearchParams({ ok: "created", q: String(anafCompany.cui || cui) });
+    return res.redirect(`/nexora/super-admin/companies?${query.toString()}`);
+  } catch (error) {
+    console.error("Super admin ANAF company creation failed:", error);
+    return redirectWithError("create_failed");
+  }
+});
+
+app.get("/nexora/super-admin/companies/:id", requireAuth, requireSuperAdmin, (req, res) => {
+  const companyId = Number(req.params.id);
+  if (!Number.isFinite(companyId)) return res.status(400).send("Bad id");
+
+  const company = db.prepare(`
+    SELECT c.*, p.name AS plan_name, p.price_monthly, cs.seats_included, cs.seats_used, cs.status AS subscription_status
+    FROM companies c
+    LEFT JOIN company_subscriptions cs
+      ON cs.company_id=c.id
+     AND cs.id=(SELECT cs2.id FROM company_subscriptions cs2 WHERE cs2.company_id=c.id ORDER BY cs2.id DESC LIMIT 1)
+    LEFT JOIN plans p ON p.id=cs.plan_id
+    WHERE c.id=?
+  `).get(companyId);
+  if (!company) return res.status(404).send("Company not found");
+
+  const users = db.prepare(`
+    SELECT id, email, role, status, created_at
+    FROM users
+    WHERE company_id=?
+    ORDER BY id DESC
+    LIMIT 25
+  `).all(companyId);
+  const clients = db.prepare(`
+    SELECT id, name, cui, created_at
+    FROM clients
+    WHERE company_id=?
+    ORDER BY id DESC
+    LIMIT 10
+  `).all(companyId);
+  const invoices = db.prepare(`
+    SELECT id, factura_nr, status, total, moneda, created_at
+    FROM facturi
+    WHERE company_id=?
+    ORDER BY id DESC
+    LIMIT 10
+  `).all(companyId);
+  const payments = db.prepare(`
+    SELECT source, status, amount, currency, payer_name, payer_email, reference_code, created_at, paid_at
+    FROM billing_payments
+    WHERE company_id=?
+    ORDER BY id DESC
+    LIMIT 10
+  `).all(companyId);
+  const events = db.prepare(`
+    SELECT actor_email, event_type, status_from, status_to, reason, created_at
+    FROM company_admin_events
+    WHERE company_id=?
+    ORDER BY id DESC
+    LIMIT 12
+  `).all(companyId);
+  const stats = {
+    users: db.prepare(`SELECT COUNT(*) AS n FROM users WHERE company_id=?`).get(companyId)?.n || 0,
+    clients: db.prepare(`SELECT COUNT(*) AS n FROM clients WHERE company_id=?`).get(companyId)?.n || 0,
+    quotes: db.prepare(`SELECT COUNT(*) AS n FROM quotes WHERE company_id=?`).get(companyId)?.n || 0,
+    contracts: db.prepare(`SELECT COUNT(*) AS n FROM contracts WHERE company_id=?`).get(companyId)?.n || 0,
+    facturi: db.prepare(`SELECT COUNT(*) AS n FROM facturi WHERE company_id=?`).get(companyId)?.n || 0,
+    tipizate: db.prepare(`SELECT COUNT(*) AS n FROM tipizate_docs WHERE company_id=?`).get(companyId)?.n || 0
+  };
+
+  return res.type("html").send(renderNexoraSuperAdminCompanyDetailPage({
+    company,
+    stats,
+    users,
+    clients,
+    invoices,
+    payments,
+    events
+  }));
+});
+
+app.get("/nexora/super-admin/payments", requireAuth, requireSuperAdmin, (req, res) => {
+  const q = String(req.query?.q || "").trim();
+  const status = String(req.query?.status || "").trim().toLowerCase();
+  const source = String(req.query?.source || "").trim().toLowerCase();
+  const plan = String(req.query?.plan || "").trim().toLowerCase();
+  const companyId = Number(req.query?.company_id || 0) || 0;
+
+  const where = [];
+  const params = [];
+  if (q) {
+    where.push("(LOWER(c.name) LIKE ? OR LOWER(COALESCE(bp.payer_email,'')) LIKE ? OR LOWER(COALESCE(bp.payer_name,'')) LIKE ? OR LOWER(COALESCE(bp.reference_code,'')) LIKE ?)");
+    const token = `%${q.toLowerCase()}%`;
+    params.push(token, token, token, token);
+  }
+  if (status && status !== "all") {
+    where.push("LOWER(COALESCE(bp.status,'')) = ?");
+    params.push(status);
+  }
+  if (source && source !== "all") {
+    where.push("LOWER(COALESCE(bp.source,'')) = ?");
+    params.push(source);
+  }
+  if (plan && plan !== "all") {
+    where.push("LOWER(COALESCE(p.code,'')) = ?");
+    params.push(plan);
+  }
+  if (companyId) {
+    where.push("bp.company_id = ?");
+    params.push(companyId);
+  }
+
+  const rows = db.prepare(`
+    SELECT bp.*, c.name AS company_name, c.slug AS company_slug, c.status AS company_status,
+           cs.status AS subscription_status, p.code AS plan_code, p.name AS plan_name,
+           f.factura_nr AS generated_factura_nr
+    FROM billing_payments bp
+    JOIN companies c ON c.id=bp.company_id
+    LEFT JOIN company_subscriptions cs ON cs.id=bp.company_subscription_id
+    LEFT JOIN plans p ON p.id=cs.plan_id
+    LEFT JOIN facturi f ON f.id=bp.generated_factura_id AND f.company_id=bp.company_id
+    ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+    ORDER BY bp.id DESC
+    LIMIT 300
+  `).all(...params);
+
+  const stats = rows.reduce((acc, row) => {
+    acc.total += 1;
+    const rowStatus = String(row.status || "").toLowerCase();
+    const rowSource = String(row.source || "").toLowerCase();
+    if (rowStatus === "paid") acc.paid += 1;
+    if (rowStatus === "failed") acc.failed += 1;
+    if (rowStatus === "pending_verification") acc.pending += 1;
+    if (rowSource === "stripe") acc.stripe += 1;
+    if (rowSource === "op") acc.op += 1;
+    return acc;
+  }, { total: 0, paid: 0, failed: 0, pending: 0, stripe: 0, op: 0 });
+
+  const companies = db.prepare(`
+    SELECT id, name
+    FROM companies
+    ORDER BY name COLLATE NOCASE ASC
+  `).all();
+  const plans = db.prepare(`
+    SELECT code, name
+    FROM plans
+    WHERE status='active'
+    ORDER BY price_monthly ASC, id ASC
+  `).all();
+
+  return res.type("html").send(renderNexoraSuperAdminPaymentsPage({
+    rows,
+    companies,
+    plans,
+    stats,
+    filters: { q, status: status || "all", source: source || "all", plan: plan || "all", companyId }
+  }));
+});
+
+
+app.get("/nexora/settings", requireAuth, (req, res) => {
+const companyId = Number(req.session.user.company_id || 0);
+const isCompanyAdmin = String(req.session.user.role || "").toLowerCase() === "admin" || Number(req.session.user.is_company_admin || 0) === 1;
+const canAccessSpvSettings = canAccessSpvUser(req.session.user);
+const companyContext = getCompanySubscriptionContext(companyId);
+const companyDetails = companyContext.company || {};
+const activeSubscription = companyContext.subscription || null;
+const activeModuleSet = new Set(companyContext.activeModules);
+const companyStatus = String(companyDetails.status || activeSubscription?.status || "active").toLowerCase();
+const stripeBillingConfigured = Boolean(String(process.env.STRIPE_SECRET_KEY || "").trim());
+const stripeWebhookConfigured = Boolean(String(process.env.STRIPE_WEBHOOK_SECRET || "").trim());
+const activeUserCount = Number(activeSubscription?.seats_used ?? 1) || 1;
+const companyModuleLimit = Number(activeSubscription?.max_active_modules || 0);
+const activeOptionalModuleCount = companyContext.activeModules.filter((key) => !["dashboard", "accounts", "setari"].includes(key)).length;
+const settings = {
+  company_name: companyDetails.name || getSetting("company_name", "QR-LAB SRL"),
+  company_cui: companyDetails.cui || getSetting("company_cui", ""),
+  company_rc: companyDetails.rc || getSetting("company_rc", ""),
+  company_address: companyDetails.address || getSetting("company_address", ""),
+  company_iban: companyDetails.iban || getSetting("company_iban", ""),
+  company_bank: companyDetails.bank || getSetting("company_bank", ""),
+  company_rep: companyDetails.representative || getSetting("company_rep", ""),
+  company_rep_ci_series: getSetting("company_rep_ci_series", ""),
+  company_rep_ci_number: getSetting("company_rep_ci_number", ""),
+  company_rep_ci_issued_by: getSetting("company_rep_ci_issued_by", ""),
+  company_phone: getSetting("company_phone", ""),
+  company_email: getSetting("company_email", ""),
+  company_vat: getSetting("company_vat", "0"),
+  company_vat_exemption_reason: getSetting("company_vat_exemption_reason", "Nu face obiectul TVA"),
+  invoice_series: getSetting("invoice_series", "INV"),
+  invoice_color: getSetting("invoice_color", "#39a935"),
+  capital_social: getSetting("capital_social", ""),
+  invoice_footer: getSetting("invoice_footer", "Factura este valabila fara semnatura conform legii."),
+  anaf_environment: getSetting("anaf_environment", "test"),
+  anaf_redirect_uri: getSetting("anaf_redirect_uri", "https://minicrm.qr-lab.ro/oauth/anaf/callback"),
+  anaf_client_id: getSetting("anaf_client_id", ""),
+  anaf_client_secret: getSetting("anaf_client_secret", "")
+};
+const plans = companyContext.plans.map((plan) => {
+  const pricingModel = String(plan.pricing_model || "flat").trim().toLowerCase();
+  const chargePreview = planChargeAmount(plan, activeUserCount);
+  const chargeQuantity = planChargeQuantity(plan, activeUserCount);
+  const moduleLimitCopy = Number(plan.max_active_modules || 0) > 0
+    ? `Până la ${String(plan.max_active_modules)} module operaționale`
+    : Number(plan.max_modules_per_user || 0) > 0
+      ? `Maximum ${String(plan.max_modules_per_user)} module / utilizator`
+      : "Acces complet la module";
+  return {
+    ...plan,
+    features: parseJsonArray(plan.features_json, []),
+    pricingLabel: pricingModel === "per_user"
+      ? `${String(plan.price_monthly)} EUR / utilizator / lună`
+      : `${String(plan.price_monthly)} EUR / lună`,
+    moduleLimitCopy,
+    chargeCopy: `${String(chargePreview)} EUR estimat / lună${pricingModel === "per_user" ? ` pentru ${String(chargeQuantity)} utilizatori` : ""}`
+  };
+});
+const groupMeta = {
+  crm: ["CRM", "Clienți, oferte și relații comerciale."],
+  erp: ["ERP", "Facturare, inventar, contabilitate și operațional."],
+  admin: ["Administrare", "Utilizatori, roluri și configurare."]
+};
+const moduleGroups = Object.entries(MODULE_GROUPS).map(([groupKey, moduleKeys]) => {
+  const [label, description] = groupMeta[groupKey] || [groupKey, ""];
+  const modules = moduleKeys.map((moduleKey) => {
+    const def = MODULE_DEFINITIONS.find((item) => item.key === moduleKey);
+    const includedByPlan = companyContext.planModules.includes(moduleKey);
+    const active = activeModuleSet.has(moduleKey);
+    const isCoreModule = ["dashboard", "accounts", "setari"].includes(moduleKey);
+    return {
+      key: moduleKey,
+      label: def?.label || moduleKey,
+      includedByPlan,
+      active,
+      isCoreModule,
+      copy: includedByPlan
+        ? (isCoreModule ? "Inclus implicit în plan." : "Disponibil în planul curent.")
+        : "Necesită upgrade de plan."
+    };
+  });
+  return {
+    key: groupKey,
+    label,
+    description,
+    modules,
+    activeCount: modules.filter((item) => item.active).length,
+    totalCount: modules.length
+  };
+});
+
+res.type("html").send(renderNexoraSettingsPage({
+  companyName: req.session.user.company_name || companyDetails.name || "",
+  company: companyDetails,
+  subscription: activeSubscription || {},
+  settings,
+  plans,
+  moduleGroups,
+  isCompanyAdmin,
+  canAccessSpvSettings,
+  companyStatus,
+  activeUserCount,
+  companyModuleLimit,
+  activeOptionalModuleCount,
+  stripeBillingConfigured,
+  stripeWebhookConfigured,
+  activeTab: String(req.query?.tab || "company"),
+  ok: String(req.query?.ok || ""),
+  err: String(req.query?.err || "")
+}));
 });
 
 
@@ -9070,6 +10050,37 @@ ${crmShellStart("setari", "Setări", "Configurare firmă, facturi și identitate
       </div>
     </section>
 
+    <section class="crm-card settings-panel" data-settings-panel="theme">
+      <div style="margin-bottom:14px">
+        <h3 style="margin:0;font-size:20px">Temă interfață</h3>
+        <div class="crm-muted" style="margin-top:6px">Alegerea se salvează local în browser și schimbă rapid look-ul shell-ului vechi.</div>
+      </div>
+
+      <div class="crm-theme-switcher" style="justify-content:flex-start">
+        <button class="crm-theme-chip" type="button" data-crm-theme="executive-slate">
+          <span class="crm-theme-dot" style="background:linear-gradient(135deg,#2563eb,#16a34a)"></span>
+          Executive
+        </button>
+        <button class="crm-theme-chip" type="button" data-crm-theme="ivory-gold">
+          <span class="crm-theme-dot" style="background:linear-gradient(135deg,#b8860b,#f5e6c8)"></span>
+          Ivory Gold
+        </button>
+        <button class="crm-theme-chip" type="button" data-crm-theme="forest-ledger">
+          <span class="crm-theme-dot" style="background:linear-gradient(135deg,#166534,#86efac)"></span>
+          Forest
+        </button>
+        <button class="crm-theme-chip" type="button" data-crm-theme="midnight-neon">
+          <span class="crm-theme-dot" style="background:linear-gradient(135deg,#0f172a,#22c1ff)"></span>
+          Midnight
+        </button>
+      </div>
+
+      <div style="margin-top:18px;padding:16px;border:1px dashed #cbd5e1;border-radius:14px;background:#f8fafc">
+        <div style="font-weight:800;margin-bottom:8px">Observație</div>
+        <div class="crm-muted">Nexora folosește shell-ul nou. Tema de aici rămâne pentru ecranele vechi până le migrăm complet.</div>
+      </div>
+    </section>
+
     <section class="crm-card settings-panel" data-settings-panel="logo">
       <div style="margin-bottom:14px">
         <h3 style="margin:0;font-size:20px">Logo factură</h3>
@@ -9187,13 +10198,19 @@ res.send(html);
 app.post("/setari", requireAuth,(req,res)=>{
 const companyId = Number(req.session.user.company_id || 0);
 const canManageSpvSettings = canAccessSpvUser(req.session.user);
+const wantsNexora = String(req.body?.return_to || "") === "nexora";
+const requestedTab = String(req.body?.settings_tab || "company").trim().toLowerCase();
+const nextTab = ["company", "invoice", "spv"].includes(requestedTab) ? requestedTab : "company";
+const companyPayloadKeys = ["company_name", "company_cui", "company_rc", "company_address", "company_bank", "company_iban", "company_rep"];
+const hasCompanyPayload = companyPayloadKeys.some((key) => Object.prototype.hasOwnProperty.call(req.body || {}, key));
 
 for(const k of Object.keys(req.body)){
+if(["return_to", "settings_tab"].includes(k)) continue;
 if(!canManageSpvSettings && String(k || "").startsWith("anaf_")) continue;
 setSetting(k,req.body[k]);
 }
 
-if (companyId) {
+if (companyId && hasCompanyPayload) {
   db.prepare(`
     UPDATE companies
     SET name=?,
@@ -9218,7 +10235,7 @@ if (companyId) {
   refreshSessionCompanyAccess(req);
 }
 
-res.redirect("/setari");
+res.redirect(wantsNexora ? `/nexora/settings?tab=${encodeURIComponent(nextTab)}&ok=saved` : "/setari");
 });
 
 app.post("/setari/subscription", requireAuth, requireRole("admin"), (req, res) => {
@@ -9275,7 +10292,7 @@ app.post("/setari/subscription", requireAuth, requireRole("admin"), (req, res) =
   resyncCompanyUserModules(companyId);
   syncCompanySeatUsage(companyId);
   refreshSessionCompanyAccess(req);
-  res.redirect("/setari");
+  res.redirect(req.body?.return_to === "nexora" ? "/nexora/settings?tab=subscription&ok=subscription" : "/setari");
 });
 
 app.post("/setari/modules", requireAuth, requireRole("admin"), (req, res) => {
@@ -9302,19 +10319,38 @@ app.post("/setari/modules", requireAuth, requireRole("admin"), (req, res) => {
 
   resyncCompanyUserModules(companyId);
   refreshSessionCompanyAccess(req);
-  res.redirect("/setari");
+  res.redirect(req.body?.return_to === "nexora" ? "/nexora/settings?tab=subscription&ok=modules" : "/setari");
 });
 
 
 app.post("/setari/logo", requireAuth, upload.single("logo"),(req,res)=>{
 
-if(!req.file) return res.redirect("/setari");
+const wantsNexora = String(req.body?.return_to || "") === "nexora";
+if(!req.file) return res.redirect(wantsNexora ? "/nexora/settings?tab=logo&err=no_file" : "/setari");
 
-const dest="public/invoice-logo.png";
+const companyId = Number(req.session.user.company_id || 0);
+const logoDir = companyId > 0
+  ? path.join(__dirname, "public", "uploads", "company-logos")
+  : path.join(__dirname, "public");
+fs.mkdirSync(logoDir, { recursive: true });
+const ext = String(req.file.mimetype || "").toLowerCase().includes("webp")
+  ? "webp"
+  : String(req.file.mimetype || "").toLowerCase().includes("jpeg") || String(req.file.mimetype || "").toLowerCase().includes("jpg")
+    ? "jpg"
+    : "png";
+const dest = companyId > 0
+  ? path.join(logoDir, `company-${companyId}.${ext}`)
+  : path.join(logoDir, "invoice-logo.png");
+if (companyId > 0) {
+  for (const oldExt of ["png", "jpg", "jpeg", "webp"]) {
+    const oldPath = path.join(logoDir, `company-${companyId}.${oldExt}`);
+    if (oldPath !== dest && fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+  }
+}
 
 fs.renameSync(req.file.path,dest);
 
-res.redirect("/setari");
+res.redirect(wantsNexora ? "/nexora/settings?tab=logo&ok=logo" : "/setari");
 
 });
 
@@ -10350,6 +11386,23 @@ ${crmShellEnd()}
 `);
 });
 
+app.get("/nexora/employees", requireAuth, requireModule("employees"), (req, res) => {
+  const companyId = Number(req.session.user.company_id || 0);
+
+  const rows = db.prepare(`
+    SELECT id, name, email, phone, position, active, created_at
+    FROM employees
+    WHERE company_id=?
+    ORDER BY active DESC, name COLLATE NOCASE ASC
+  `).all(companyId);
+
+  return res.type("html").send(renderNexoraEmployeesPage({
+    companyName: req.session.user.company_name || "",
+    rows,
+    ok: String(req.query?.ok || "")
+  }));
+});
+
 
 app.post("/employees/create", requireAuth, requireModule("employees"), (req, res) => {
   const companyId = Number(req.session.user.company_id || 0);
@@ -10369,6 +11422,61 @@ app.post("/employees/create", requireAuth, requireModule("employees"), (req, res
     VALUES (?,?,?,?,?,?)
   `).run(name,email,phone,position,active,companyId);
 
-  res.redirect("/employees");
+  res.redirect(req.body?.return_to === "nexora" ? "/nexora/employees?ok=created" : "/employees");
 
+});
+
+const NEXORA_FALLBACK_MODULES = {
+  accounting: ["Financiar & Contabilitate", "/nexora/accounting"],
+  sales: ["Vânzări", "/nexora/quotes"],
+  crm: ["CRM", "/nexora/clients"],
+  inventory: ["Inventar & Gestiune", "/nexora/inventory"],
+  procurement: ["Achiziții", "/nexora/procurement"],
+  hr: ["Resurse Umane", "/nexora/employees"],
+  manufacturing: ["Producție / MRP", "/nexora/manufacturing"],
+  "supply-chain": ["Supply Chain", "/nexora/supply-chain"],
+  projects: ["Proiecte", "/nexora/projects"],
+  reports: ["Rapoarte & BI", "/nexora/reports"],
+  orders: ["Order Management", "/nexora/orders"],
+  documents: ["Documente / DMS", "/nexora/documents"],
+  workflow: ["Workflow & Automatizări", "/nexora/workflow"],
+  ecommerce: ["eCommerce & POS", "/nexora/ecommerce"],
+  pos: ["POS", "/nexora/ecommerce"],
+  deliveries: ["Livrări", "/nexora/deliveries"],
+  "super-admin": ["Administrare platformă", "/nexora/super-admin"]
+};
+
+function titleFromPathSegment(value = "") {
+  return String(value || "")
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+app.get(/^\/nexora\/.+/, requireAuth, (req, res) => {
+  const pathParts = String(req.path || "")
+    .replace(/^\/nexora\/?/, "")
+    .split("/")
+    .filter(Boolean);
+  const root = pathParts[0] || "reports";
+  if (root === "super-admin" && !Number(req.session.user.is_super_admin || 0)) {
+    return res.status(403).send("Forbidden");
+  }
+  const [moduleTitle, moduleHome] = NEXORA_FALLBACK_MODULES[root] || [titleFromPathSegment(root) || "Nexora", "/nexora-dashboard"];
+  const leafTitle = pathParts.length > 1
+    ? titleFromPathSegment(pathParts[pathParts.length - 1])
+    : moduleTitle;
+
+  return res.type("html").send(renderNexoraHubPage({
+    companyName: req.session.user.company_name || "",
+    currentPath: req.path,
+    eyebrow: moduleTitle,
+    title: leafTitle,
+    description: "Secțiunea rămâne în interfața Nexora și va fi extinsă pe măsură ce migrăm fluxurile operaționale.",
+    links: [
+      { label: "Dashboard", href: "/nexora-dashboard" },
+      { label: moduleTitle, href: moduleHome }
+    ]
+  }));
 });

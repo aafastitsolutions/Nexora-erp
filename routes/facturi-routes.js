@@ -59,7 +59,8 @@ export function registerFacturiRoutes(app, deps) {
     }
 
     const assignedNumber = ensureOfficialInvoiceNumber(db, facturaId, {
-      year: Number(currentFactura.an || new Date().getFullYear())
+      year: Number(currentFactura.an || new Date().getFullYear()),
+      companyId
     });
 
     if (!assignedNumber.changed) {
@@ -238,7 +239,7 @@ export function registerFacturiRoutes(app, deps) {
     return sendEfacturaArchive(res, relativePath);
   });
 
-  app.get("/factura/:id/efactura/raspuns", requireAuth, (req, res) => {
+  app.get(["/factura/:id/efactura/raspuns", "/nexora/facturi/:id/efactura/raspuns"], requireAuth, (req, res) => {
     const companyId = Number(req.session.user.company_id || 0);
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).send("Bad id");
@@ -283,7 +284,7 @@ export function registerFacturiRoutes(app, deps) {
       VALUES (?,?,?,?,?,?,?,?,?)
     `).run(factura_id, denumire, descriere || null, cantitate, unitate || null, pret_unitar, lt, sort_order, companyId);
 
-    recalcFacturaTotals(factura_id);
+    recalcFacturaTotals(factura_id, companyId);
     return res.redirect(req.body?.return_to === "nexora" ? "/nexora/facturi/" + factura_id : "/factura/" + factura_id);
   });
 
@@ -300,7 +301,7 @@ export function registerFacturiRoutes(app, deps) {
     }
 
     db.prepare("DELETE FROM facturi_linii WHERE id=? AND factura_id=? AND company_id=?").run(lid, factura_id, companyId);
-    recalcFacturaTotals(factura_id);
+    recalcFacturaTotals(factura_id, companyId);
     return res.redirect(req.body?.return_to === "nexora" ? "/nexora/facturi/" + factura_id : "/factura/" + factura_id);
   });
 
@@ -350,7 +351,7 @@ export function registerFacturiRoutes(app, deps) {
       SELECT f.id, f.factura_nr, f.an, f.seq, f.data_emitere, f.total, f.status,
              c.name AS client_name, c.cui AS client_cui
       FROM facturi f
-      JOIN clients c ON c.id = f.client_id
+      JOIN clients c ON c.id = f.client_id AND c.company_id = f.company_id
       WHERE f.company_id=?
         AND UPPER(COALESCE(f.status,'')) ${statusOperator} 'ANULATA'
       ORDER BY f.id DESC
@@ -364,7 +365,9 @@ export function registerFacturiRoutes(app, deps) {
       user: req.session.user,
       invoices,
       counters,
-      showCancelled
+      showCancelled,
+      ok: String(req.query.ok || ""),
+      err: String(req.query.err || "")
     }));
   });
 
@@ -388,7 +391,7 @@ export function registerFacturiRoutes(app, deps) {
       SELECT f.id, f.factura_nr, f.data_emitere, f.total, f.status,
              c.name AS client_name, c.cui AS client_cui
       FROM facturi f
-      JOIN clients c ON c.id = f.client_id
+      JOIN clients c ON c.id = f.client_id AND c.company_id = f.company_id
       WHERE f.company_id=?
         AND UPPER(COALESCE(f.status,'')) ${statusOperator} 'ANULATA'
       ORDER BY f.id DESC
@@ -1131,7 +1134,7 @@ ${crmShellEnd()}
       db.prepare("DELETE FROM facturi WHERE id=? AND company_id=?").run(factura_id, companyId);
     })();
 
-    return res.redirect("/facturi?ok=stearsa");
+    return res.redirect(req.body?.return_to === "nexora" ? "/nexora/facturi?ok=stearsa" : "/facturi?ok=stearsa");
   });
 
   app.get("/nexora/facturi/:id", requireAuth, (req, res) => {
@@ -1144,7 +1147,7 @@ ${crmShellEnd()}
     const f = db.prepare(`
       SELECT f.*, c.name AS client
       FROM facturi f
-      JOIN clients c ON c.id=f.client_id
+      JOIN clients c ON c.id=f.client_id AND c.company_id=f.company_id
       WHERE f.id=? AND f.company_id=?
     `).get(id, companyId);
 
@@ -1165,7 +1168,7 @@ ${crmShellEnd()}
       ORDER BY sort_order ASC, id ASC
     `).all(id, companyId);
 
-    const totals = recalcFacturaTotals(id);
+    const totals = recalcFacturaTotals(id, companyId);
     const displayNumber = facturaDisplayNumber(f);
 
     res.send(renderNexoraInvoiceDetailPage({
@@ -1190,7 +1193,7 @@ ${crmShellEnd()}
     const f = db.prepare(`
       SELECT f.*, c.name AS client
       FROM facturi f
-      JOIN clients c ON c.id=f.client_id
+      JOIN clients c ON c.id=f.client_id AND c.company_id=f.company_id
       WHERE f.id=? AND f.company_id=?
     `).get(id, companyId);
 
@@ -1211,7 +1214,7 @@ ${crmShellEnd()}
       ORDER BY sort_order ASC, id ASC
     `).all(id, companyId);
 
-    const totals = recalcFacturaTotals(id);
+    const totals = recalcFacturaTotals(id, companyId);
     const displayFacturaNumber = facturaDisplayNumber(f);
     const products = db.prepare(`
       SELECT id, code, name, unit, price, tva_percent, kind
@@ -1603,7 +1606,7 @@ ${crmShellEnd()}
     const f = db.prepare(`
       SELECT f.*, c.name AS client, c.address AS client_address, c.cui AS client_cui, c.reg_com AS client_reg_com
       FROM facturi f
-      JOIN clients c ON c.id = f.client_id
+      JOIN clients c ON c.id = f.client_id AND c.company_id = f.company_id
       WHERE f.id=? AND f.company_id=?
     `).get(id, companyId);
 
@@ -1616,7 +1619,7 @@ ${crmShellEnd()}
       ORDER BY sort_order ASC, id ASC
     `).all(id, companyId);
 
-    const totals = recalcFacturaTotals(id);
+    const totals = recalcFacturaTotals(id, companyId);
     const displayFacturaNumber = facturaDisplayNumber(f);
     const company = {
       name: getSetting("company_name", COMPANY.name),
@@ -1755,7 +1758,7 @@ table{width:100%;border-collapse:collapse}
     const f = db.prepare(`
       SELECT f.*, c.name AS client_name, c.cui AS client_cui, c.address AS client_address, c.reg_com AS client_reg_com
       FROM facturi f
-      JOIN clients c ON c.id=f.client_id
+      JOIN clients c ON c.id=f.client_id AND c.company_id=f.company_id
       WHERE f.id=?
     `).get(id);
 
@@ -1768,7 +1771,7 @@ table{width:100%;border-collapse:collapse}
       ORDER BY sort_order ASC, id ASC
     `).all(id);
 
-    const totals = recalcFacturaTotals(id);
+    const totals = recalcFacturaTotals(id, companyId);
     const theme = getInvoiceTheme();
     const logo_data_uri = getInvoiceLogoDataUri();
     const company_name = getSetting("company_name", COMPANY.name || "QR-LAB SRL");
@@ -1856,7 +1859,7 @@ table{width:100%;border-collapse:collapse}
       const existingFactura = db.prepare(`
         SELECT f.*, c.name AS client_name, c.cui AS client_cui, c.address AS client_address, c.reg_com AS client_reg_com, c.vat AS client_vat
         FROM facturi f
-        JOIN clients c ON c.id=f.client_id
+        JOIN clients c ON c.id=f.client_id AND c.company_id=f.company_id
         WHERE f.id=? AND f.company_id=?
       `).get(id, companyId);
 
@@ -1867,7 +1870,7 @@ table{width:100%;border-collapse:collapse}
       const f = db.prepare(`
         SELECT f.*, c.name AS client_name, c.cui AS client_cui, c.address AS client_address, c.reg_com AS client_reg_com, c.vat AS client_vat
         FROM facturi f
-        JOIN clients c ON c.id=f.client_id
+        JOIN clients c ON c.id=f.client_id AND c.company_id=f.company_id
         WHERE f.id=? AND f.company_id=?
       `).get(id, companyId);
 
@@ -1880,7 +1883,7 @@ table{width:100%;border-collapse:collapse}
         ORDER BY sort_order ASC, id ASC
       `).all(id, companyId);
 
-      const totals = recalcFacturaTotals(id);
+      const totals = recalcFacturaTotals(id, companyId);
       const year = Number(f.an || new Date().getFullYear());
       const yearDir = path.join(__dirname, "contracts", "invoices", String(year));
       fs.mkdirSync(yearDir, { recursive: true });
@@ -1993,7 +1996,7 @@ table{width:100%;border-collapse:collapse}
 
     finalizeFacturaNumber(id, companyId, exists);
 
-    const r = ensureFacturaXmlGenerated(id);
+    const r = ensureFacturaXmlGenerated(id, companyId);
     if (r.error) return res.status(404).send(r.error);
     return res.redirect(req.body?.return_to === "nexora" ? "/nexora/facturi/" + id + "?ok=xml_generat" : "/factura/" + id + "?ok=xml_generat");
   });
@@ -2015,7 +2018,7 @@ table{width:100%;border-collapse:collapse}
     try {
       const assignedNumber = finalizeFacturaNumber(id, companyId, f);
 
-      const generated = ensureFacturaXmlGenerated(id);
+      const generated = ensureFacturaXmlGenerated(id, companyId);
       if (generated.error) {
         db.prepare(`
           UPDATE facturi
@@ -2252,7 +2255,7 @@ table{width:100%;border-collapse:collapse}
     const f = db.prepare(`
       SELECT f.*, c.name AS client
       FROM facturi f
-      JOIN clients c ON c.id=f.client_id
+      JOIN clients c ON c.id=f.client_id AND c.company_id=f.company_id
       WHERE f.id=? AND f.company_id=?
     `).get(id, companyId);
 

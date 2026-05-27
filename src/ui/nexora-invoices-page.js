@@ -23,15 +23,31 @@ function statusClass(status = "") {
   return "neutral";
 }
 
+function isDraftStatus(status = "") {
+  const s = String(status || "").trim().toUpperCase();
+  return s === "CIORNA" || s === "DRAFT";
+}
+
 function renderNexoraInvoicesPage(options = {}) {
   const user = options.user || {};
   const companyName = user.company_name || "Workspace";
   const invoices = Array.isArray(options.invoices) ? options.invoices : [];
   const counters = options.counters || {};
   const showCancelled = Boolean(options.showCancelled);
+  const ok = String(options.ok || "");
+  const err = String(options.err || "");
+
+  const okMessages = {
+    stearsa: "Factura ciornă a fost ștearsă definitiv.",
+    anulata: "Factura a fost mutată în lista de facturi anulate."
+  };
+
+  const errMessages = {
+    stergere_permisa_doar_ciorna: "Factura poate fi ștearsă doar dacă este ciornă."
+  };
 
   const sidebar = renderErpSidebar({
-    currentPath: "/facturi",
+    currentPath: "/nexora/facturi",
     appName: "Nexora ERP",
     companyName
   });
@@ -53,6 +69,12 @@ function renderNexoraInvoicesPage(options = {}) {
         <td><span class="nx-status-pill ${statusClass(invoice.status)}">${escapeHtml(invoice.status || "CIORNA")}</span></td>
         <td class="nx-table-actions">
           <a class="nx-btn" href="/nexora/facturi/${escapeHtml(invoice.id)}">Deschide</a>
+          ${isDraftStatus(invoice.status) ? `
+            <form method="post" action="/factura/${escapeHtml(invoice.id)}/sterge" onsubmit="return confirm('Ștergi definitiv această factură ciornă?');">
+              <input type="hidden" name="return_to" value="nexora">
+              <button class="nx-btn danger" type="submit">Șterge</button>
+            </form>
+          ` : ""}
         </td>
       </tr>
     `).join("")
@@ -84,11 +106,13 @@ function renderNexoraInvoicesPage(options = {}) {
         </div>
 
         <div class="nx-actions">
-          <a class="nx-btn" href="/facturi">UI vechi</a>
           <a class="nx-btn ${showCancelled ? "" : "primary"}" href="/nexora/facturi">Active</a>
           <a class="nx-btn ${showCancelled ? "primary" : ""}" href="/nexora/facturi?view=anulate">Anulate</a>
         </div>
       </header>
+
+      ${err ? `<div class="nx-alert danger">${escapeHtml(errMessages[err] || ("A apărut o eroare: " + err))}</div>` : ""}
+      ${ok ? `<div class="nx-alert success">${escapeHtml(okMessages[ok] || "Operațiunea a fost finalizată.")}</div>` : ""}
 
       <section class="nx-kpi-grid invoice-kpis">
         <div class="nx-kpi-card">

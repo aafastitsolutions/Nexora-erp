@@ -14,7 +14,7 @@ function renderNexoraInvoiceNewPage(options = {}) {
   const companyName = user.company_name || "Workspace";
 
   const sidebar = renderErpSidebar({
-    currentPath: "/facturi",
+    currentPath: "/nexora/facturi",
     appName: "Nexora ERP",
     companyName
   });
@@ -40,7 +40,6 @@ function renderNexoraInvoiceNewPage(options = {}) {
 
         <div class="nx-actions">
           <a class="nx-btn" href="/nexora/facturi">Înapoi la facturi</a>
-          <a class="nx-btn" href="/facturi">UI vechi</a>
         </div>
       </header>
 

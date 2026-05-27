@@ -81,7 +81,7 @@ function renderNexoraAnafStatusPage(options = {}) {
     : "";
 
   const sidebar = renderErpSidebar({
-    currentPath: "/anaf/outbox",
+    currentPath: "/nexora/anaf/status",
     appName: "Nexora ERP",
     companyName
   });
@@ -116,7 +116,6 @@ function renderNexoraAnafStatusPage(options = {}) {
         </div>
 
         <div class="nx-actions">
-          <a class="nx-btn" href="/anaf/status">UI vechi</a>
           <a class="nx-btn" href="/nexora/facturi">Facturi</a>
           <a class="nx-btn primary" href="/nexora/anaf/status">Reîmprospătează</a>
         </div>
@@ -196,8 +195,6 @@ function renderNexoraAnafStatusPage(options = {}) {
 
               <button class="nx-btn primary" type="submit">Generează cod contabil</button>
             </form>
-
-            <a class="nx-btn nx-anaf-link" href="/anaf/status">Acțiuni avansate în UI vechi</a>
           </div>
         </div>
       </section>

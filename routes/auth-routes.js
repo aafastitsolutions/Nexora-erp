@@ -66,7 +66,7 @@ function generateDemoCredentials(db) {
   };
 }
 
-function createWorkspace(db, {
+export function createWorkspace(db, {
   companyName,
   companyCui = "",
   companyRc = "",
@@ -139,6 +139,10 @@ function createWorkspace(db, {
 }
 
 function resolvePostLoginPath(user) {
+  if (Number(user?.is_super_admin || 0) === 1) {
+    return "/nexora/super-admin";
+  }
+
   const modules = Array.isArray(user?.effective_module_permissions)
     ? user.effective_module_permissions
     : Array.isArray(user?.module_permissions)
@@ -146,24 +150,24 @@ function resolvePostLoginPath(user) {
       : [];
 
   if (String(user?.role || "").trim().toLowerCase() === "accounting" && modules.includes("accounting")) {
-    return "/accounting";
+    return "/nexora/accounting";
   }
 
   const firstAllowedPath = [
-    ["dashboard", "/dashboard"],
-    ["accounting", "/accounting"],
-    ["facturi", "/facturi"],
-    ["clients", "/clients"],
-    ["quotes", "/quotes"],
-    ["contracts", "/contracte"],
-    ["produse", "/produse"],
-    ["tipizate", "/tipizate"],
-    ["employees", "/employees"],
-    ["accounts", "/accounts"],
-    ["setari", "/setari"]
+    ["dashboard", "/nexora-dashboard"],
+    ["accounting", "/nexora/accounting"],
+    ["facturi", "/nexora/facturi"],
+    ["clients", "/nexora/clients"],
+    ["quotes", "/nexora/quotes"],
+    ["contracts", "/nexora/contracts"],
+    ["produse", "/nexora/products"],
+    ["tipizate", "/nexora/documents"],
+    ["employees", "/nexora/employees"],
+    ["accounts", "/nexora/users"],
+    ["setari", "/nexora/settings"]
   ].find(([moduleKey]) => modules.includes(moduleKey));
 
-  return firstAllowedPath ? firstAllowedPath[1] : "/dashboard";
+  return firstAllowedPath ? firstAllowedPath[1] : "/nexora-dashboard";
 }
 
 function renderAuthPage({
@@ -749,7 +753,7 @@ function loginErrorMessage(code, companyName) {
 
 export function registerAuthRoutes(app, { db, verifyUser, verifyUserAttempt }) {
   app.get("/login", (req, res) => {
-    if (req.session?.user) return res.redirect("/dashboard");
+    if (req.session?.user) return res.redirect(resolvePostLoginPath(req.session.user));
     const errorCode = String(req.query?.err || "").trim();
     const companyName = String(req.query?.company || "").trim();
     const detail = String(req.query?.detail || "").trim();
@@ -786,7 +790,7 @@ export function registerAuthRoutes(app, { db, verifyUser, verifyUserAttempt }) {
   });
 
   app.get("/signup/company", (req, res) => {
-    if (req.session?.user) return res.redirect("/dashboard");
+    if (req.session?.user) return res.redirect(resolvePostLoginPath(req.session.user));
 
     const plans = db.prepare(`
       SELECT
@@ -943,12 +947,12 @@ export function registerAuthRoutes(app, { db, verifyUser, verifyUserAttempt }) {
       }
 
       req.session.user = buildSessionUser(user);
-      return res.redirect("/dashboard");
+      return res.redirect(resolvePostLoginPath(user));
     });
   });
 
   app.post("/signup/demo", (req, res) => {
-    if (req.session?.user) return res.redirect("/dashboard");
+    if (req.session?.user) return res.redirect(resolvePostLoginPath(req.session.user));
 
     const plan = db.prepare(`
       SELECT
@@ -999,7 +1003,7 @@ export function registerAuthRoutes(app, { db, verifyUser, verifyUserAttempt }) {
         password: credentials.password,
         expires_at: demoExpiresAt
       };
-      return res.redirect("/dashboard");
+      return res.redirect(resolvePostLoginPath(user));
     });
   });
 

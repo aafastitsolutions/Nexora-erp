@@ -574,6 +574,106 @@ export function migrate() {
       UNIQUE(company_id, doc_id)
     );
 
+    CREATE TABLE IF NOT EXISTS dms_autofill_documents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      source_file_name TEXT NOT NULL,
+      source_file_path TEXT NOT NULL,
+      output_file_name TEXT NOT NULL,
+      output_file_path TEXT NOT NULL,
+      output_mime_type TEXT NOT NULL,
+      template_type TEXT NOT NULL,
+      matched_fields TEXT NOT NULL DEFAULT '[]',
+      replacement_count INTEGER NOT NULL DEFAULT 0,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS projects (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      project_code TEXT NOT NULL,
+      title TEXT NOT NULL,
+      client_id INTEGER,
+      client_name TEXT,
+      manager_name TEXT,
+      description TEXT,
+      status TEXT NOT NULL DEFAULT 'PLANIFICARE',
+      priority TEXT NOT NULL DEFAULT 'MEDIE',
+      start_date TEXT,
+      due_date TEXT,
+      completed_at TEXT,
+      budget REAL NOT NULL DEFAULT 0,
+      currency TEXT NOT NULL DEFAULT 'RON',
+      progress INTEGER NOT NULL DEFAULT 0,
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS project_tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      project_id INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      assignee TEXT,
+      priority TEXT NOT NULL DEFAULT 'MEDIE',
+      status TEXT NOT NULL DEFAULT 'DE_FACUT',
+      due_date TEXT,
+      completed_at TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS project_files (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      project_id INTEGER NOT NULL,
+      original_file_name TEXT NOT NULL,
+      stored_file_name TEXT NOT NULL,
+      stored_path TEXT NOT NULL,
+      mime_type TEXT,
+      file_size INTEGER NOT NULL DEFAULT 0,
+      category TEXT NOT NULL DEFAULT 'DOCUMENT',
+      notes TEXT,
+      uploaded_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS project_milestones (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      project_id INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      due_date TEXT,
+      status TEXT NOT NULL DEFAULT 'PLANIFICAT',
+      notes TEXT,
+      completed_at TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS project_activity (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      project_id INTEGER NOT NULL,
+      event_type TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      details TEXT,
+      actor_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS anaf_messages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       account_id INTEGER,
@@ -849,6 +949,14 @@ export function migrate() {
     CREATE INDEX IF NOT EXISTS idx_anaf_inbox_received_at ON anaf_inbox(received_at);
     CREATE INDEX IF NOT EXISTS idx_tipizate_register_company_year_seq ON tipizate_register(company_id, year, seq);
     CREATE INDEX IF NOT EXISTS idx_tipizate_register_doc ON tipizate_register(company_id, doc_id);
+    CREATE INDEX IF NOT EXISTS idx_dms_autofill_company_created ON dms_autofill_documents(company_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_projects_company_status ON projects(company_id, status);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_company_code_unique ON projects(company_id, project_code);
+    CREATE INDEX IF NOT EXISTS idx_project_tasks_project_status ON project_tasks(company_id, project_id, status);
+    CREATE INDEX IF NOT EXISTS idx_project_tasks_due_date ON project_tasks(company_id, due_date);
+    CREATE INDEX IF NOT EXISTS idx_project_files_project ON project_files(company_id, project_id);
+    CREATE INDEX IF NOT EXISTS idx_project_milestones_project ON project_milestones(company_id, project_id);
+    CREATE INDEX IF NOT EXISTS idx_project_activity_project ON project_activity(company_id, project_id, created_at);
   `);
 
   ensureColumn("users", "module_permissions", "TEXT");
@@ -898,6 +1006,12 @@ export function migrate() {
   ensureColumn("billing_payments", "invoice_generation_status", "TEXT");
   ensureColumn("billing_payments", "invoice_generated_at", "TEXT");
 
+  ensureColumn("clients", "email", "TEXT");
+  ensureColumn("clients", "phone", "TEXT");
+  ensureColumn("clients", "client_status", "TEXT DEFAULT 'verde'");
+  ensureColumn("clients", "notes", "TEXT");
+  ensureColumn("clients", "company_id", "INTEGER");
+
   const legacyClientsUniqueIndex = db.prepare(`PRAGMA index_list('clients')`).all()
     .some((index) => index.name === "sqlite_autoindex_clients_1");
 
@@ -930,12 +1044,6 @@ export function migrate() {
       PRAGMA foreign_keys=on;
     `);
   }
-
-  ensureColumn("clients", "email", "TEXT");
-  ensureColumn("clients", "phone", "TEXT");
-  ensureColumn("clients", "client_status", "TEXT DEFAULT 'verde'");
-  ensureColumn("clients", "notes", "TEXT");
-  ensureColumn("clients", "company_id", "INTEGER");
 
   ensureColumn("contracts", "origin", "TEXT DEFAULT 'DIRECT'");
   ensureColumn("contracts", "employee_id", "INTEGER");

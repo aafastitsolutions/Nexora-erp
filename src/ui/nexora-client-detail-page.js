@@ -31,7 +31,7 @@ function renderNexoraClientDetailPage(options = {}) {
   const companyName = user.company_name || "Workspace";
 
   const sidebar = renderErpSidebar({
-    currentPath: "/clients",
+    currentPath: "/nexora/clients",
     appName: "Nexora ERP",
     companyName
   });
@@ -69,7 +69,7 @@ function renderNexoraClientDetailPage(options = {}) {
 
   const contractsRows = renderRows(contracts, "Nu există contracte.", (c) => `
     <tr>
-      <td><a class="nx-table-main-link" href="/contract/${escapeHtml(c.id)}">${escapeHtml(c.contract_number || "-")}</a></td>
+      <td><a class="nx-table-main-link" href="/nexora/contracts/${escapeHtml(c.id)}">${escapeHtml(c.contract_number || "-")}</a></td>
       <td>${escapeHtml(c.created_at || "-")}</td>
       <td>${escapeHtml(money(c.price))}</td>
       <td>${escapeHtml(c.duration || "-")}</td>
@@ -79,7 +79,7 @@ function renderNexoraClientDetailPage(options = {}) {
 
   const quotesRows = renderRows(quotes, "Nu există oferte.", (q) => `
     <tr>
-      <td><b>${escapeHtml(q.quote_number || "-")}</b></td>
+      <td><a class="nx-table-main-link" href="/nexora/quotes/${escapeHtml(q.id)}">${escapeHtml(q.quote_number || "-")}</a></td>
       <td>${escapeHtml(q.status || "-")}</td>
       <td>${escapeHtml(money(q.total, q.currency))}</td>
       <td>${escapeHtml(q.created_at || "-")}</td>
@@ -89,7 +89,7 @@ function renderNexoraClientDetailPage(options = {}) {
 
   const invoicesRows = renderRows(facturi, "Nu există facturi.", (f) => `
     <tr>
-      <td><a class="nx-table-main-link" href="/facturi/${escapeHtml(f.id)}">${escapeHtml(f.factura_nr || "-")}</a></td>
+      <td><a class="nx-table-main-link" href="/nexora/facturi/${escapeHtml(f.id)}">${escapeHtml(f.factura_nr || "-")}</a></td>
       <td>${escapeHtml(f.status || "-")}</td>
       <td>${escapeHtml(money(f.total, f.moneda))}</td>
       <td>${escapeHtml(f.created_at || "-")}</td>
@@ -130,7 +130,6 @@ function renderNexoraClientDetailPage(options = {}) {
 
         <div class="nx-actions">
           <a class="nx-btn" href="/nexora/clients">Înapoi la clienți</a>
-          <a class="nx-btn" href="/client/${escapeHtml(client.id)}">UI vechi</a>
         </div>
       </header>
 

@@ -33,7 +33,7 @@ function renderNexoraAnafOutboxPage(options = {}) {
   const rejectedCount = rows.filter((r) => ["RESPINS_VALIDARE", "RESPINSA_SPV"].includes(String(r.status || "").toUpperCase())).length;
 
   const sidebar = renderErpSidebar({
-    currentPath: "/anaf/outbox",
+    currentPath: "/nexora/anaf/outbox",
     appName: "Nexora ERP",
     companyName
   });
@@ -87,7 +87,6 @@ function renderNexoraAnafOutboxPage(options = {}) {
         </div>
 
         <div class="nx-actions">
-          <a class="nx-btn" href="/anaf/outbox">UI vechi</a>
           <a class="nx-btn" href="/nexora/anaf/status">Status ANAF</a>
           <a class="nx-btn primary" href="/nexora/facturi">Facturi</a>
         </div>

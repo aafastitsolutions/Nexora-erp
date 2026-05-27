@@ -71,6 +71,21 @@ function resolveCompanyAccess(companyId) {
 
 function resolveRequestModule(req) {
   const path = String(req.path || "");
+  if (path.startsWith("/nexora-dashboard")) return "dashboard";
+  if (path.startsWith("/nexora/clients")) return "clients";
+  if (path.startsWith("/nexora/quotes")) return "quotes";
+  if (path.startsWith("/nexora/contracts")) return "contracts";
+  if (path.startsWith("/nexora/products")) return "produse";
+  if (path.startsWith("/nexora/facturi")) return "facturi";
+  if (path.startsWith("/nexora/accounting")) return "accounting";
+  if (path.startsWith("/nexora/anaf")) return "accounting";
+  if (path.startsWith("/nexora/inventory")) return "inventory";
+  if (path.startsWith("/nexora/documents")) return "tipizate";
+  if (path.startsWith("/nexora/employees")) return "employees";
+  if (path.startsWith("/nexora/users") || path.startsWith("/nexora/roles")) return "accounts";
+  if (path.startsWith("/nexora/settings")) return "setari";
+  if (path.startsWith("/export/contracts.csv")) return "contracts";
+  if (path.startsWith("/billing")) return "setari";
   if (path.startsWith("/contract-form") || path.startsWith("/api/contract/")) return "contracts";
   if (path.startsWith("/dashboard")) return "dashboard";
   if (path.startsWith("/clients") || path.startsWith("/client/")) return "clients";
@@ -183,6 +198,7 @@ export function requireRole(...roles) {
   return (req, res, next) => {
     const user = req.session?.user;
     if (!user) return res.redirect("/login");
+    if (Number(user.is_super_admin || 0)) return next();
     if (!roles.includes(user.role)) return res.status(403).send("Forbidden");
     next();
   };

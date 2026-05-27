@@ -81,12 +81,18 @@
   display: flex;
   align-items: center;
   gap: 11px;
+  width: 100%;
   min-height: 42px;
   padding: 10px 11px;
+  border: 0;
   color: #cbd5e1;
+  background: transparent;
   text-decoration: none;
   border-radius: 14px;
+  cursor: pointer;
   transition: 0.18s ease;
+  font: inherit;
+  text-align: left;
 }
 
 .nx-module-main:hover {
@@ -182,6 +188,12 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.nx-logout-form {
+  margin: 0;
 }
 
 .nx-btn {
@@ -202,6 +214,17 @@
   background: var(--nx-primary);
   border-color: var(--nx-primary);
   color: white;
+}
+
+.nx-logout-btn {
+  border-color: #fecaca;
+  background: #fff1f2;
+  color: #991b1b;
+}
+
+.nx-logout-btn:hover {
+  border-color: #fca5a5;
+  background: #ffe4e6;
 }
 
 .nx-content-card {
@@ -475,7 +498,8 @@
   gap: 10px;
 }
 
-.nx-shortcuts a {
+.nx-shortcuts a,
+.nx-shortcuts span {
   min-height: 54px;
   border: 1px solid #e5e7eb;
   background: #f8fafc;
@@ -486,6 +510,11 @@
   text-decoration: none;
   font-weight: 850;
   font-size: 13px;
+}
+
+.nx-shortcuts code {
+  color: var(--nx-primary);
+  font-size: 12px;
 }
 
 .nx-shortcuts a:hover {
@@ -653,6 +682,11 @@
   white-space: nowrap;
 }
 
+.nx-table-actions form {
+  display: inline-flex;
+  margin: 0;
+}
+
 /* Nexora client detail */
 .nx-client-layout {
   display: grid;
@@ -737,6 +771,12 @@
   color: #991b1b;
   background: rgba(239, 68, 68, 0.12);
   border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+.nx-status-pill.neutral {
+  color: #334155;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
 }
 
 .nx-mini-badge {
@@ -860,6 +900,39 @@
 .nx-field textarea:focus {
   border-color: rgba(99, 91, 255, 0.5);
   box-shadow: 0 0 0 4px rgba(99, 91, 255, 0.1);
+}
+
+.nx-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.nx-two-column-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin: 18px 0;
+}
+
+.nx-two-column-grid.compact {
+  gap: 12px;
+  margin: 0;
+}
+
+.nx-right {
+  text-align: right;
+}
+
+.nx-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+@media (max-width: 980px) {
+  .nx-two-column-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .nx-check-field {
@@ -1224,4 +1297,381 @@
 
 .nx-invite-grid > div b {
   font-size: 13px;
+}
+
+.nx-subitem-nested {
+  padding-left: 42px;
+  font-size: 13px;
+  opacity: 0.92;
+}
+
+.nx-subitem-chevron {
+  margin-left: auto;
+  opacity: 0.6;
+  font-size: 11px;
+}
+
+
+.nx-subitem {
+  font-size: 14px;
+}
+
+.nx-subitem-nested {
+  display: none;
+  padding-left: 42px;
+  font-size: 13px;
+  opacity: 0.92;
+}
+
+.nx-nested-open .nx-subitem-nested {
+  display: flex;
+}
+
+.nx-subitem-chevron {
+  margin-left: auto;
+  opacity: 0.6;
+  font-size: 11px;
+}
+
+.nx-card,
+.nx-stat-card,
+.nx-panel,
+.nx-info-card {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.nx-card *,
+.nx-stat-card *,
+.nx-panel *,
+.nx-info-card * {
+  max-width: 100%;
+}
+
+.nx-card h1,
+.nx-card h2,
+.nx-card h3,
+.nx-panel h1,
+.nx-panel h2,
+.nx-panel h3 {
+  font-size: 90%;
+}
+
+
+/* Fix nested ANAF sidebar */
+.nx-module.open .nx-subgroup .nx-subitem-nested,
+.nx-module.active .nx-subgroup .nx-subitem-nested,
+.nx-subgroup.nx-nested-open .nx-subitem-nested {
+  display: flex;
+}
+
+.nx-subgroup {
+  display: flex;
+  flex-direction: column;
+}
+
+.nx-module-check-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.nx-check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 72px;
+  padding: 12px;
+  border: 1px solid var(--nx-border);
+  border-radius: 8px;
+  background: var(--nx-surface);
+}
+
+.nx-check-row input[type="checkbox"] {
+  margin-top: 3px;
+}
+
+.nx-check-row b,
+.nx-check-row small {
+  display: block;
+}
+
+.nx-check-row small {
+  margin-top: 4px;
+  color: var(--nx-muted);
+  line-height: 1.35;
+}
+
+.nx-panel-head.compact-head {
+  margin-bottom: 10px;
+}
+
+/* Nexora settings */
+.nx-settings-tabs {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.nx-settings-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-height: 74px;
+  padding: 12px;
+  border: 1px solid var(--nx-border);
+  border-radius: 8px;
+  background: #f8fafc;
+  color: var(--nx-text);
+  text-decoration: none;
+}
+
+.nx-settings-tab b {
+  font-size: 14px;
+}
+
+.nx-settings-tab span {
+  color: var(--nx-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.nx-settings-tab.active {
+  border-color: rgba(99, 91, 255, 0.38);
+  background: rgba(99, 91, 255, 0.08);
+  box-shadow: 0 0 0 4px rgba(99, 91, 255, 0.08);
+}
+
+.nx-settings-panel {
+  display: none;
+  margin-top: 18px;
+}
+
+.nx-settings-panel.active {
+  display: block;
+}
+
+.settings-columns {
+  align-items: start;
+  margin: 0;
+}
+
+.nx-plan-card {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--nx-border);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.nx-plan-card.active {
+  border-color: rgba(34, 197, 94, 0.42);
+  background: rgba(34, 197, 94, 0.06);
+}
+
+.nx-plan-card input {
+  margin-top: 4px;
+}
+
+.nx-plan-content,
+.nx-plan-head,
+.nx-plan-badges,
+.nx-plan-features {
+  display: flex;
+  min-width: 0;
+}
+
+.nx-plan-content {
+  flex-direction: column;
+  gap: 10px;
+}
+
+.nx-plan-head {
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.nx-plan-head b,
+.nx-plan-head small {
+  display: block;
+}
+
+.nx-plan-head b {
+  font-size: 16px;
+}
+
+.nx-plan-head small,
+.nx-plan-description {
+  color: var(--nx-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.nx-plan-head strong {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.nx-plan-badges,
+.nx-plan-features {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.nx-plan-badges em,
+.nx-plan-features i {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.nx-settings-note {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: var(--nx-muted);
+  font-size: 12px;
+}
+
+.nx-settings-note b {
+  color: var(--nx-text);
+}
+
+.nx-settings-module-group {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--nx-border);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.nx-settings-module-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.nx-settings-module-head h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.nx-settings-module-head p {
+  margin: 5px 0 0;
+  color: var(--nx-muted);
+  font-size: 12px;
+}
+
+.nx-check-row.disabled {
+  opacity: 0.62;
+}
+
+@media (max-width: 1180px) {
+  .nx-settings-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .nx-plan-head {
+    flex-direction: column;
+  }
+
+  .nx-plan-head strong {
+    text-align: left;
+  }
+}
+
+@media (max-width: 680px) {
+  .nx-settings-tabs {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Nexora projects */
+.nx-project-progress {
+  width: 100%;
+  min-width: 100px;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e2e8f0;
+  margin-bottom: 5px;
+}
+
+.nx-project-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--nx-primary), #22c55e);
+}
+
+.nx-table-action-form {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+}
+
+.nx-table-action-form select {
+  min-height: 36px;
+  max-width: 124px;
+  border: 1px solid var(--nx-border);
+  border-radius: 10px;
+  background: white;
+  padding: 6px 8px;
+}
+
+.nx-project-create-row {
+  grid-template-columns: 1.45fr 1fr 145px 135px 1.25fr auto;
+  align-items: end;
+}
+
+.nx-project-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.nx-project-delete-form {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--nx-border);
+}
+
+.nx-project-event {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-left: 3px solid var(--nx-primary);
+  padding: 7px 0 7px 12px;
+}
+
+.nx-project-event b {
+  font-size: 13px;
+}
+
+.nx-project-event span,
+.nx-project-event small {
+  color: var(--nx-muted);
+  font-size: 12px;
+}
+
+@media (max-width: 1180px) {
+  .nx-project-create-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }

@@ -22,6 +22,11 @@ function statusClass(status = "") {
   return "neutral";
 }
 
+function isDraftStatus(status = "") {
+  const s = String(status || "").trim().toUpperCase();
+  return s === "CIORNA" || s === "DRAFT";
+}
+
 function renderNexoraInvoiceDetailPage(options = {}) {
   const user = options.user || {};
   const invoice = options.invoice || {};
@@ -34,17 +39,49 @@ function renderNexoraInvoiceDetailPage(options = {}) {
   const companyName = user.company_name || "Workspace";
   const lockedStatuses = new Set(["TRIMIS_EFACTURA", "RECEPTIONATA_SPV", "ANULATA"]);
   const isInvoiceLocked = lockedStatuses.has(String(invoice.status || "").toUpperCase());
+  const canDeleteInvoice = isDraftStatus(invoice.status);
+
+  const okMessages = {
+    pdf_generat: "PDF-ul a fost generat cu succes.",
+    xml_generat: "XML-ul e-Factura a fost generat cu succes.",
+    trimis_anaf: "e-Factura a fost trimisă către ANAF.",
+    trimis_demo: "e-Factura a fost simulată în modul demo.",
+    stare_demo: "Statusul SPV a fost simulat cu succes.",
+    status_factura_actualizat: "Statusul facturii a fost actualizat.",
+    trimis_client: "Factura a fost trimisă către client.",
+    receptionata_spv: "Factura a fost recepționată în SPV.",
+    stare_actualizata: "Statusul SPV a fost actualizat.",
+    stare_actualizata_cu_zip: "Factura a fost recepționată în SPV și răspunsul ANAF a fost descărcat.",
+    stare_respinsa_anaf: "ANAF a respins factura. Verifică arhiva de răspuns pentru detalii."
+  };
+
+  const errMessages = {
+    factura_blocata: "Factura este blocată legal și nu mai poate fi modificată.",
+    nu_exista_xml: "Generează XML-ul e-Factura înainte de trimitere.",
+    xml_lipsa_pe_server: "XML-ul e-Factura lipsește de pe server.",
+    eroare_anaf: "ANAF a returnat o eroare la procesarea cererii.",
+    fara_conexiune_anaf: "Conexiunea ANAF/SPV trebuie refăcută înainte de această acțiune.",
+    fara_index_incarcare: "Nu există index de încărcare pentru verificarea statusului SPV.",
+    fara_email_client: "Clientul nu are email principal setat.",
+    fara_pdf: "Generează PDF-ul înainte de trimiterea facturii către client.",
+    pdf_lipsa: "PDF-ul facturii lipsește de pe server.",
+    eroare_email: "Emailul nu a putut fi trimis către client.",
+    pdf_neconfigurat: "Generatorul PDF nu este configurat corect pe server.",
+    pdf_generare: "PDF-ul nu a putut fi generat.",
+    stergere_permisa_doar_ciorna: "Factura poate fi ștearsă doar dacă este ciornă."
+  };
 
   const alertHtml = err
-    ? `<div class="nx-alert danger">${err === "factura_blocata" ? "Factura este blocată legal și nu mai poate fi modificată." : "A apărut o eroare: " + escapeHtml(err)}</div>`
+    ? `<div class="nx-alert danger">${escapeHtml(errMessages[err] || ("A apărut o eroare: " + err))}</div>`
     : ok
-      ? `<div class="nx-alert success">${ok === "pdf_generat" ? "PDF-ul a fost generat cu succes." : "Operațiunea a fost finalizată cu succes."}</div>`
+      ? `<div class="nx-alert success">${escapeHtml(okMessages[ok] || "Operațiunea a fost finalizată cu succes.")}</div>`
       : "";
 
   const sidebar = renderErpSidebar({
-    currentPath: "/facturi",
+    currentPath: "/nexora/facturi",
     appName: "Nexora ERP",
-    companyName
+    companyName,
+    isSuperAdmin: Number(user.is_super_admin || 0) === 1
   });
 
   const linesHtml = lines.length
@@ -97,7 +134,12 @@ function renderNexoraInvoiceDetailPage(options = {}) {
 
         <div class="nx-actions">
           <a class="nx-btn" href="/nexora/facturi">Înapoi la facturi</a>
-          <a class="nx-btn" href="/factura/${escapeHtml(invoice.id)}">UI vechi</a>
+          ${canDeleteInvoice ? `
+            <form method="post" action="/factura/${escapeHtml(invoice.id)}/sterge" style="margin:0" onsubmit="return confirm('Ștergi definitiv această factură ciornă?');">
+              <input type="hidden" name="return_to" value="nexora">
+              <button class="nx-btn danger" type="submit">Șterge factura</button>
+            </form>
+          ` : ""}
           <form method="post" action="/factura/${escapeHtml(invoice.id)}/genereaza-pdf" style="margin:0">
             <input type="hidden" name="return_to" value="nexora">
             <button class="nx-btn primary" type="submit">Generează PDF</button>
@@ -239,8 +281,7 @@ function renderNexoraInvoiceDetailPage(options = {}) {
                   <button class="nx-btn" type="submit">Generează XML</button>
                 </form>
 
-                ${invoice.efactura_response_zip_path ? `<a class="nx-btn" href="/factura/${escapeHtml(invoice.id)}/efactura/raspuns">Deschide răspuns ANAF</a>` : ""}
-                <a class="nx-btn" href="/factura/${escapeHtml(invoice.id)}">Acțiuni avansate în UI vechi</a>
+                ${invoice.efactura_response_zip_path ? `<a class="nx-btn" href="/nexora/facturi/${escapeHtml(invoice.id)}/efactura/raspuns">Deschide răspuns ANAF</a>` : ""}
               </div>
             </div>
           </section>

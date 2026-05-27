@@ -16,7 +16,8 @@ const ICONS = {
   files: "▧",
   workflow: "⟲",
   store: "▨",
-  sliders: "⚙"
+  sliders: "⚙",
+  shield: "▰"
 };
 
 function escapeHtml(value = "") {
@@ -29,19 +30,25 @@ function escapeHtml(value = "") {
 }
 
 function isActivePath(currentPath = "", itemPath = "") {
-  if (!currentPath || !itemPath) return false;
-  if (currentPath === itemPath) return true;
-  return itemPath !== "/" && currentPath.startsWith(itemPath + "/");
+  const current = String(currentPath || "").split(/[?#]/)[0];
+  const item = String(itemPath || "").split(/[?#]/)[0];
+  if (!current || !item) return false;
+  if (current === item) return true;
+  return item !== "/" && current.startsWith(item + "/");
 }
 
 function renderErpSidebar(options = {}) {
   const currentPath = options.currentPath || "/";
   const appName = options.appName || "Nexora";
   const companyName = options.companyName || "Workspace";
+  const isSuperAdmin = Number(options.isSuperAdmin || 0) === 1;
 
-  const modulesHtml = ERP_MODULES.map((module) => {
+  const visibleModules = ERP_MODULES.filter((module) => !module.superAdminOnly || isSuperAdmin);
+
+  const modulesHtml = visibleModules.map((module) => {
     const hasActiveChild = (module.children || []).some((child) =>
-      isActivePath(currentPath, child.path)
+      isActivePath(currentPath, child.path) ||
+      (child.children || []).some((nestedChild) => isActivePath(currentPath, nestedChild.path))
     );
 
     const isActive = isActivePath(currentPath, module.path) || hasActiveChild;
@@ -52,21 +59,54 @@ function renderErpSidebar(options = {}) {
       .map((child) => {
         const childActive = isActivePath(currentPath, child.path);
 
+        const hasNestedChildren = Array.isArray(child.children) && child.children.length > 0;
+        const hasActiveNestedChild = (child.children || []).some((nestedChild) =>
+          isActivePath(currentPath, nestedChild.path)
+        );
+        const childIsActive = childActive || hasActiveNestedChild;
+
+        const nestedHtml = (child.children || [])
+          .map((nestedChild) => {
+            const nestedActive = isActivePath(currentPath, nestedChild.path);
+
+            return `
+              <a class="nx-subitem nx-subitem-nested ${nestedActive ? "active" : ""}" href="${escapeHtml(nestedChild.path)}">
+                <span>${escapeHtml(nestedChild.label)}</span>
+              </a>
+            `;
+          })
+          .join("");
+
         return `
-          <a class="nx-subitem ${childActive ? "active" : ""}" href="${escapeHtml(child.path)}">
-            <span>${escapeHtml(child.label)}</span>
-          </a>
+          <div class="nx-subgroup ${childIsActive ? "nx-nested-open" : ""}">
+            <a
+              class="nx-subitem ${childIsActive ? "active" : ""}"
+              href="${hasNestedChildren ? "#" : escapeHtml(child.path)}"
+              ${hasNestedChildren ? 'onclick="event.preventDefault(); this.parentElement.classList.toggle(\'nx-nested-open\')"' : ""}
+            >
+              <span>${escapeHtml(child.label)}</span>
+              ${hasNestedChildren ? `<span class="nx-subitem-chevron">⌄</span>` : ""}
+            </a>
+            ${hasNestedChildren ? nestedHtml : ""}
+          </div>
         `;
       })
       .join("");
 
     return `
       <div class="nx-module ${isActive ? "active open" : ""}">
-        <button class="nx-module-main" type="button" data-nx-toggle>
-          <span class="nx-module-icon">${escapeHtml(icon)}</span>
-          <span class="nx-module-label">${escapeHtml(module.label)}</span>
-          ${hasChildren ? `<span class="nx-module-chevron">⌄</span>` : ""}
-        </button>
+        ${hasChildren ? `
+          <button class="nx-module-main" type="button" data-nx-toggle>
+            <span class="nx-module-icon">${escapeHtml(icon)}</span>
+            <span class="nx-module-label">${escapeHtml(module.label)}</span>
+            <span class="nx-module-chevron">⌄</span>
+          </button>
+        ` : `
+          <a class="nx-module-main" href="${escapeHtml(module.path)}">
+            <span class="nx-module-icon">${escapeHtml(icon)}</span>
+            <span class="nx-module-label">${escapeHtml(module.label)}</span>
+          </a>
+        `}
 
         ${hasChildren ? `
           <div class="nx-submenu">
@@ -104,15 +144,17 @@ function renderErpSidebar(options = {}) {
 
           const wasOpen = item.classList.contains("open");
 
-          document.querySelectorAll(".nx-module.open, .nx-module.active").forEach(function(openItem) {
+          document.querySelectorAll(".nx-module.open").forEach(function(openItem) {
             if (openItem !== item) {
               openItem.classList.remove("open");
-              openItem.classList.remove("active");
             }
           });
 
           item.classList.toggle("open", !wasOpen);
-          item.classList.toggle("active", !wasOpen);
+
+          if (item.classList.contains("active")) {
+            item.classList.add("open");
+          }
         });
       </script>
     </aside>

@@ -1,0 +1,6 @@
+[Unit]
+Description=Nexora weekly rolling backup
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/nexora-backup

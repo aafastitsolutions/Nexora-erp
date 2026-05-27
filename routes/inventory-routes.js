@@ -1,3 +1,12 @@
+import {
+  renderNexoraInventoryAssetDetailPage,
+  renderNexoraInventoryAssetsPage,
+  renderNexoraInventoryProjectDetailPage,
+  renderNexoraInventoryProjectEditPage,
+  renderNexoraInventoryProjectsPage
+} from "../src/ui/nexora-inventory-pages.js";
+import { renderNexoraHubPage } from "../src/ui/nexora-hub-page.js";
+
 function parseDate(value) {
   const normalized = String(value || "").trim();
   return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : "";
@@ -253,6 +262,186 @@ function updateProjectRecord(db, companyId, projectId, payload = {}) {
 }
 
 export function registerInventoryRoutes(app, { db, requireAuth, escapeHtml, fmtMoney, crmShellStart, crmShellEnd, fs, path, __dirname, upload }) {
+  app.get("/nexora/inventory", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const stats = db.prepare(`
+      SELECT
+        COUNT(*) AS total_assets,
+        SUM(CASE WHEN UPPER(COALESCE(asset_type,''))='MIJLOC_FIX' THEN 1 ELSE 0 END) AS fixed_assets,
+        SUM(CASE WHEN quantity_scriptic <= minimum_quantity THEN 1 ELSE 0 END) AS low_stock_assets,
+        IFNULL(SUM(quantity_scriptic * purchase_value), 0) AS total_value
+      FROM inventory_assets
+      WHERE company_id=?
+    `).get(companyId) || {};
+    const projects = db.prepare(`
+      SELECT COUNT(*) AS total_projects,
+             SUM(CASE WHEN UPPER(COALESCE(status,''))='ACTIV' THEN 1 ELSE 0 END) AS active_projects
+      FROM inventory_projects
+      WHERE company_id=?
+    `).get(companyId) || {};
+    const counts = db.prepare(`
+      SELECT COUNT(*) AS total_counts,
+             SUM(CASE WHEN UPPER(COALESCE(status,''))='DRAFT' THEN 1 ELSE 0 END) AS draft_counts
+      FROM inventory_counts
+      WHERE company_id=?
+    `).get(companyId) || {};
+
+    return res.type("html").send(renderNexoraHubPage({
+      companyName: req.session.user.company_name || "",
+      currentPath: "/nexora/inventory",
+      eyebrow: "Inventar & Gestiune",
+      title: "Inventar & Gestiune",
+      description: "Hub Nexora pentru active, proiecte, numărări, rapoarte și catalog produse.",
+      stats: [
+        { icon: "A", label: "Active", value: stats.total_assets || 0, hint: `${fmtMoney(stats.total_value || 0)} valoare` },
+        { icon: "MF", label: "Mijloace fixe", value: stats.fixed_assets || 0 },
+        { icon: "!", label: "Stoc minim", value: stats.low_stock_assets || 0 },
+        { icon: "P", label: "Proiecte active", value: projects.active_projects || 0 },
+        { icon: "N", label: "Numărări draft", value: counts.draft_counts || 0 }
+      ],
+      links: [
+        { label: "Registru active", href: "/nexora/inventory/assets" },
+        { label: "Produse Nexora", href: "/nexora/products" },
+        { label: "Proiecte inventar", href: "/nexora/inventory/projects" },
+        { label: "Numărări", href: "/nexora/inventory/counts" },
+        { label: "Rapoarte inventar", href: "/nexora/inventory/reports" }
+      ]
+    }));
+  });
+
+  app.get("/nexora/inventory/assets", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const filters = buildAssetFilterState(req.query);
+    const { whereSql, params } = buildAssetWhere(filters, companyId);
+    const rows = db.prepare(`
+      SELECT *
+      FROM inventory_assets
+      WHERE ${whereSql}
+      ORDER BY asset_name COLLATE NOCASE ASC, id DESC
+      LIMIT 500
+    `).all(...params);
+    const stats = db.prepare(`
+      SELECT
+        COUNT(*) AS total_assets,
+        SUM(CASE WHEN UPPER(COALESCE(asset_type,''))='MIJLOC_FIX' THEN 1 ELSE 0 END) AS fixed_assets,
+        SUM(CASE WHEN UPPER(COALESCE(asset_type,''))='OBIECT_INVENTAR' THEN 1 ELSE 0 END) AS mobile_assets,
+        SUM(CASE WHEN quantity_scriptic <= minimum_quantity THEN 1 ELSE 0 END) AS low_stock_assets,
+        IFNULL(SUM(quantity_scriptic * purchase_value), 0) AS total_value
+      FROM inventory_assets
+      WHERE company_id=?
+    `).get(companyId) || {};
+
+    return res.type("html").send(renderNexoraInventoryAssetsPage({
+      companyName: req.session.user.company_name || "",
+      rows,
+      stats,
+      filters,
+      fmtMoney,
+      ok: String(req.query?.ok || "")
+    }));
+  });
+
+  app.get("/nexora/inventory/assets/:id", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const assetId = Number(req.params.id || 0);
+    const asset = db.prepare(`SELECT * FROM inventory_assets WHERE id=? AND company_id=?`).get(assetId, companyId);
+    if (!asset) return res.status(404).send("Activul nu a fost găsit.");
+    const usage = db.prepare(`
+      SELECT COUNT(*) AS project_links FROM inventory_project_items WHERE asset_id=? AND company_id=?
+    `).get(assetId, companyId) || {};
+    const adjustments = db.prepare(`
+      SELECT COUNT(*) AS adjustment_links FROM inventory_adjustments WHERE asset_id=? AND company_id=?
+    `).get(assetId, companyId) || {};
+
+    return res.type("html").send(renderNexoraInventoryAssetDetailPage({
+      companyName: req.session.user.company_name || "",
+      asset,
+      usage,
+      adjustments,
+      ok: String(req.query?.ok || "")
+    }));
+  });
+
+  app.get("/nexora/inventory/projects", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const rows = db.prepare(`
+      SELECT
+        p.*,
+        COUNT(i.id) AS allocated_lines,
+        COALESCE(SUM(i.quantity_allocated - i.quantity_returned), 0) AS active_quantity
+      FROM inventory_projects p
+      LEFT JOIN inventory_project_items i ON i.project_id = p.id AND i.company_id = p.company_id
+      WHERE p.company_id=?
+      GROUP BY p.id
+      ORDER BY p.updated_at DESC, p.id DESC
+      LIMIT 300
+    `).all(companyId);
+    const stats = db.prepare(`
+      SELECT
+        COUNT(DISTINCT p.id) AS total_projects,
+        COUNT(DISTINCT CASE WHEN UPPER(COALESCE(p.status,''))='ACTIV' THEN p.id END) AS active_projects,
+        COUNT(i.id) AS allocated_lines,
+        COALESCE(SUM(i.quantity_allocated - i.quantity_returned), 0) AS active_quantity
+      FROM inventory_projects p
+      LEFT JOIN inventory_project_items i ON i.project_id = p.id AND i.company_id = p.company_id
+      WHERE p.company_id=?
+    `).get(companyId) || {};
+
+    return res.type("html").send(renderNexoraInventoryProjectsPage({
+      companyName: req.session.user.company_name || "",
+      rows,
+      stats,
+      ok: String(req.query?.ok || "")
+    }));
+  });
+
+  app.get("/nexora/inventory/projects/:id", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const projectId = Number(req.params.id || 0);
+    const project = db.prepare(`SELECT * FROM inventory_projects WHERE id=? AND company_id=?`).get(projectId, companyId);
+    if (!project) return res.status(404).send("Proiectul nu a fost găsit.");
+    const allocations = db.prepare(`
+      SELECT *
+      FROM inventory_project_items
+      WHERE project_id=? AND company_id=?
+      ORDER BY assigned_at DESC, id DESC
+    `).all(projectId, companyId);
+    const assets = db.prepare(`
+      SELECT id, asset_code, asset_name, quantity_scriptic, unit, status
+      FROM inventory_assets
+      WHERE company_id=? AND UPPER(COALESCE(status,'')) <> 'CASAT'
+      ORDER BY asset_name COLLATE NOCASE ASC
+      LIMIT 300
+    `).all(companyId);
+
+    return res.type("html").send(renderNexoraInventoryProjectDetailPage({
+      companyName: req.session.user.company_name || "",
+      project,
+      allocations,
+      assets,
+      ok: String(req.query?.ok || "")
+    }));
+  });
+
+  app.get("/nexora/inventory/projects/:id/edit", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const projectId = Number(req.params.id || 0);
+    const project = db.prepare(`SELECT * FROM inventory_projects WHERE id=? AND company_id=?`).get(projectId, companyId);
+    if (!project) return res.status(404).send("Proiectul nu a fost găsit.");
+    const allocationStats = db.prepare(`
+      SELECT COUNT(*) AS total_lines, COALESCE(SUM(quantity_allocated - quantity_returned),0) AS active_qty
+      FROM inventory_project_items
+      WHERE project_id=? AND company_id=?
+    `).get(projectId, companyId) || {};
+
+    return res.type("html").send(renderNexoraInventoryProjectEditPage({
+      companyName: req.session.user.company_name || "",
+      project,
+      allocationStats,
+      ok: String(req.query?.ok || "")
+    }));
+  });
+
   app.get("/inventory", requireAuth, (req, res) => {
     const companyId = Number(req.session.user.company_id || 0);
     const stats = db.prepare(`
@@ -538,7 +727,7 @@ export function registerInventoryRoutes(app, { db, requireAuth, escapeHtml, fmtM
   app.post("/inventory/assets", requireAuth, (req, res) => {
     const companyId = Number(req.session.user.company_id || 0);
     createAssetRecord(db, req, companyId, req.body);
-    res.redirect("/inventory/assets");
+    res.redirect(req.body?.return_to === "nexora" ? "/nexora/inventory/assets?ok=created" : "/inventory/assets");
   });
 
   app.post("/inventory/assets/quick", requireAuth, (req, res) => {
@@ -552,7 +741,7 @@ export function registerInventoryRoutes(app, { db, requireAuth, escapeHtml, fmtM
       unit: "buc",
       status: "IN_STOC"
     });
-    res.redirect("/inventory");
+    res.redirect(req.body?.return_to === "nexora" ? "/nexora/inventory/assets?ok=created" : "/inventory");
   });
 
   app.get("/inventory/assets/:id", requireAuth, (req, res) => {
@@ -620,7 +809,7 @@ export function registerInventoryRoutes(app, { db, requireAuth, escapeHtml, fmtM
     const asset = db.prepare(`SELECT id FROM inventory_assets WHERE id=? AND company_id=?`).get(assetId, companyId);
     if (!asset) return res.status(404).send("Activul nu a fost găsit.");
     updateAssetRecord(db, req, companyId, assetId, req.body);
-    res.redirect(`/inventory/assets/${assetId}`);
+    res.redirect(req.body?.return_to === "nexora" ? `/nexora/inventory/assets/${assetId}?ok=saved` : `/inventory/assets/${assetId}`);
   });
 
   app.post("/inventory/assets/:id/delete", requireAuth, (req, res) => {
@@ -636,7 +825,7 @@ export function registerInventoryRoutes(app, { db, requireAuth, escapeHtml, fmtM
       return res.status(400).send("Activul nu poate fi șters deoarece are alocări, numărări sau corecții deja înregistrate.");
     }
     db.prepare(`DELETE FROM inventory_assets WHERE id=? AND company_id=?`).run(assetId, companyId);
-    res.redirect("/inventory/assets");
+    res.redirect(req.body?.return_to === "nexora" ? "/nexora/inventory/assets?ok=deleted" : "/inventory/assets");
   });
 
   app.get("/inventory/projects", requireAuth, (req, res) => {
@@ -647,7 +836,7 @@ export function registerInventoryRoutes(app, { db, requireAuth, escapeHtml, fmtM
         COUNT(i.id) AS allocated_lines,
         COALESCE(SUM(i.quantity_allocated - i.quantity_returned), 0) AS active_quantity
       FROM inventory_projects p
-      LEFT JOIN inventory_project_items i ON i.project_id = p.id
+      LEFT JOIN inventory_project_items i ON i.project_id = p.id AND i.company_id = p.company_id
       WHERE p.company_id=?
       GROUP BY p.id
       ORDER BY p.updated_at DESC, p.id DESC
@@ -713,7 +902,7 @@ export function registerInventoryRoutes(app, { db, requireAuth, escapeHtml, fmtM
   app.post("/inventory/projects", requireAuth, (req, res) => {
     const companyId = Number(req.session.user.company_id || 0);
     createProjectRecord(db, req, companyId, req.body);
-    res.redirect("/inventory/projects");
+    res.redirect(req.body?.return_to === "nexora" ? "/nexora/inventory/projects?ok=created" : "/inventory/projects");
   });
 
   app.get("/inventory/projects/:id/edit", requireAuth, (req, res) => {
@@ -772,7 +961,7 @@ export function registerInventoryRoutes(app, { db, requireAuth, escapeHtml, fmtM
     const project = db.prepare(`SELECT id FROM inventory_projects WHERE id=? AND company_id=?`).get(projectId, companyId);
     if (!project) return res.status(404).send("Proiectul nu a fost găsit.");
     updateProjectRecord(db, companyId, projectId, req.body);
-    res.redirect(`/inventory/projects/${projectId}/edit`);
+    res.redirect(req.body?.return_to === "nexora" ? `/nexora/inventory/projects/${projectId}/edit?ok=saved` : `/inventory/projects/${projectId}/edit`);
   });
 
   app.post("/inventory/projects/:id/delete", requireAuth, (req, res) => {
@@ -783,7 +972,7 @@ export function registerInventoryRoutes(app, { db, requireAuth, escapeHtml, fmtM
       db.prepare(`DELETE FROM inventory_project_items WHERE project_id=? AND company_id=?`).run(projectId, companyId);
     }
     db.prepare(`DELETE FROM inventory_projects WHERE id=? AND company_id=?`).run(projectId, companyId);
-    res.redirect("/inventory/projects");
+    res.redirect(req.body?.return_to === "nexora" ? "/nexora/inventory/projects?ok=deleted" : "/inventory/projects");
   });
 
   app.get("/inventory/projects/:id", requireAuth, (req, res) => {
@@ -887,7 +1076,7 @@ export function registerInventoryRoutes(app, { db, requireAuth, escapeHtml, fmtM
     );
     db.prepare(`UPDATE inventory_assets SET status='ALOCAT', updated_at=datetime('now') WHERE id=? AND company_id=?`).run(asset.id, companyId);
     db.prepare(`UPDATE inventory_projects SET updated_at=datetime('now') WHERE id=? AND company_id=?`).run(projectId, companyId);
-    res.redirect(`/inventory/projects/${projectId}`);
+    res.redirect(req.body?.return_to === "nexora" ? `/nexora/inventory/projects/${projectId}?ok=item_added` : `/inventory/projects/${projectId}`);
   });
 
   app.get("/inventory/reports", requireAuth, (req, res) => {
@@ -910,7 +1099,7 @@ export function registerInventoryRoutes(app, { db, requireAuth, escapeHtml, fmtM
     const openProjects = db.prepare(`
       SELECT p.project_name, p.project_code, COALESCE(SUM(i.quantity_allocated - i.quantity_returned),0) AS qty
       FROM inventory_projects p
-      LEFT JOIN inventory_project_items i ON i.project_id = p.id
+      LEFT JOIN inventory_project_items i ON i.project_id = p.id AND i.company_id = p.company_id
       WHERE p.company_id=? AND UPPER(COALESCE(p.status,''))='ACTIV'
       GROUP BY p.id
       ORDER BY qty DESC, p.project_name COLLATE NOCASE ASC

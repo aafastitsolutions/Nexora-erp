@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Nexora rolling backup every 7 days
+
+[Timer]
+OnCalendar=Sun *-*-* 03:15:00 UTC
+RandomizedDelaySec=10m
+Persistent=true
+Unit=nexora-backup.service
+
+[Install]
+WantedBy=timers.target

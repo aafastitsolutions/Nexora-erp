@@ -32,9 +32,10 @@ function renderNexoraDashboardPage(options = {}) {
   };
 
   const sidebar = renderErpSidebar({
-    currentPath: "/dashboard",
+    currentPath: "/nexora-dashboard",
     appName: "Nexora ERP",
-    companyName
+    companyName,
+    isSuperAdmin: Number(user.is_super_admin || 0) === 1
   });
 
   const activitiesHtml = activities.length
@@ -53,7 +54,7 @@ function renderNexoraDashboardPage(options = {}) {
 
   const recentInvoicesHtml = recentInvoices.length
     ? recentInvoices.map((invoice) => `
-        <a class="nx-invoice-row" href="/facturi/${escapeHtml(invoice.id)}">
+        <a class="nx-invoice-row" href="/nexora/facturi/${escapeHtml(invoice.id)}">
           <div>
             <b>${escapeHtml(invoice.factura_nr)}</b>
             <span>${escapeHtml(invoice.client_name || "Client necunoscut")}</span>
@@ -94,8 +95,11 @@ function renderNexoraDashboardPage(options = {}) {
         </div>
 
         <div class="nx-actions">
-          <a class="nx-btn" href="/facturi">Facturi</a>
-          <a class="nx-btn primary" href="/clients">Client nou</a>
+          <a class="nx-btn" href="/nexora/facturi">Facturi</a>
+          <a class="nx-btn primary" href="/nexora/clients/new">Client nou</a>
+          <form method="post" action="/logout" class="nx-logout-form">
+            <button class="nx-btn nx-logout-btn" type="submit">Logout</button>
+          </form>
         </div>
       </header>
 
@@ -207,7 +211,7 @@ function renderNexoraDashboardPage(options = {}) {
               <span>Fără status e-Factura</span>
               <strong>${escapeHtml(efacturaSummary.missingStatus)}</strong>
             </div>
-            <a class="nx-btn primary nx-anaf-link" href="/anaf/outbox">Deschide e-Factura</a>
+            <a class="nx-btn primary nx-anaf-link" href="/nexora/anaf/outbox">Deschide e-Factura</a>
           </div>
         </div>
 
@@ -218,12 +222,12 @@ function renderNexoraDashboardPage(options = {}) {
           </div>
 
           <div class="nx-shortcuts">
-            <a href="/facturi">Factură nouă</a>
-            <a href="/quotes">Ofertă nouă</a>
-            <a href="/clients">Client nou</a>
-            <a href="/produse">Produs nou</a>
-            <a href="/employees">Angajat nou</a>
-            <a href="/reports">Dashboard BI</a>
+            <a href="/nexora/facturi/new">Factură nouă</a>
+            <a href="/nexora/quotes">Ofertă nouă</a>
+            <a href="/nexora/clients/new">Client nou</a>
+            <a href="/nexora/products">Produs nou</a>
+            <a href="/nexora/employees">Angajat nou</a>
+            <a href="/nexora/reports">Dashboard BI</a>
           </div>
         </div>
       </section>

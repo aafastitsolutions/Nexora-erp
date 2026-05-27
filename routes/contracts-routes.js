@@ -1,3 +1,5 @@
+import { renderNexoraContractDetailPage, renderNexoraContractsPage } from "../src/ui/nexora-contracts-page.js";
+
 export function registerContractsRoutes(app, deps) {
   const {
     COMPANY,
@@ -26,6 +28,71 @@ export function registerContractsRoutes(app, deps) {
     return Number.isFinite(n) ? n.toFixed(2) : "0.00";
   }
 
+  function contractRedirect(req, id, ok = "") {
+    const suffix = ok ? `?ok=${encodeURIComponent(ok)}` : "";
+    return req.body?.return_to === "nexora" ? `/nexora/contracts/${id}${suffix}` : `/contract/${id}`;
+  }
+
+  app.get("/nexora/contracts", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const q = String(req.query?.q || "").trim();
+    const search = q ? `%${q}%` : null;
+
+    const rows = q
+      ? db.prepare(`
+          SELECT c.id, c.contract_number, c.created_at, c.price, c.duration,
+                 IFNULL(c.origin,'DIRECT') AS origin,
+                 cl.id AS client_id, cl.name AS client_name, cl.cui AS client_cui,
+                 c.pdf_path
+          FROM contracts c
+          JOIN clients cl ON cl.id = c.client_id AND cl.company_id = c.company_id
+          WHERE c.company_id=?
+            AND (c.contract_number LIKE ? OR cl.name LIKE ? OR cl.cui LIKE ?)
+          ORDER BY c.id DESC
+          LIMIT 500
+        `).all(companyId, search, search, search)
+      : db.prepare(`
+          SELECT c.id, c.contract_number, c.created_at, c.price, c.duration,
+                 IFNULL(c.origin,'DIRECT') AS origin,
+                 cl.id AS client_id, cl.name AS client_name, cl.cui AS client_cui,
+                 c.pdf_path
+          FROM contracts c
+          JOIN clients cl ON cl.id = c.client_id AND cl.company_id = c.company_id
+          WHERE c.company_id=?
+          ORDER BY c.id DESC
+          LIMIT 500
+        `).all(companyId);
+
+    return res.type("html").send(renderNexoraContractsPage({
+      companyName: req.session.user.company_name || "",
+      rows,
+      q,
+      fmtMoney: (value) => `${localFmtMoney(value)} RON`
+    }));
+  });
+
+  app.get("/nexora/contracts/:id", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).send("Bad id");
+
+    const row = db.prepare(`
+      SELECT c.*, cl.name AS client_name, cl.cui AS client_cui, cl.address AS client_address, cl.reg_com AS client_reg_com
+      FROM contracts c
+      JOIN clients cl ON cl.id = c.client_id AND cl.company_id = c.company_id
+      WHERE c.id=? AND c.company_id=?
+    `).get(id, companyId);
+
+    if (!row) return res.status(404).send("Not found");
+
+    return res.type("html").send(renderNexoraContractDetailPage({
+      companyName: req.session.user.company_name || "",
+      contract: row,
+      ok: String(req.query?.ok || ""),
+      fmtMoney: (value) => `${localFmtMoney(value)} RON`
+    }));
+  });
+
   app.get("/contracte", requireAuth, (req, res) => {
     const companyId = Number(req.session.user.company_id || 0);
     const rows = db.prepare(`
@@ -34,7 +101,7 @@ export function registerContractsRoutes(app, deps) {
              cl.name AS client_name, cl.cui AS client_cui,
              c.pdf_path
       FROM contracts c
-      JOIN clients cl ON cl.id = c.client_id
+      JOIN clients cl ON cl.id = c.client_id AND cl.company_id = c.company_id
       WHERE c.company_id=?
       ORDER BY c.id DESC
       LIMIT 500
@@ -116,7 +183,7 @@ ${crmShellEnd()}
     const row = db.prepare(`
       SELECT c.*, cl.name AS client_name, cl.cui AS client_cui, cl.address AS client_address, cl.reg_com AS client_reg_com
       FROM contracts c
-      JOIN clients cl ON cl.id = c.client_id
+      JOIN clients cl ON cl.id = c.client_id AND cl.company_id = c.company_id
       WHERE c.id=? AND c.company_id=?
     `).get(id, companyId);
 
@@ -261,7 +328,7 @@ ${crmShellEnd()}
     `).run(service_description, priceNum, duration, id, companyId);
 
     if (info.changes === 0) return res.status(404).send("Not found");
-    return res.redirect(`/contract/${id}`);
+    return res.redirect(contractRedirect(req, id, "salvat"));
   });
 
   app.post("/contract/:id/regenerate-pdf", requireAuth, async (req, res) => {
@@ -273,7 +340,7 @@ ${crmShellEnd()}
       const row = db.prepare(`
         SELECT c.*, cl.cui AS client_cui, cl.name AS client_name, cl.address AS client_address, cl.reg_com AS client_reg_com
         FROM contracts c
-        JOIN clients cl ON cl.id = c.client_id
+        JOIN clients cl ON cl.id = c.client_id AND cl.company_id = c.company_id
         WHERE c.id=? AND c.company_id=?
       `).get(id, companyId);
 
@@ -318,7 +385,7 @@ ${crmShellEnd()}
       const pdf_path = `contracts/${year}/${fileName}`;
       db.prepare("UPDATE contracts SET pdf_path=? WHERE id=? AND company_id=?").run(pdf_path, id, companyId);
 
-      return res.redirect(`/contract/${id}`);
+      return res.redirect(contractRedirect(req, id, "pdf_generat"));
     } catch (error) {
       console.error(`[PDF] regenerate contract ${id} failed`, error);
       return res.status(error?.code === "PDF_BROWSER_MISSING" ? 503 : 500).send(String(error?.message || "Nu am putut genera PDF-ul contractului."));

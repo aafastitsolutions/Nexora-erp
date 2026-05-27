@@ -674,6 +674,7 @@ function beginOauthAuthorization(req, res, {
   environment,
   inviteCode = "",
   onMissingConfigPath = "/anaf/status",
+  returnTo = "",
   getSetting,
   db
 }) {
@@ -693,6 +694,7 @@ function beginOauthAuthorization(req, res, {
   req.session.anafOAuthState = state;
   req.session.anafOAuthStartedAt = Date.now();
   req.session.anafOAuthInviteCode = formattedInviteCode;
+  req.session.anafOAuthReturnTo = returnTo === "nexora" ? "nexora" : "";
 
   const params = new URLSearchParams({
     response_type: "code",
@@ -862,12 +864,14 @@ export function registerAnafOAuthRoutes(app, {
   app.get("/oauth/anaf/start", requireAuth, requireSpvAccess, (req, res) => {
     const companyId = Number(req.session?.user?.company_id || 0);
     const environment = normalizeEnvironment(getSetting("anaf_environment", "test") || "test");
+    const returnTo = String(req.query?.return_to || "").trim().toLowerCase() === "nexora" ? "nexora" : "";
     delete req.session.anafOAuthInviteCode;
     return beginOauthAuthorization(req, res, {
       companyId,
       environment,
       inviteCode: "",
-      onMissingConfigPath: "/anaf/status",
+      onMissingConfigPath: returnTo === "nexora" ? "/nexora/anaf/status" : "/anaf/status",
+      returnTo,
       getSetting,
       db
     });
@@ -875,10 +879,12 @@ export function registerAnafOAuthRoutes(app, {
 
   app.get("/oauth/anaf/callback", async (req, res) => {
     const sessionInviteCode = formatInviteCode(req.session?.anafOAuthInviteCode || "");
+    const sessionReturnTo = String(req.session?.anafOAuthReturnTo || "");
     const expectedState = req.session?.anafOAuthState;
     delete req.session.anafOAuthState;
     delete req.session.anafOAuthStartedAt;
     delete req.session.anafOAuthInviteCode;
+    delete req.session.anafOAuthReturnTo;
 
     const user = req.session?.user || null;
     const invite = sessionInviteCode ? findAnafOauthInviteByCode(db, sessionInviteCode) : null;
@@ -908,7 +914,7 @@ export function registerAnafOAuthRoutes(app, {
     const currentConnection = latestAnafConnection(db, companyId, environment);
     const redirectBasePath = inviteFlow
       ? `/anaf/reautorizare/${encodeURIComponent(sessionInviteCode)}`
-      : "/anaf/status";
+      : sessionReturnTo === "nexora" ? "/nexora/anaf/status" : "/anaf/status";
 
     if (inviteFlow && String(invite.status || "").toUpperCase() === "REPLACED") {
       return res.redirect(buildRedirectUrl(redirectBasePath, "error", "Acest cod a fost inlocuit cu unul mai nou."));
