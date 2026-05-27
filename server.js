@@ -1,6 +1,7 @@
 import { renderNexoraAnafInboxPage } from "./src/ui/nexora-anaf-inbox-page.js";
 import { renderNexoraAnafOutboxPage } from "./src/ui/nexora-anaf-outbox-page.js";
 import { renderNexoraAnafStatusPage } from "./src/ui/nexora-anaf-status-page.js";
+import { renderNexoraClientPortalPage, renderNexoraClientPortalProjectPage } from "./src/ui/nexora-client-portal-page.js";
 import { renderNexoraClientDossierDetailPage, renderNexoraClientDossiersPage, renderNexoraDocumentsPage, renderNexoraDocumentsRegisterPage } from "./src/ui/nexora-documents-page.js";
 import { renderNexoraEmployeesPage } from "./src/ui/nexora-employees-page.js";
 import { renderNexoraHubPage } from "./src/ui/nexora-hub-page.js";
@@ -4950,6 +4951,160 @@ function resolveDmsClientStoredPath(companyId, clientId, relativePath = "") {
   return absolutePath.startsWith(storageRoot + path.sep) ? absolutePath : "";
 }
 
+function isClientRoleUser(user) {
+  return String(user?.role || "").trim().toLowerCase() === "client";
+}
+
+function requireClientPortal(req, res, next) {
+  if (!isClientRoleUser(req.session?.user)) return res.status(403).send("Forbidden");
+  return next();
+}
+
+function getClientPortalContext(user = {}) {
+  const companyId = Number(user.company_id || 0);
+  const clientId = Number(user.client_id || 0);
+  if (!companyId || !clientId) {
+    return { companyId, clientId, client: null };
+  }
+  const client = db.prepare(`
+    SELECT id, name, cui, address
+    FROM clients
+    WHERE id=? AND company_id=?
+  `).get(clientId, companyId) || null;
+  return { companyId, clientId, client };
+}
+
+function resolveAppDocumentPath(relativePath = "") {
+  const normalized = String(relativePath || "").replaceAll("\\", "/").replace(/^\/+/, "");
+  if (!normalized) return "";
+
+  const allowedPrefixes = ["contracts/", "uploads/", "public/uploads/"];
+  if (!allowedPrefixes.some((prefix) => normalized.startsWith(prefix))) return "";
+
+  const appRoot = path.resolve(__dirname);
+  const publicRoot = path.resolve(path.join(__dirname, "public"));
+  const candidates = normalized.startsWith("uploads/")
+    ? [path.resolve(path.join(publicRoot, normalized)), path.resolve(path.join(appRoot, normalized))]
+    : [path.resolve(path.join(appRoot, normalized)), path.resolve(path.join(publicRoot, normalized))];
+  return candidates.find((candidate) =>
+    (candidate === appRoot || candidate.startsWith(appRoot + path.sep)) && fs.existsSync(candidate)
+  ) || "";
+}
+
+function resolveProjectStoredPath(companyId, projectId, storedPath = "") {
+  const expectedPrefix = `company-${Number(companyId || 0)}/project-${Number(projectId || 0)}/`;
+  const normalizedRelativePath = String(storedPath || "").replaceAll("\\", "/").replace(/^\/+/, "");
+  if (!normalizedRelativePath.startsWith(expectedPrefix)) return "";
+
+  const storageRoot = path.resolve(path.join(__dirname, "uploads", "projects"));
+  const absolutePath = path.resolve(storageRoot, normalizedRelativePath);
+  return absolutePath.startsWith(storageRoot + path.sep) && fs.existsSync(absolutePath) ? absolutePath : "";
+}
+
+function collectClientPortalDocuments(companyId, clientId) {
+  const documents = [];
+
+  db.prepare(`
+    SELECT id, title, category, original_file_name, created_at
+    FROM dms_client_files
+    WHERE client_id=? AND company_id=? AND archived_at IS NULL
+  `).all(clientId, companyId).forEach((row) => documents.push({
+    category: row.category || "ALTELE",
+    title: row.title,
+    kind: "Fișier încărcat",
+    fileName: row.original_file_name,
+    createdAt: row.created_at,
+    downloadHref: `/nexora/client-portal/dms-files/${row.id}/download`
+  }));
+
+  db.prepare(`
+    SELECT id, contract_number, pdf_path, created_at
+    FROM contracts
+    WHERE client_id=? AND company_id=? AND TRIM(COALESCE(pdf_path,'')) <> ''
+  `).all(clientId, companyId).forEach((row) => documents.push({
+    category: "CONTRACTE",
+    title: `Contract ${row.contract_number || ""}`,
+    kind: "Contract",
+    fileName: row.pdf_path,
+    createdAt: row.created_at,
+    downloadHref: `/nexora/client-portal/contracts/${row.id}/download`
+  }));
+
+  db.prepare(`
+    SELECT id, quote_number, title, pdf_path, created_at
+    FROM quotes
+    WHERE client_id=? AND company_id=? AND TRIM(COALESCE(pdf_path,'')) <> ''
+  `).all(clientId, companyId).forEach((row) => documents.push({
+    category: "OFERTE",
+    title: row.title || `Ofertă ${row.quote_number || ""}`,
+    kind: "Ofertă",
+    fileName: row.pdf_path,
+    createdAt: row.created_at,
+    downloadHref: `/nexora/client-portal/quotes/${row.id}/download`
+  }));
+
+  db.prepare(`
+    SELECT id, factura_nr, pdf_path, created_at
+    FROM facturi
+    WHERE client_id=? AND company_id=? AND TRIM(COALESCE(pdf_path,'')) <> ''
+  `).all(clientId, companyId).forEach((row) => documents.push({
+    category: "FACTURI",
+    title: `Factură ${row.factura_nr || ""}`,
+    kind: "Factură",
+    fileName: row.pdf_path,
+    createdAt: row.created_at,
+    downloadHref: `/nexora/client-portal/invoices/${row.id}/download`
+  }));
+
+  db.prepare(`
+    SELECT id, title, category, file_name, file_path, created_at
+    FROM tipizate_docs
+    WHERE client_id=? AND company_id=? AND TRIM(COALESCE(file_path,'')) <> ''
+  `).all(clientId, companyId).forEach((row) => documents.push({
+    category: "TIPIZATE",
+    title: row.title,
+    kind: row.category || "Tipizat",
+    fileName: row.file_name,
+    createdAt: row.created_at,
+    downloadHref: `/nexora/client-portal/tipizate/${row.id}/download`
+  }));
+
+  db.prepare(`
+    SELECT id, title, output_file_name, template_type, created_at
+    FROM dms_autofill_documents
+    WHERE client_id=? AND company_id=? AND TRIM(COALESCE(output_file_path,'')) <> ''
+  `).all(clientId, companyId).forEach((row) => documents.push({
+    category: "FORMULARE",
+    title: row.title,
+    kind: row.template_type || "Completat automat",
+    fileName: row.output_file_name,
+    createdAt: row.created_at,
+    downloadHref: `/nexora/client-portal/autofill/${row.id}/download`
+  }));
+
+  db.prepare(`
+    SELECT pf.id, pf.project_id, pf.original_file_name, pf.category, pf.created_at, p.title AS project_title
+    FROM project_files pf
+    JOIN projects p ON p.id=pf.project_id AND p.company_id=pf.company_id
+    WHERE pf.company_id=? AND p.client_id=?
+  `).all(companyId, clientId).forEach((row) => documents.push({
+    category: "PROIECTE",
+    title: `${row.project_title || "Proiect"} - ${row.original_file_name || "Fișier"}`,
+    kind: row.category || "Proiect",
+    fileName: row.original_file_name,
+    createdAt: row.created_at,
+    openHref: `/nexora/client-portal/projects/${row.project_id}`,
+    downloadHref: `/nexora/client-portal/projects/${row.project_id}/files/${row.id}/download`
+  }));
+
+  return documents.sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")));
+}
+
+function sendClientPortalFile(res, absolutePath, downloadName = "document") {
+  if (!absolutePath || !fs.existsSync(absolutePath)) return res.status(404).send("Fișierul nu a fost găsit.");
+  return res.download(absolutePath, String(downloadName || "document"));
+}
+
 function backfillTipizateRegisterForCompany(companyId, req) {
   const normalizedCompanyId = Number(companyId || 0);
   if (!normalizedCompanyId) return;
@@ -5173,7 +5328,7 @@ function refreshSessionCompanyAccess(req) {
   if (!companyId || !userId) return;
 
   const userRow = db.prepare(`
-    SELECT role, module_permissions, is_company_admin
+    SELECT role, module_permissions, is_company_admin, client_id
     FROM users
     WHERE id=? AND company_id=?
   `).get(userId, companyId);
@@ -5192,6 +5347,7 @@ function refreshSessionCompanyAccess(req) {
       );
 
   req.session.user.company_name = company?.name || req.session.user.company_name || null;
+  req.session.user.client_id = userRow.client_id || null;
   req.session.user.company_is_demo = Number(company?.is_demo || 0);
   req.session.user.demo_expires_at = company?.demo_expires_at || null;
   req.session.user.is_company_admin = Number(userRow.is_company_admin || 0);
@@ -5237,6 +5393,29 @@ function companySeatSummary(companyId) {
     seatsUsed,
     seatsIncluded
   };
+}
+
+function loadCompanyClients(companyId) {
+  return db.prepare(`
+    SELECT id, name, cui
+    FROM clients
+    WHERE company_id=? AND COALESCE(inactive, 0)=0
+    ORDER BY name COLLATE NOCASE ASC
+    LIMIT 1000
+  `).all(Number(companyId || 0));
+}
+
+function resolveUserClientAssignment(companyId, roleKey, rawClientId) {
+  if (String(roleKey || "").trim().toLowerCase() !== "client") return { ok: true, clientId: null };
+  const clientId = Number(rawClientId || 0);
+  if (!Number.isFinite(clientId) || clientId < 1) {
+    return { ok: false, message: "Selecteaza clientul asociat pentru rolul Client." };
+  }
+  const client = db.prepare("SELECT id FROM clients WHERE id=? AND company_id=?").get(clientId, Number(companyId || 0));
+  if (!client) {
+    return { ok: false, message: "Clientul asociat nu exista in compania curenta." };
+  }
+  return { ok: true, clientId: Number(client.id) };
 }
 
 function resyncCompanyUserModules(companyId) {
@@ -5801,6 +5980,175 @@ app.get("/nexora/documents/client-files", requireAuth, requireCompanyAdmin, (req
     rows,
     q
   }));
+});
+
+app.get("/nexora/client-portal", requireAuth, requireClientPortal, (req, res) => {
+  const { companyId, clientId, client } = getClientPortalContext(req.session.user);
+  if (!client) {
+    return res.type("html").send(renderNexoraClientPortalPage({
+      companyName: req.session.user.company_name || "",
+      user: req.session.user,
+      missingAssignment: true
+    }));
+  }
+
+  const projects = db.prepare(`
+    SELECT p.*,
+           COUNT(t.id) AS total_tasks,
+           SUM(CASE WHEN t.id IS NOT NULL AND t.status <> 'FINALIZAT' THEN 1 ELSE 0 END) AS open_tasks
+    FROM projects p
+    LEFT JOIN project_tasks t ON t.project_id=p.id AND t.company_id=p.company_id
+    WHERE p.company_id=? AND p.client_id=?
+    GROUP BY p.id
+    ORDER BY
+      CASE p.status WHEN 'BLOCAT' THEN 0 WHEN 'ACTIV' THEN 1 WHEN 'PLANIFICARE' THEN 2 ELSE 3 END,
+      COALESCE(p.due_date, '9999-12-31') ASC, p.id DESC
+  `).all(companyId, clientId);
+  const stats = db.prepare(`
+    SELECT
+      (SELECT COUNT(*) FROM projects WHERE company_id=? AND client_id=?) AS projects,
+      (SELECT COUNT(*) FROM projects WHERE company_id=? AND client_id=? AND status IN ('ACTIV','IN_REVIZUIRE')) AS activeProjects,
+      (SELECT COUNT(*) FROM project_tasks t JOIN projects p ON p.id=t.project_id AND p.company_id=t.company_id WHERE t.company_id=? AND p.client_id=? AND t.status <> 'FINALIZAT') AS openTasks
+  `).get(companyId, clientId, companyId, clientId, companyId, clientId) || {};
+  const documents = collectClientPortalDocuments(companyId, clientId);
+
+  return res.type("html").send(renderNexoraClientPortalPage({
+    companyName: req.session.user.company_name || "",
+    user: req.session.user,
+    client,
+    projects,
+    documents,
+    stats
+  }));
+});
+
+app.get("/nexora/client-portal/projects/:id", requireAuth, requireClientPortal, (req, res) => {
+  const { companyId, clientId, client } = getClientPortalContext(req.session.user);
+  if (!client) return res.status(403).send("Contul nu este asociat unui client.");
+  const projectId = Number(req.params.id || 0);
+  const project = db.prepare(`
+    SELECT *
+    FROM projects
+    WHERE id=? AND company_id=? AND client_id=?
+  `).get(projectId, companyId, clientId);
+  if (!project) return res.status(404).send("Proiectul nu a fost găsit.");
+
+  const tasks = db.prepare(`
+    SELECT *
+    FROM project_tasks
+    WHERE project_id=? AND company_id=?
+    ORDER BY CASE status WHEN 'BLOCAT' THEN 0 WHEN 'IN_LUCRU' THEN 1 WHEN 'DE_FACUT' THEN 2 ELSE 3 END,
+             COALESCE(due_date, '9999-12-31'), id DESC
+  `).all(projectId, companyId);
+  const milestones = db.prepare(`
+    SELECT *
+    FROM project_milestones
+    WHERE project_id=? AND company_id=?
+    ORDER BY COALESCE(due_date, '9999-12-31'), id DESC
+  `).all(projectId, companyId);
+  const files = db.prepare(`
+    SELECT *
+    FROM project_files
+    WHERE project_id=? AND company_id=?
+    ORDER BY id DESC
+  `).all(projectId, companyId);
+
+  return res.type("html").send(renderNexoraClientPortalProjectPage({
+    companyName: req.session.user.company_name || "",
+    user: req.session.user,
+    project,
+    tasks,
+    milestones,
+    files
+  }));
+});
+
+app.get("/nexora/client-portal/dms-files/:fileId/download", requireAuth, requireClientPortal, (req, res) => {
+  const { companyId, clientId, client } = getClientPortalContext(req.session.user);
+  if (!client) return res.status(403).send("Contul nu este asociat unui client.");
+  const fileId = Number(req.params.fileId || 0);
+  const file = db.prepare(`
+    SELECT original_file_name, stored_path
+    FROM dms_client_files
+    WHERE id=? AND client_id=? AND company_id=? AND archived_at IS NULL
+  `).get(fileId, clientId, companyId);
+  if (!file) return res.status(404).send("Fișierul nu a fost găsit.");
+  return sendClientPortalFile(res, resolveDmsClientStoredPath(companyId, clientId, file.stored_path), file.original_file_name);
+});
+
+app.get("/nexora/client-portal/contracts/:contractId/download", requireAuth, requireClientPortal, (req, res) => {
+  const { companyId, clientId, client } = getClientPortalContext(req.session.user);
+  if (!client) return res.status(403).send("Contul nu este asociat unui client.");
+  const row = db.prepare(`
+    SELECT contract_number, pdf_path
+    FROM contracts
+    WHERE id=? AND client_id=? AND company_id=?
+  `).get(Number(req.params.contractId || 0), clientId, companyId);
+  if (!row?.pdf_path) return res.status(404).send("Fișierul nu a fost găsit.");
+  return sendClientPortalFile(res, resolveAppDocumentPath(row.pdf_path), `${safeStoredFileName(row.contract_number, "contract")}.pdf`);
+});
+
+app.get("/nexora/client-portal/quotes/:quoteId/download", requireAuth, requireClientPortal, (req, res) => {
+  const { companyId, clientId, client } = getClientPortalContext(req.session.user);
+  if (!client) return res.status(403).send("Contul nu este asociat unui client.");
+  const row = db.prepare(`
+    SELECT quote_number, pdf_path
+    FROM quotes
+    WHERE id=? AND client_id=? AND company_id=?
+  `).get(Number(req.params.quoteId || 0), clientId, companyId);
+  if (!row?.pdf_path) return res.status(404).send("Fișierul nu a fost găsit.");
+  return sendClientPortalFile(res, resolveAppDocumentPath(row.pdf_path), `${safeStoredFileName(row.quote_number, "oferta")}.pdf`);
+});
+
+app.get("/nexora/client-portal/invoices/:invoiceId/download", requireAuth, requireClientPortal, (req, res) => {
+  const { companyId, clientId, client } = getClientPortalContext(req.session.user);
+  if (!client) return res.status(403).send("Contul nu este asociat unui client.");
+  const row = db.prepare(`
+    SELECT factura_nr, pdf_path
+    FROM facturi
+    WHERE id=? AND client_id=? AND company_id=?
+  `).get(Number(req.params.invoiceId || 0), clientId, companyId);
+  if (!row?.pdf_path) return res.status(404).send("Fișierul nu a fost găsit.");
+  return sendClientPortalFile(res, resolveAppDocumentPath(row.pdf_path), `${safeStoredFileName(row.factura_nr, "factura")}.pdf`);
+});
+
+app.get("/nexora/client-portal/tipizate/:docId/download", requireAuth, requireClientPortal, (req, res) => {
+  const { companyId, clientId, client } = getClientPortalContext(req.session.user);
+  if (!client) return res.status(403).send("Contul nu este asociat unui client.");
+  const row = db.prepare(`
+    SELECT file_name, file_path
+    FROM tipizate_docs
+    WHERE id=? AND client_id=? AND company_id=?
+  `).get(Number(req.params.docId || 0), clientId, companyId);
+  if (!row?.file_path) return res.status(404).send("Fișierul nu a fost găsit.");
+  return sendClientPortalFile(res, resolveAppDocumentPath(row.file_path), row.file_name || "document");
+});
+
+app.get("/nexora/client-portal/autofill/:docId/download", requireAuth, requireClientPortal, (req, res) => {
+  const { companyId, clientId, client } = getClientPortalContext(req.session.user);
+  if (!client) return res.status(403).send("Contul nu este asociat unui client.");
+  const row = db.prepare(`
+    SELECT output_file_name, output_file_path
+    FROM dms_autofill_documents
+    WHERE id=? AND client_id=? AND company_id=?
+  `).get(Number(req.params.docId || 0), clientId, companyId);
+  if (!row?.output_file_path) return res.status(404).send("Fișierul nu a fost găsit.");
+  return sendClientPortalFile(res, resolveDmsAutofillStoredPath(companyId, row.output_file_path), row.output_file_name || "document");
+});
+
+app.get("/nexora/client-portal/projects/:projectId/files/:fileId/download", requireAuth, requireClientPortal, (req, res) => {
+  const { companyId, clientId, client } = getClientPortalContext(req.session.user);
+  if (!client) return res.status(403).send("Contul nu este asociat unui client.");
+  const projectId = Number(req.params.projectId || 0);
+  const fileId = Number(req.params.fileId || 0);
+  const file = db.prepare(`
+    SELECT pf.original_file_name, pf.stored_path
+    FROM project_files pf
+    JOIN projects p ON p.id=pf.project_id AND p.company_id=pf.company_id
+    WHERE pf.id=? AND pf.project_id=? AND pf.company_id=? AND p.client_id=?
+  `).get(fileId, projectId, companyId, clientId);
+  if (!file) return res.status(404).send("Fișierul nu a fost găsit.");
+  return sendClientPortalFile(res, resolveProjectStoredPath(companyId, projectId, file.stored_path), file.original_file_name || "document");
 });
 
 app.get("/nexora/documents/client-files/:clientId", requireAuth, requireCompanyAdmin, (req, res) => {
@@ -8153,11 +8501,14 @@ app.get("/nexora/roles", requireAuth, requireRole("admin"), (req, res) => {
 app.get("/nexora/users", requireAuth, requireRole("admin"), (req, res) => {
   const companyId = Number(req.session?.user?.company_id || 0);
   const seatContext = companySeatSummary(companyId);
+  const clients = loadCompanyClients(companyId);
   const users = db.prepare(`
-    SELECT id, email, role, status, is_company_admin, module_permissions, created_at
-    FROM users
-    WHERE company_id=?
-    ORDER BY id DESC
+    SELECT u.id, u.email, u.role, u.status, u.is_company_admin, u.client_id,
+           u.module_permissions, u.created_at, cl.name AS client_name, cl.cui AS client_cui
+    FROM users u
+    LEFT JOIN clients cl ON cl.id=u.client_id AND cl.company_id=u.company_id
+    WHERE u.company_id=?
+    ORDER BY u.id DESC
   `).all(companyId).map((user) => {
     const roleKey = String(user.role || "").trim().toLowerCase();
     const roleModules = ROLE_MODULES[roleKey] || [];
@@ -8178,6 +8529,7 @@ app.get("/nexora/users", requireAuth, requireRole("admin"), (req, res) => {
     companyName: req.session.user.company_name || "",
     currentUser: req.session.user,
     users,
+    clients,
     seatContext,
     roleModules: ROLE_MODULES,
     moduleDefinitions: MODULE_DEFINITIONS,
@@ -8192,7 +8544,7 @@ app.get("/nexora/users/:id/edit", requireAuth, requireRole("admin"), (req, res) 
   const companyId = Number(req.session?.user?.company_id || 0);
 
   const user = db.prepare(`
-    SELECT id, email, role, module_permissions
+    SELECT id, email, role, module_permissions, client_id
     FROM users
     WHERE id=? AND company_id=?
   `).get(id, companyId);
@@ -8221,6 +8573,7 @@ app.get("/nexora/users/:id/edit", requireAuth, requireRole("admin"), (req, res) 
     companyName: req.session.user.company_name || "",
     currentUser: req.session.user,
     user,
+    clients: loadCompanyClients(companyId),
     selectableModules,
     assignedModules,
     seatContext,
@@ -8232,7 +8585,8 @@ app.get("/nexora/users/:id/edit", requireAuth, requireRole("admin"), (req, res) 
 app.post("/accounts/create", requireAuth, requireRole("admin"), (req, res) => {
   const email = String(req.body?.email || "").trim().toLowerCase();
   const password = String(req.body?.password || "");
-  const role = String(req.body?.role || "operator");
+  const requestedRole = String(req.body?.role || "operator").trim().toLowerCase();
+  const role = Object.prototype.hasOwnProperty.call(ROLE_MODULES, requestedRole) ? requestedRole : "operator";
   const companyId = Number(req.session?.user?.company_id || 0);
 
   if (!email || !password) {
@@ -8253,6 +8607,8 @@ app.post("/accounts/create", requireAuth, requireRole("admin"), (req, res) => {
   }
 
   const roleKey = String(role || "").trim().toLowerCase();
+  const clientAssignment = resolveUserClientAssignment(companyId, roleKey, req.body?.client_id);
+  if (!clientAssignment.ok) return res.status(400).send(clientAssignment.message);
   const defaultRoleModules = Array.isArray(ROLE_MODULES[roleKey]) ? ROLE_MODULES[roleKey] : [];
   const effectiveModules = normalizeUserModules(
     defaultRoleModules,
@@ -8264,15 +8620,16 @@ app.post("/accounts/create", requireAuth, requireRole("admin"), (req, res) => {
   const hash = bcrypt.hashSync(password, 12);
 
   db.prepare(`
-    INSERT INTO users (email,password_hash,role,company_id,status,is_company_admin,module_permissions)
-    VALUES (?,?,?,?, 'active', ?, ?)
+    INSERT INTO users (email,password_hash,role,company_id,status,is_company_admin,module_permissions,client_id)
+    VALUES (?,?,?,?, 'active', ?, ?, ?)
   `).run(
     email,
     hash,
     role,
     companyId,
     roleKey === "admin" ? 1 : 0,
-    JSON.stringify(effectiveModules)
+    JSON.stringify(effectiveModules),
+    clientAssignment.clientId
   );
 
   syncCompanySeatUsage(companyId);
@@ -8282,7 +8639,8 @@ app.post("/accounts/create", requireAuth, requireRole("admin"), (req, res) => {
 app.post("/accounts/:id/edit", requireAuth, requireRole("admin"), (req, res) => {
   const id = Number(req.params.id);
   const email = String(req.body?.email || "").trim().toLowerCase();
-  const role = String(req.body?.role || "operator");
+  const requestedRole = String(req.body?.role || "operator").trim().toLowerCase();
+  const role = Object.prototype.hasOwnProperty.call(ROLE_MODULES, requestedRole) ? requestedRole : "operator";
   const password = String(req.body?.password || "");
   const companyId = Number(req.session?.user?.company_id || 0);
   const currentUserId = Number(req.session?.user?.id || 0);
@@ -8318,6 +8676,8 @@ app.post("/accounts/:id/edit", requireAuth, requireRole("admin"), (req, res) => 
 
   const companyContext = getCompanySubscriptionContext(companyId);
   const roleKey = String(role || "").trim().toLowerCase();
+  const clientAssignment = resolveUserClientAssignment(companyId, roleKey, req.body?.client_id);
+  if (!clientAssignment.ok) return res.status(400).send(clientAssignment.message);
   const roleModules = Array.isArray(ROLE_MODULES[roleKey]) ? ROLE_MODULES[roleKey] : [];
   const effectiveModules = normalizeUserModules(
     modules,
@@ -8332,19 +8692,20 @@ app.post("/accounts/:id/edit", requireAuth, requireRole("admin"), (req, res) => 
     const hash = bcrypt.hashSync(password, 12);
     db.prepare(`
       UPDATE users
-      SET email=?, role=?, password_hash=?, module_permissions=?, is_company_admin=?
+      SET email=?, role=?, password_hash=?, module_permissions=?, is_company_admin=?, client_id=?
       WHERE id=?
-    `).run(email, role, hash, modulesJson, roleKey === "admin" ? 1 : 0, id);
+    `).run(email, role, hash, modulesJson, roleKey === "admin" ? 1 : 0, clientAssignment.clientId, id);
   } else {
     db.prepare(`
       UPDATE users
-      SET email=?, role=?, module_permissions=?, is_company_admin=?
+      SET email=?, role=?, module_permissions=?, is_company_admin=?, client_id=?
       WHERE id=?
-    `).run(email, role, modulesJson, roleKey === "admin" ? 1 : 0, id);
+    `).run(email, role, modulesJson, roleKey === "admin" ? 1 : 0, clientAssignment.clientId, id);
   }
 
   if (currentUserId === id) {
     req.session.user.email = email;
+    req.session.user.client_id = clientAssignment.clientId;
   }
 
   res.redirect(req.body?.return_to === "nexora" ? "/nexora/users?ok=saved" : "/accounts");
@@ -8395,7 +8756,7 @@ app.get("/accounts/:id/edit", requireAuth, requireRole("admin"), (req, res) => {
   const companyId = Number(req.session?.user?.company_id || 0);
 
   const user = db.prepare(`
-    SELECT id,email,role,module_permissions
+    SELECT id,email,role,module_permissions,client_id
     FROM users
     WHERE id=? AND company_id=?
   `).get(id, companyId);
@@ -8419,6 +8780,15 @@ app.get("/accounts/:id/edit", requireAuth, requireRole("admin"), (req, res) => {
     { companyIsDemo: Number(companyContext.company?.is_demo || 0) === 1 }
   );
   const perUserModuleLimit = Number(companyContext.subscription?.max_modules_per_user || 0);
+  const clients = loadCompanyClients(companyId);
+  const clientSelectHtml = [
+    `<option value="">Fara client asociat</option>`,
+    ...clients.map((client) => `
+      <option value="${escapeHtml(client.id)}" ${String(user.client_id || "") === String(client.id || "") ? "selected" : ""}>
+        ${escapeHtml(client.name || "-")}${client.cui ? ` - ${escapeHtml(client.cui)}` : ""}
+      </option>
+    `)
+  ].join("");
 
   const modulesHtml = selectableModules.map((item) => {
     const isCoreModule = isCoreCompanyModule(item.key);
@@ -8488,8 +8858,15 @@ ${crmShellStart("accounts","Edit user","Modificare rol, parola si module utiliza
         <option value="operator" ${user.role==="operator"?"selected":""}>operator</option>
         <option value="hr" ${user.role==="hr"?"selected":""}>hr</option>
         <option value="accounting" ${user.role==="accounting"?"selected":""}>accounting</option>
+        <option value="client" ${user.role==="client"?"selected":""}>client</option>
       </select>
       <div class="crm-muted" style="margin-top:6px">Dupa schimbarea rolului, salveaza si revino daca vrei sa selectezi alta combinatie de module.</div>
+    </div>
+
+    <div>
+      <label class="crm-label">Client asociat</label>
+      <select class="crm-input" name="client_id">${clientSelectHtml}</select>
+      <div class="crm-muted" style="margin-top:6px">Obligatoriu pentru rolul client.</div>
     </div>
 
     <div>
@@ -8539,21 +8916,28 @@ ${crmShellEnd()}
 app.get("/accounts", requireAuth, requireRole("admin"), (req, res) => {
   const companyId = Number(req.session?.user?.company_id || 0);
   const seatContext = companySeatSummary(companyId);
+  const clients = loadCompanyClients(companyId);
   const users = db.prepare(`
-    SELECT id, email, role, created_at
-    FROM users
-    WHERE company_id=?
-    ORDER BY id DESC
+    SELECT u.id, u.email, u.role, u.created_at, cl.name AS client_name, cl.cui AS client_cui
+    FROM users u
+    LEFT JOIN clients cl ON cl.id=u.client_id AND cl.company_id=u.company_id
+    WHERE u.company_id=?
+    ORDER BY u.id DESC
   `).all(companyId);
 
   const seatLimitReached = seatContext.seatsUsed >= seatContext.seatsIncluded;
   const perUserModuleLimit = Number(seatContext.subscription?.max_modules_per_user || 0);
+  const clientCreateOptionsHtml = [
+    `<option value="">Fara client asociat</option>`,
+    ...clients.map((client) => `<option value="${escapeHtml(client.id)}">${escapeHtml(client.name || "-")}${client.cui ? ` - ${escapeHtml(client.cui)}` : ""}</option>`)
+  ].join("");
 
   const rows = users.map((u) => `
     <tr>
       <td>${u.id}</td>
       <td>${escapeHtml(u.email || "")}</td>
       <td>${escapeHtml(u.role || "")}</td>
+      <td>${escapeHtml(u.client_name || "")}${u.client_cui ? `<div class="crm-muted">${escapeHtml(u.client_cui)}</div>` : ""}</td>
       <td>${escapeHtml(u.created_at || "")}</td>
       <td>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -8623,7 +9007,15 @@ ${crmShellStart("accounts", "Accounts", "Administrare utilizatori si roluri.", r
           <option value="operator" selected>operator</option>
           <option value="hr">hr</option>
           <option value="accounting">accounting</option>
+          <option value="client">client</option>
         </select>
+      </div>
+      <div>
+        <label class="crm-label">Client asociat</label>
+        <select class="crm-input" name="client_id" ${seatLimitReached ? "disabled" : ""}>
+          ${clientCreateOptionsHtml}
+        </select>
+        <div class="crm-muted" style="margin-top:6px">Obligatoriu pentru rolul client.</div>
       </div>
       <div style="grid-column:1/-1;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
         <button class="crm-btn" type="submit" ${seatLimitReached ? "disabled" : ""}>Adauga utilizator</button>
@@ -8638,12 +9030,13 @@ ${crmShellStart("accounts", "Accounts", "Administrare utilizatori si roluri.", r
             <th>ID</th>
             <th>Email</th>
             <th>Rol</th>
+            <th>Client</th>
             <th>Creat la</th>
             <th>Actiuni</th>
           </tr>
         </thead>
         <tbody>
-          ${rows || `<tr><td colspan="5" class="crm-muted">Nu exista utilizatori.</td></tr>`}
+          ${rows || `<tr><td colspan="6" class="crm-muted">Nu exista utilizatori.</td></tr>`}
         </tbody>
       </table>
     </div>

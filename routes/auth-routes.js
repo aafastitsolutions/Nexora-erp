@@ -40,6 +40,7 @@ function buildSessionUser(u) {
     email: u.email,
     role: u.role,
     company_id: u.company_id,
+    client_id: u.client_id,
     company_name: u.company_name,
     company_is_demo: u.company_is_demo,
     demo_expires_at: u.demo_expires_at,
@@ -141,6 +142,10 @@ export function createWorkspace(db, {
 function resolvePostLoginPath(user) {
   if (Number(user?.is_super_admin || 0) === 1) {
     return "/nexora/super-admin";
+  }
+
+  if (String(user?.role || "").trim().toLowerCase() === "client") {
+    return "/nexora/client-portal";
   }
 
   const modules = Array.isArray(user?.effective_module_permissions)

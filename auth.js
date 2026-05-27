@@ -131,7 +131,7 @@ function refreshSessionUserAccess(sessionUser) {
   if (!sessionUser?.id) return sessionUser;
 
   const dbUser = db.prepare(`
-    SELECT id, email, role, module_permissions, company_id, status, is_company_admin
+    SELECT id, email, role, module_permissions, company_id, status, is_company_admin, client_id
     FROM users
     WHERE id=?
   `).get(sessionUser.id);
@@ -170,6 +170,7 @@ function refreshSessionUserAccess(sessionUser) {
     email: dbUser.email,
     role: dbUser.role,
     company_id: dbUser.company_id || null,
+    client_id: dbUser.client_id || null,
     company_name: companyAccess.company?.name || null,
     company_is_demo: Number(companyAccess.company?.is_demo || 0),
     demo_expires_at: companyAccess.company?.demo_expires_at || null,
@@ -241,7 +242,7 @@ export function seedAdminFromEnv() {
 
 export function verifyUserAttempt(email, password) {
   const u = db.prepare(`
-    SELECT id,email,password_hash,role,module_permissions,company_id,status,is_company_admin
+    SELECT id,email,password_hash,role,module_permissions,company_id,status,is_company_admin,client_id
     FROM users
     WHERE email=?
   `).get(email);
@@ -295,6 +296,7 @@ export function verifyUserAttempt(email, password) {
       email: u.email,
       role: u.role,
       company_id: u.company_id || null,
+      client_id: u.client_id || null,
       company_name: companyAccess.company?.name || null,
       company_is_demo: Number(companyAccess.company?.is_demo || 0),
       demo_expires_at: companyAccess.company?.demo_expires_at || null,

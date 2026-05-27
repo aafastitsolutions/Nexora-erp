@@ -980,6 +980,7 @@ export function migrate() {
   ensureColumn("users", "company_id", "INTEGER");
   ensureColumn("users", "status", "TEXT DEFAULT 'active'");
   ensureColumn("users", "is_company_admin", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("users", "client_id", "INTEGER");
   ensureColumn("companies", "stripe_customer_id", "TEXT");
   ensureColumn("companies", "is_demo", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn("companies", "demo_expires_at", "TEXT");
@@ -1261,6 +1262,7 @@ export function migrate() {
     CREATE INDEX IF NOT EXISTS idx_companies_archived_at ON companies(archived_at);
     CREATE INDEX IF NOT EXISTS idx_company_subscriptions_stripe_subscription_id ON company_subscriptions(stripe_subscription_id);
     CREATE INDEX IF NOT EXISTS idx_users_company_id ON users(company_id);
+    CREATE INDEX IF NOT EXISTS idx_users_company_client_id ON users(company_id, client_id);
     CREATE INDEX IF NOT EXISTS idx_company_subscriptions_company_id ON company_subscriptions(company_id);
     CREATE INDEX IF NOT EXISTS idx_company_subscriptions_status ON company_subscriptions(status);
     CREATE INDEX IF NOT EXISTS idx_clients_cui ON clients(cui);

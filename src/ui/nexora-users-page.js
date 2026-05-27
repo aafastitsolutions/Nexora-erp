@@ -15,7 +15,8 @@ const ROLE_LABELS = {
   manager: "Manager",
   operator: "Operator",
   hr: "HR",
-  accounting: "Contabilitate"
+  accounting: "Contabilitate",
+  client: "Client"
 };
 
 function roleLabel(role) {
@@ -24,7 +25,7 @@ function roleLabel(role) {
 
 function roleBadge(role) {
   const normalized = String(role || "").trim().toLowerCase();
-  const tone = normalized === "admin" ? "success" : normalized === "accounting" ? "warn" : "neutral";
+  const tone = normalized === "admin" ? "success" : normalized === "accounting" ? "warn" : normalized === "client" ? "neutral" : "neutral";
   return `<span class="nx-status-pill ${tone}">${escapeHtml(roleLabel(normalized))}</span>`;
 }
 
@@ -39,6 +40,17 @@ function roleOptions(selectedRole = "operator") {
   return Object.keys(ROLE_LABELS).map((role) => `
     <option value="${escapeHtml(role)}" ${String(selectedRole || "").toLowerCase() === role ? "selected" : ""}>${escapeHtml(roleLabel(role))}</option>
   `).join("");
+}
+
+function clientOptions(clients = [], selectedClientId = "") {
+  return [
+    `<option value="">Fără client asociat</option>`,
+    ...clients.map((client) => `
+      <option value="${escapeHtml(client.id)}" ${String(selectedClientId || "") === String(client.id || "") ? "selected" : ""}>
+        ${escapeHtml(client.name || "-")}${client.cui ? ` · ${escapeHtml(client.cui)}` : ""}
+      </option>
+    `)
+  ].join("");
 }
 
 function moduleNames(moduleKeys = [], moduleDefinitions = []) {
@@ -70,6 +82,7 @@ function renderRoleMatrix(roleModules = {}, moduleDefinitions = []) {
 function renderNexoraUsersPage(options = {}) {
   const companyName = options.companyName || "Workspace";
   const users = Array.isArray(options.users) ? options.users : [];
+  const clients = Array.isArray(options.clients) ? options.clients : [];
   const seatContext = options.seatContext || {};
   const roleModules = options.roleModules || {};
   const moduleDefinitions = Array.isArray(options.moduleDefinitions) ? options.moduleDefinitions : [];
@@ -100,6 +113,7 @@ function renderNexoraUsersPage(options = {}) {
           <td>${roleBadge(user.role)}</td>
           <td>${statusBadge(user.status)}</td>
           <td>${Number(user.is_company_admin) ? `<span class="nx-status-pill success">admin companie</span>` : `<span class="nx-status-pill neutral">standard</span>`}</td>
+          <td>${escapeHtml(user.client_name || "-")}<div class="nx-table-sub">${user.client_cui ? escapeHtml(user.client_cui) : ""}</div></td>
           <td>${escapeHtml(moduleLabels.length)}<div class="nx-table-sub">${escapeHtml(moduleLabels.slice(0, 4).join(", ") || "-")}</div></td>
           <td>${escapeHtml(user.created_at || "-")}</td>
           <td class="nx-table-actions">
@@ -112,7 +126,7 @@ function renderNexoraUsersPage(options = {}) {
         </tr>
       `;
     }).join("")
-    : `<tr><td colspan="7"><div class="nx-empty-state">Nu există utilizatori în această companie.</div></td></tr>`;
+    : `<tr><td colspan="8"><div class="nx-empty-state">Nu există utilizatori în această companie.</div></td></tr>`;
 
   const body = `
     ${ok ? `<div class="nx-alert success">${escapeHtml(okMessages[ok] || "Operațiunea a fost finalizată.")}</div>` : ""}
@@ -137,6 +151,7 @@ function renderNexoraUsersPage(options = {}) {
           <label class="nx-field"><span>Email</span><input type="email" name="email" required ${seatLimitReached ? "disabled" : ""}></label>
           <label class="nx-field"><span>Parolă</span><input type="password" name="password" required ${seatLimitReached ? "disabled" : ""}></label>
           <label class="nx-field"><span>Rol</span><select name="role" ${seatLimitReached ? "disabled" : ""}>${roleOptions("operator")}</select></label>
+          <label class="nx-field"><span>Client asociat</span><select name="client_id" ${seatLimitReached ? "disabled" : ""}>${clientOptions(clients)}</select><small class="nx-field-hint">Obligatoriu pentru rolul Client.</small></label>
           <div class="nx-form-actions">
             <button class="nx-btn primary" type="submit" ${seatLimitReached ? "disabled" : ""}>Adaugă</button>
           </div>
@@ -167,7 +182,7 @@ function renderNexoraUsersPage(options = {}) {
       </div>
       <div class="nx-table-wrap">
         <table class="nx-table">
-          <thead><tr><th>Utilizator</th><th>Rol</th><th>Status</th><th>Admin</th><th>Module</th><th>Creat</th><th></th></tr></thead>
+          <thead><tr><th>Utilizator</th><th>Rol</th><th>Status</th><th>Admin</th><th>Client</th><th>Module</th><th>Creat</th><th></th></tr></thead>
           <tbody>${rowsHtml}</tbody>
         </table>
       </div>
@@ -215,6 +230,7 @@ function renderModuleCheckboxes({ selectableModules = [], assignedModules = [] }
 function renderNexoraUserEditPage(options = {}) {
   const companyName = options.companyName || "Workspace";
   const user = options.user || {};
+  const clients = Array.isArray(options.clients) ? options.clients : [];
   const selectableModules = Array.isArray(options.selectableModules) ? options.selectableModules : [];
   const assignedModules = Array.isArray(options.assignedModules) ? options.assignedModules : [];
   const seatContext = options.seatContext || {};
@@ -242,6 +258,7 @@ function renderNexoraUserEditPage(options = {}) {
         <div class="nx-two-column-grid compact">
           <label class="nx-field"><span>Email</span><input type="email" name="email" value="${escapeHtml(user.email || "")}" required></label>
           <label class="nx-field"><span>Rol</span><select name="role">${roleOptions(user.role)}</select></label>
+          <label class="nx-field"><span>Client asociat</span><select name="client_id">${clientOptions(clients, user.client_id)}</select><small class="nx-field-hint">Folosit pentru rolul Client.</small></label>
         </div>
         <label class="nx-field"><span>Parolă nouă</span><input type="password" name="password" placeholder="lasă gol pentru a păstra parola"></label>
         <div>
