@@ -106,6 +106,7 @@ function renderNexoraInvoicesPage(options = {}) {
         </div>
 
         <div class="nx-actions">
+          <a class="nx-btn primary" href="/nexora/facturi/new">Factură nouă</a>
           <a class="nx-btn ${showCancelled ? "" : "primary"}" href="/nexora/facturi">Active</a>
           <a class="nx-btn ${showCancelled ? "primary" : ""}" href="/nexora/facturi?view=anulate">Anulate</a>
         </div>
