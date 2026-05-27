@@ -83,6 +83,7 @@ export function registerQuotesRoutes(app, deps) {
 
     return res.type("html").send(renderNexoraQuotesPage({
       currentPath: "/nexora/quotes",
+      user: req.session.user,
       userEmail: req.session.user.email || "",
       companyName: req.session.user.company_name || "",
       quotes,
@@ -117,6 +118,7 @@ export function registerQuotesRoutes(app, deps) {
     const totals = db.prepare("SELECT subtotal, vat_rate, vat_amount, total, currency FROM quotes WHERE id=? AND company_id=?").get(id, companyId);
 
     return res.type("html").send(renderNexoraQuoteDetailPage({
+      user: req.session.user,
       quote,
       items,
       totals,

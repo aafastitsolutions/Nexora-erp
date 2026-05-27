@@ -2698,6 +2698,7 @@ app.get("/nexora/products", requireAuth, (req, res) => {
 
   return res.type("html").send(renderNexoraProductsPage({
     companyName: req.session.user.company_name || "",
+    user: req.session.user,
     rows,
     q,
     ok
@@ -2719,6 +2720,7 @@ app.get("/nexora/products/:id/edit", requireAuth, (req, res) => {
 
   return res.type("html").send(renderNexoraProductEditPage({
     companyName: req.session.user.company_name || "",
+    user: req.session.user,
     product: row,
     ok: String(req.query?.ok || "")
   }));
@@ -5199,7 +5201,9 @@ function resyncCompanyUserModules(companyId) {
     for (const user of users) {
       const roleKey = String(user.role || "").trim().toLowerCase();
       const roleModules = Array.isArray(ROLE_MODULES[roleKey]) ? ROLE_MODULES[roleKey] : [];
-      const requestedModules = parseJsonArray(user.module_permissions, roleModules);
+      const requestedModules = roleKey === "admin"
+        ? roleModules
+        : parseJsonArray(user.module_permissions, roleModules);
       const effectiveModules = normalizeUserModules(
         requestedModules.length ? requestedModules : roleModules,
         companyContext.activeModules,
@@ -5695,6 +5699,7 @@ app.get("/nexora/documents", requireAuth, (req, res) => {
 
   return res.type("html").send(renderNexoraDocumentsPage({
     companyName: req.session.user.company_name || "",
+    user: req.session.user,
     docs,
     autofillDocuments,
     autofillProfile: getDmsAutofillProfile(companyId),
@@ -5742,6 +5747,7 @@ app.get("/nexora/documents/client-files", requireAuth, requireCompanyAdmin, (req
 
   return res.type("html").send(renderNexoraClientDossiersPage({
     companyName: req.session.user.company_name || "",
+    user: req.session.user,
     rows,
     q
   }));
@@ -5867,6 +5873,7 @@ app.get("/nexora/documents/client-files/:clientId", requireAuth, requireCompanyA
   documents.sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")));
   return res.type("html").send(renderNexoraClientDossierDetailPage({
     companyName: req.session.user.company_name || "",
+    user: req.session.user,
     client,
     documents,
     ok: String(req.query?.ok || ""),
@@ -6098,6 +6105,7 @@ app.get("/nexora/documents/register", requireAuth, (req, res) => {
 
   return res.type("html").send(renderNexoraDocumentsRegisterPage({
     companyName: req.session.user.company_name || "",
+    user: req.session.user,
     isCompanyAdmin: isCompanyAdminUser(req.session.user),
     rows,
     summary,
@@ -8111,6 +8119,7 @@ app.get("/nexora/users", requireAuth, requireRole("admin"), (req, res) => {
 
   return res.type("html").send(renderNexoraUsersPage({
     companyName: req.session.user.company_name || "",
+    currentUser: req.session.user,
     users,
     seatContext,
     roleModules: ROLE_MODULES,
@@ -8147,6 +8156,7 @@ app.get("/nexora/users/:id/edit", requireAuth, requireRole("admin"), (req, res) 
 
   return res.type("html").send(renderNexoraUserEditPage({
     companyName: req.session.user.company_name || "",
+    currentUser: req.session.user,
     user,
     selectableModules,
     assignedModules,
@@ -9808,9 +9818,37 @@ app.get("/nexora/super-admin/companies/:id", requireAuth, requireSuperAdmin, (re
     facturi: db.prepare(`SELECT COUNT(*) AS n FROM facturi WHERE company_id=?`).get(companyId)?.n || 0,
     tipizate: db.prepare(`SELECT COUNT(*) AS n FROM tipizate_docs WHERE company_id=?`).get(companyId)?.n || 0
   };
+  const companyContext = getCompanySubscriptionContext(companyId);
+  const activeModuleSet = new Set(companyContext.activeModules);
+  const groupMeta = {
+    crm: ["CRM", "Clienți, oferte și relații comerciale."],
+    erp: ["ERP", "Facturare, inventar, contabilitate și operațional."],
+    admin: ["Administrare", "Utilizatori, roluri și configurare."]
+  };
+  const moduleGroups = Object.entries(MODULE_GROUPS).map(([groupKey, moduleKeys]) => {
+    const [label, description] = groupMeta[groupKey] || [groupKey, ""];
+    const modules = moduleKeys.map((moduleKey) => ({
+      key: moduleKey,
+      label: MODULE_DEFINITIONS.find((item) => item.key === moduleKey)?.label || moduleKey,
+      includedByPlan: companyContext.planModules.includes(moduleKey),
+      active: activeModuleSet.has(moduleKey),
+      isCoreModule: ["dashboard", "accounts", "setari"].includes(moduleKey)
+    }));
+    return {
+      key: groupKey,
+      label,
+      description,
+      modules,
+      activeCount: modules.filter((module) => module.active).length,
+      totalCount: modules.length
+    };
+  });
 
   return res.type("html").send(renderNexoraSuperAdminCompanyDetailPage({
     company,
+    subscription: companyContext.subscription || {},
+    moduleGroups,
+    companyModuleLimit: Number(companyContext.subscription?.max_active_modules || 0),
     stats,
     users,
     clients,
@@ -9820,6 +9858,40 @@ app.get("/nexora/super-admin/companies/:id", requireAuth, requireSuperAdmin, (re
     ok: String(req.query?.ok || ""),
     err: String(req.query?.err || "")
   }));
+});
+
+app.post("/nexora/super-admin/companies/:id/modules", requireAuth, requireSuperAdmin, (req, res) => {
+  const companyId = Number(req.params.id);
+  if (!Number.isFinite(companyId)) return res.status(400).send("Bad id");
+
+  let moduleKeys = req.body?.module_keys || [];
+  if (!Array.isArray(moduleKeys)) moduleKeys = [moduleKeys];
+
+  const { company, subscription, planModules } = getCompanySubscriptionContext(companyId);
+  if (!company) return res.status(404).send("Company not found");
+  if (!subscription) return res.redirect(`/nexora/super-admin/companies/${companyId}?err=subscription`);
+
+  const nextModules = normalizeCompanyModules(moduleKeys.map(String), planModules, subscription, {
+    companyIsDemo: Number(company.is_demo || 0) === 1
+  });
+
+  db.prepare(`
+    UPDATE company_subscriptions
+    SET module_overrides=?,
+        updated_at=datetime('now')
+    WHERE id=?
+  `).run(JSON.stringify(nextModules), subscription.id);
+
+  resyncCompanyUserModules(companyId);
+  logCompanyAdminEvent({
+    companyId,
+    actorUserId: Number(req.session.user.id || 0),
+    actorEmail: req.session.user.email,
+    eventType: "company_modules_updated",
+    reason: `Module active: ${nextModules.join(", ")}`
+  });
+
+  return res.redirect(`/nexora/super-admin/companies/${companyId}?ok=modules`);
 });
 
 app.get("/nexora/super-admin/payments", requireAuth, requireSuperAdmin, (req, res) => {
@@ -9994,6 +10066,7 @@ const moduleGroups = Object.entries(MODULE_GROUPS).map(([groupKey, moduleKeys]) 
 
 res.type("html").send(renderNexoraSettingsPage({
   companyName: req.session.user.company_name || companyDetails.name || "",
+  user: req.session.user,
   company: companyDetails,
   subscription: activeSubscription || {},
   settings,
@@ -11825,6 +11898,7 @@ app.get("/nexora/employees", requireAuth, requireModule("employees"), (req, res)
 
   return res.type("html").send(renderNexoraEmployeesPage({
     companyName: req.session.user.company_name || "",
+    user: req.session.user,
     rows,
     ok: String(req.query?.ok || "")
   }));
@@ -11897,6 +11971,7 @@ app.get(/^\/nexora\/.+/, requireAuth, (req, res) => {
 
   return res.type("html").send(renderNexoraHubPage({
     companyName: req.session.user.company_name || "",
+    user: req.session.user,
     currentPath: req.path,
     eyebrow: moduleTitle,
     title: leafTitle,

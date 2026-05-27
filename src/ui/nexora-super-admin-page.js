@@ -329,6 +329,9 @@ function renderNexoraSuperAdminCompaniesPage(options = {}) {
 
 function renderNexoraSuperAdminCompanyDetailPage(options = {}) {
   const company = options.company || {};
+  const subscription = options.subscription || {};
+  const moduleGroups = Array.isArray(options.moduleGroups) ? options.moduleGroups : [];
+  const companyModuleLimit = Number(options.companyModuleLimit || 0);
   const stats = options.stats || {};
   const users = Array.isArray(options.users) ? options.users : [];
   const clients = Array.isArray(options.clients) ? options.clients : [];
@@ -340,9 +343,9 @@ function renderNexoraSuperAdminCompanyDetailPage(options = {}) {
   const archived = Boolean(company.archived_at) || String(company.status || "").toLowerCase() === "archived";
   const archivable = ["suspended", "past_due"].includes(String(company.status || "").toLowerCase()) && !archived;
   const alertHtml = ok
-    ? `<div class="nx-alert success">${escapeHtml(ok === "archived" ? "Compania a fost arhivată fără ștergerea datelor." : ok === "restored" ? "Compania a fost restaurată din arhivă." : "Statusul companiei a fost actualizat.")}</div>`
+    ? `<div class="nx-alert success">${escapeHtml(ok === "archived" ? "Compania a fost arhivată fără ștergerea datelor." : ok === "restored" ? "Compania a fost restaurată din arhivă." : ok === "modules" ? "Modulele active ale companiei au fost actualizate." : "Statusul companiei a fost actualizat.")}</div>`
     : err
-      ? `<div class="nx-alert danger">${escapeHtml(err === "archive_status" ? "Arhivarea este disponibilă doar pentru companii suspendate sau past_due." : "Operațiunea nu a putut fi finalizată.")}</div>`
+      ? `<div class="nx-alert danger">${escapeHtml(err === "archive_status" ? "Arhivarea este disponibilă doar pentru companii suspendate sau past_due." : err === "subscription" ? "Compania nu are un abonament configurat pentru selectarea modulelor." : "Operațiunea nu a putut fi finalizată.")}</div>`
       : "";
 
   const userRows = users.map((row) => `<tr><td>${escapeHtml(row.email || "-")}</td><td>${escapeHtml(row.role || "-")}</td><td>${statusBadge(row.status)}</td><td>${escapeHtml(row.created_at || "-")}</td></tr>`).join("");
@@ -350,6 +353,31 @@ function renderNexoraSuperAdminCompanyDetailPage(options = {}) {
   const invoiceRows = invoices.map((row) => `<tr><td>${escapeHtml(row.factura_nr || "-")}</td><td>${statusBadge(row.status)}</td><td>${escapeHtml(money(row.total, row.moneda))}</td><td>${escapeHtml(row.created_at || "-")}</td></tr>`).join("");
   const paymentRows = payments.map((row) => `<tr><td>${escapeHtml(row.source || "-")}</td><td>${statusBadge(row.status)}</td><td>${escapeHtml(money(row.amount, row.currency))}</td><td>${escapeHtml(row.payer_email || row.payer_name || "-")}</td><td>${escapeHtml(row.created_at || row.paid_at || "-")}</td></tr>`).join("");
   const eventRows = events.map((row) => `<tr><td>${escapeHtml(row.created_at || "-")}</td><td>${escapeHtml(row.actor_email || "-")}</td><td>${escapeHtml(row.event_type || "-")}</td><td>${escapeHtml(row.status_from || "-")} -> ${escapeHtml(row.status_to || "-")}</td><td>${escapeHtml(row.reason || "-")}</td></tr>`).join("");
+  const activeOptionalModules = moduleGroups
+    .flatMap((group) => group.modules || [])
+    .filter((module) => module.active && !module.isCoreModule).length;
+  const moduleGroupsHtml = moduleGroups.map((group) => `
+    <section class="nx-settings-module-group">
+      <div class="nx-settings-module-head">
+        <div><h3>${escapeHtml(group.label || group.key || "Module")}</h3><p>${escapeHtml(group.description || "")}</p></div>
+        <span class="nx-count-pill">${escapeHtml(group.activeCount || 0)} / ${escapeHtml(group.totalCount || 0)}</span>
+      </div>
+      <div class="nx-module-check-grid">
+        ${(group.modules || []).map((module) => `
+          <label class="nx-check-row ${module.includedByPlan ? "" : "disabled"}">
+            <input type="checkbox" name="module_keys" value="${escapeHtml(module.key)}"
+              ${module.active ? "checked" : ""}
+              ${module.includedByPlan && !module.isCoreModule ? 'data-super-company-module="1"' : "disabled"}>
+            ${module.includedByPlan && module.isCoreModule ? `<input type="hidden" name="module_keys" value="${escapeHtml(module.key)}">` : ""}
+            <span>
+              <b>${escapeHtml(module.label || module.key)}</b>
+              <small>${escapeHtml(module.includedByPlan ? (module.isCoreModule ? "Inclus implicit în plan." : "Disponibil în abonamentul cumpărat.") : "Indisponibil în planul curent.")}</small>
+            </span>
+          </label>
+        `).join("")}
+      </div>
+    </section>
+  `).join("");
 
   const body = `
     ${alertHtml}
@@ -400,6 +428,36 @@ function renderNexoraSuperAdminCompanyDetailPage(options = {}) {
           <button class="nx-btn danger" type="submit">Șterge tenant demo</button>
         </form>
       ` : ""}
+    </section>
+
+    <section class="nx-content-card">
+      <div class="nx-section-head">
+        <div>
+          <h2>Module active companie</h2>
+          <p>Configurează modulele livrate prin abonamentul ${escapeHtml(subscription.plan_name || company.plan_name || "curent")}.</p>
+        </div>
+        <span class="nx-status-pill neutral">${escapeHtml(activeOptionalModules)} active${companyModuleLimit > 0 ? ` / ${escapeHtml(companyModuleLimit)} permise` : ""}</span>
+      </div>
+      ${subscription.id ? `
+        <form method="post" action="/nexora/super-admin/companies/${escapeHtml(company.id)}/modules" class="nx-form">
+          ${moduleGroupsHtml}
+          <div class="nx-form-actions"><button class="nx-btn primary" type="submit">Salvează modulele active</button></div>
+        </form>
+        ${companyModuleLimit > 0 ? `
+          <script>
+            (function () {
+              var limit = ${companyModuleLimit};
+              var boxes = Array.from(document.querySelectorAll('input[data-super-company-module="1"]'));
+              function sync() {
+                var count = boxes.filter(function (box) { return box.checked; }).length;
+                boxes.forEach(function (box) { box.disabled = !box.checked && count >= limit; });
+              }
+              boxes.forEach(function (box) { box.addEventListener("change", sync); });
+              sync();
+            })();
+          </script>
+        ` : ""}
+      ` : `<div class="nx-empty-state">Compania nu are un abonament configurat.</div>`}
     </section>
 
     <div class="nx-two-column-grid">

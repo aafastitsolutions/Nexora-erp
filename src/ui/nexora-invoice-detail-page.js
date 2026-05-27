@@ -81,7 +81,8 @@ function renderNexoraInvoiceDetailPage(options = {}) {
     currentPath: "/nexora/facturi",
     appName: "Nexora ERP",
     companyName,
-    isSuperAdmin: Number(user.is_super_admin || 0) === 1
+    isSuperAdmin: Number(user.is_super_admin || 0) === 1,
+    isCompanyAdmin: Number(user.is_company_admin || 0) === 1
   });
 
   const linesHtml = lines.length

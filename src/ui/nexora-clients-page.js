@@ -18,7 +18,9 @@ function renderNexoraClientsPage(options = {}) {
   const sidebar = renderErpSidebar({
     currentPath: "/nexora/clients",
     appName: "Nexora ERP",
-    companyName
+    companyName,
+    isSuperAdmin: Number(user.is_super_admin || 0),
+    isCompanyAdmin: Number(user.is_company_admin || 0)
   });
 
   const rowsHtml = clients.length
@@ -113,7 +115,9 @@ function renderNexoraClientNewPage(options = {}) {
   const sidebar = renderErpSidebar({
     currentPath: "/nexora/clients",
     appName: "Nexora ERP",
-    companyName
+    companyName,
+    isSuperAdmin: Number(user.is_super_admin || 0),
+    isCompanyAdmin: Number(user.is_company_admin || 0)
   });
 
   return `<!doctype html>

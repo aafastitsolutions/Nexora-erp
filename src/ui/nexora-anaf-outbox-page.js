@@ -35,7 +35,9 @@ function renderNexoraAnafOutboxPage(options = {}) {
   const sidebar = renderErpSidebar({
     currentPath: "/nexora/anaf/outbox",
     appName: "Nexora ERP",
-    companyName
+    companyName,
+    isSuperAdmin: Number(user.is_super_admin || 0) === 1,
+    isCompanyAdmin: Number(user.is_company_admin || 0) === 1
   });
 
   const filterHref = (status) => status ? `/nexora/anaf/outbox?status=${encodeURIComponent(status)}` : "/nexora/anaf/outbox";

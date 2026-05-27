@@ -35,7 +35,8 @@ function renderNexoraDashboardPage(options = {}) {
     currentPath: "/nexora-dashboard",
     appName: "Nexora ERP",
     companyName,
-    isSuperAdmin: Number(user.is_super_admin || 0) === 1
+    isSuperAdmin: Number(user.is_super_admin || 0) === 1,
+    isCompanyAdmin: Number(user.is_company_admin || 0) === 1
   });
 
   const activitiesHtml = activities.length

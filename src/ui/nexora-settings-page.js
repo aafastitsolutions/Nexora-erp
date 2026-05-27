@@ -334,6 +334,7 @@ function renderNexoraSettingsPage(options = {}) {
     title: "Setări generale",
     appName: "Nexora ERP",
     companyName,
+    user: options.user,
     currentPath: "/nexora/settings",
     eyebrow: "Administrare",
     pageTitle: "Setări generale",

@@ -82,6 +82,7 @@ function renderNexoraHubPage(options = {}) {
     title,
     appName: "Nexora ERP",
     companyName,
+    user: options.user,
     currentPath,
     eyebrow,
     pageTitle: title,

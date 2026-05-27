@@ -288,6 +288,7 @@ export function registerInventoryRoutes(app, { db, requireAuth, escapeHtml, fmtM
 
     return res.type("html").send(renderNexoraHubPage({
       companyName: req.session.user.company_name || "",
+      user: req.session.user,
       currentPath: "/nexora/inventory",
       eyebrow: "Inventar & Gestiune",
       title: "Inventar & Gestiune",
@@ -333,6 +334,7 @@ export function registerInventoryRoutes(app, { db, requireAuth, escapeHtml, fmtM
 
     return res.type("html").send(renderNexoraInventoryAssetsPage({
       companyName: req.session.user.company_name || "",
+      user: req.session.user,
       rows,
       stats,
       filters,
@@ -355,6 +357,7 @@ export function registerInventoryRoutes(app, { db, requireAuth, escapeHtml, fmtM
 
     return res.type("html").send(renderNexoraInventoryAssetDetailPage({
       companyName: req.session.user.company_name || "",
+      user: req.session.user,
       asset,
       usage,
       adjustments,
@@ -389,6 +392,7 @@ export function registerInventoryRoutes(app, { db, requireAuth, escapeHtml, fmtM
 
     return res.type("html").send(renderNexoraInventoryProjectsPage({
       companyName: req.session.user.company_name || "",
+      user: req.session.user,
       rows,
       stats,
       ok: String(req.query?.ok || "")
@@ -416,6 +420,7 @@ export function registerInventoryRoutes(app, { db, requireAuth, escapeHtml, fmtM
 
     return res.type("html").send(renderNexoraInventoryProjectDetailPage({
       companyName: req.session.user.company_name || "",
+      user: req.session.user,
       project,
       allocations,
       assets,
@@ -436,6 +441,7 @@ export function registerInventoryRoutes(app, { db, requireAuth, escapeHtml, fmtM
 
     return res.type("html").send(renderNexoraInventoryProjectEditPage({
       companyName: req.session.user.company_name || "",
+      user: req.session.user,
       project,
       allocationStats,
       ok: String(req.query?.ok || "")

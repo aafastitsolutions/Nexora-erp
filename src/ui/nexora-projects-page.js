@@ -216,7 +216,7 @@ function renderNexoraProjectsPage(options = {}) {
       </div>
     </section>
   `;
-  return renderNexoraShell({ title: "Proiecte", appName: "Nexora ERP", companyName, currentPath: "/nexora/projects", eyebrow: "Proiecte", pageTitle: "Proiecte", body });
+  return renderNexoraShell({ title: "Proiecte", appName: "Nexora ERP", companyName, user: options.user, currentPath: "/nexora/projects", eyebrow: "Proiecte", pageTitle: "Proiecte", body });
 }
 
 function renderNexoraProjectCreatePage(options = {}) {
@@ -230,7 +230,7 @@ function renderNexoraProjectCreatePage(options = {}) {
       ${projectForm({ project: { project_code: options.nextCode || "" }, clients: options.clients || [] })}
     </section>
   `;
-  return renderNexoraShell({ title: "Proiect nou", appName: "Nexora ERP", companyName: options.companyName || "Workspace", currentPath: "/nexora/projects", eyebrow: "Proiecte", pageTitle: "Proiect nou", body });
+  return renderNexoraShell({ title: "Proiect nou", appName: "Nexora ERP", companyName: options.companyName || "Workspace", user: options.user, currentPath: "/nexora/projects", eyebrow: "Proiecte", pageTitle: "Proiect nou", body });
 }
 
 function renderNexoraProjectEditPage(options = {}) {
@@ -248,7 +248,7 @@ function renderNexoraProjectEditPage(options = {}) {
       </form>
     </section>
   `;
-  return renderNexoraShell({ title: project.title || "Editare proiect", appName: "Nexora ERP", companyName: options.companyName || "Workspace", currentPath: "/nexora/projects", eyebrow: "Proiecte", pageTitle: "Editare proiect", body });
+  return renderNexoraShell({ title: project.title || "Editare proiect", appName: "Nexora ERP", companyName: options.companyName || "Workspace", user: options.user, currentPath: "/nexora/projects", eyebrow: "Proiecte", pageTitle: "Editare proiect", body });
 }
 
 function renderNexoraProjectDetailPage(options = {}) {
@@ -407,7 +407,7 @@ function renderNexoraProjectDetailPage(options = {}) {
       </section>
     </div>
   `;
-  return renderNexoraShell({ title: project.title || "Proiect", appName: "Nexora ERP", companyName: options.companyName || "Workspace", currentPath: "/nexora/projects", eyebrow: "Proiecte", pageTitle: project.title || "Proiect", body });
+  return renderNexoraShell({ title: project.title || "Proiect", appName: "Nexora ERP", companyName: options.companyName || "Workspace", user: options.user, currentPath: "/nexora/projects", eyebrow: "Proiecte", pageTitle: project.title || "Proiect", body });
 }
 
 function renderNexoraProjectTasksPage(options = {}) {
@@ -444,7 +444,7 @@ function renderNexoraProjectTasksPage(options = {}) {
       <div class="nx-table-wrap" style="margin-top:18px"><table class="nx-table"><thead><tr><th>Task</th><th>Proiect</th><th>Prioritate</th><th>Status</th><th>Termen</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>
     </section>
   `;
-  return renderNexoraShell({ title: "Task-uri proiecte", appName: "Nexora ERP", companyName: options.companyName || "Workspace", currentPath: "/nexora/projects/tasks", eyebrow: "Proiecte", pageTitle: "Task-uri", body });
+  return renderNexoraShell({ title: "Task-uri proiecte", appName: "Nexora ERP", companyName: options.companyName || "Workspace", user: options.user, currentPath: "/nexora/projects/tasks", eyebrow: "Proiecte", pageTitle: "Task-uri", body });
 }
 
 export {

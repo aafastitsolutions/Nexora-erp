@@ -188,6 +188,7 @@ export function registerAccountingRoutes(app, { db, requireAuth, requireSpvAcces
 
     return res.type("html").send(renderNexoraHubPage({
       companyName: req.session.user.company_name || "",
+      user: req.session.user,
       currentPath: "/nexora/accounting",
       eyebrow: "Financiar & Contabilitate",
       title: "Contabilitate",
@@ -254,6 +255,7 @@ export function registerAccountingRoutes(app, { db, requireAuth, requireSpvAcces
 
     return res.type("html").send(renderNexoraAccountingExpensesPage({
       companyName: req.session.user.company_name || "",
+      user: req.session.user,
       rows,
       stats,
       fmtMoney,
@@ -306,6 +308,7 @@ export function registerAccountingRoutes(app, { db, requireAuth, requireSpvAcces
 
     return res.type("html").send(renderNexoraAccountingDeclarationsPage({
       companyName: req.session.user.company_name || "",
+      user: req.session.user,
       rows,
       stats,
       ok: String(req.query?.ok || ""),
@@ -325,6 +328,7 @@ export function registerAccountingRoutes(app, { db, requireAuth, requireSpvAcces
 
     return res.type("html").send(renderNexoraAccountingDeclarationDetailPage({
       companyName: req.session.user.company_name || "",
+      user: req.session.user,
       row,
       ok: String(req.query?.ok || "")
     }));

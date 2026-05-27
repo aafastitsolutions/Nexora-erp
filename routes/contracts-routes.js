@@ -65,6 +65,7 @@ export function registerContractsRoutes(app, deps) {
 
     return res.type("html").send(renderNexoraContractsPage({
       companyName: req.session.user.company_name || "",
+      user: req.session.user,
       rows,
       q,
       fmtMoney: (value) => `${localFmtMoney(value)} RON`
@@ -87,6 +88,7 @@ export function registerContractsRoutes(app, deps) {
 
     return res.type("html").send(renderNexoraContractDetailPage({
       companyName: req.session.user.company_name || "",
+      user: req.session.user,
       contract: row,
       ok: String(req.query?.ok || ""),
       fmtMoney: (value) => `${localFmtMoney(value)} RON`

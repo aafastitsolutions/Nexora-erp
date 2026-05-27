@@ -154,7 +154,7 @@ const ERP_MODULES = [
     label: "Proiecte",
     icon: "folder",
     path: "/nexora/projects",
-    legacyModuleKeys: [],
+    legacyModuleKeys: ["projects"],
     children: [
       { label: "Portofoliu proiecte", path: "/nexora/projects" },
       { label: "Adaugă proiect", path: "/nexora/projects/new" },

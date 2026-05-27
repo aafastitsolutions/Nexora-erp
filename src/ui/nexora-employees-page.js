@@ -94,6 +94,7 @@ function renderNexoraEmployeesPage(options = {}) {
     title: "Angajați",
     appName: "Nexora ERP",
     companyName,
+    user: options.user,
     currentPath: "/nexora/employees",
     eyebrow: "Resurse Umane",
     pageTitle: "Angajați",

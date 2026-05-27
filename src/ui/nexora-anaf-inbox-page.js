@@ -36,7 +36,9 @@ function renderNexoraAnafInboxPage(options = {}) {
   const sidebar = renderErpSidebar({
     currentPath: "/nexora/anaf/inbox",
     appName: "Nexora ERP",
-    companyName
+    companyName,
+    isSuperAdmin: Number(user.is_super_admin || 0) === 1,
+    isCompanyAdmin: Number(user.is_company_admin || 0) === 1
   });
 
   const currentPath = `/nexora/anaf/inbox${buildQuery({

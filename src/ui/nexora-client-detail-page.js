@@ -33,7 +33,9 @@ function renderNexoraClientDetailPage(options = {}) {
   const sidebar = renderErpSidebar({
     currentPath: "/nexora/clients",
     appName: "Nexora ERP",
-    companyName
+    companyName,
+    isSuperAdmin: Number(user.is_super_admin || 0),
+    isCompanyAdmin: Number(user.is_company_admin || 0)
   });
 
   const statusClass =

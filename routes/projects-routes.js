@@ -204,6 +204,7 @@ export function registerProjectsRoutes(app, { db, requireAuth, fs, path, __dirna
 
     return res.type("html").send(renderNexoraProjectsPage({
       companyName: req.session.user.company_name || "",
+      user: req.session.user,
       rows,
       stats,
       filters,
@@ -216,6 +217,7 @@ export function registerProjectsRoutes(app, { db, requireAuth, fs, path, __dirna
     const companyId = Number(req.session.user.company_id || 0);
     return res.type("html").send(renderNexoraProjectCreatePage({
       companyName: req.session.user.company_name || "",
+      user: req.session.user,
       clients: loadClients(db, companyId),
       nextCode: nextProjectCode(db, companyId),
       err: safeText(req.query?.err)
@@ -303,6 +305,7 @@ export function registerProjectsRoutes(app, { db, requireAuth, fs, path, __dirna
     const projects = db.prepare("SELECT id, title FROM projects WHERE company_id=? ORDER BY title COLLATE NOCASE").all(companyId);
     return res.type("html").send(renderNexoraProjectTasksPage({
       companyName: req.session.user.company_name || "",
+      user: req.session.user,
       tasks,
       stats,
       projects,
@@ -318,6 +321,7 @@ export function registerProjectsRoutes(app, { db, requireAuth, fs, path, __dirna
     if (!project) return res.status(404).send("Proiectul nu a fost găsit.");
     return res.type("html").send(renderNexoraProjectEditPage({
       companyName: req.session.user.company_name || "",
+      user: req.session.user,
       project,
       clients: loadClients(db, companyId),
       ok: safeText(req.query?.ok),
@@ -402,6 +406,7 @@ export function registerProjectsRoutes(app, { db, requireAuth, fs, path, __dirna
     `).get(projectId, companyId) || {};
     return res.type("html").send(renderNexoraProjectDetailPage({
       companyName: req.session.user.company_name || "",
+      user: req.session.user,
       project,
       tasks,
       files,

@@ -80,6 +80,7 @@ function resolveRequestModule(req) {
   if (path.startsWith("/nexora/accounting")) return "accounting";
   if (path.startsWith("/nexora/anaf")) return "accounting";
   if (path.startsWith("/nexora/inventory")) return "inventory";
+  if (path.startsWith("/nexora/projects")) return "projects";
   if (path.startsWith("/nexora/documents")) return "tipizate";
   if (path.startsWith("/nexora/employees")) return "employees";
   if (path.startsWith("/nexora/users") || path.startsWith("/nexora/roles")) return "accounts";
