@@ -34,6 +34,28 @@ function ensureUniqueCompanySlug(db, baseName) {
   return slug;
 }
 
+const DEFAULT_ANAF_REDIRECT_URI = "https://minicrm.qr-lab.ro/oauth/anaf/callback";
+
+function readGlobalSetting(db, key, fallback = "") {
+  return db.prepare("SELECT value FROM app_settings WHERE key=?").get(key)?.value || fallback;
+}
+
+function normalizeAnafEnvironment(value = "") {
+  return String(value || "").trim().toLowerCase() === "prod" ? "prod" : "test";
+}
+
+function seedWorkspaceAnafDefaults(db, companyId, { isDemo = false } = {}) {
+  const defaults = {
+    anaf_environment: normalizeAnafEnvironment(readGlobalSetting(db, "anaf_environment", isDemo ? "test" : "prod")),
+    anaf_redirect_uri: String(readGlobalSetting(db, "anaf_redirect_uri", DEFAULT_ANAF_REDIRECT_URI) || DEFAULT_ANAF_REDIRECT_URI).trim()
+  };
+
+  const insertDefault = db.prepare("INSERT OR IGNORE INTO app_settings(key,value) VALUES(?,?)");
+  for (const [key, value] of Object.entries(defaults)) {
+    insertDefault.run(`company:${Number(companyId)}:${key}`, value);
+  }
+}
+
 function buildSessionUser(u) {
   return {
     id: u.id,
@@ -108,6 +130,7 @@ export function createWorkspace(db, {
     );
 
     const companyId = Number(companyResult.lastInsertRowid);
+    seedWorkspaceAnafDefaults(db, companyId, { isDemo });
 
     db.prepare(`
       INSERT INTO company_subscriptions (

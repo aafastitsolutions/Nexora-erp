@@ -1,4 +1,4 @@
-import { renderErpSidebar } from "./erp-sidebar.js";
+import { renderNexoraShell } from "./nexora-shell.js";
 
 function escapeHtml(value = "") {
   return String(value)
@@ -9,37 +9,61 @@ function escapeHtml(value = "") {
     .replaceAll("'", "&#039;");
 }
 
-function renderConnectionCard(title, connection) {
+function connectionState(connection) {
   if (!connection) {
-    return `
-      <div class="nx-anaf-status-card">
-        <div class="nx-anaf-status-head">
-          <h3>${escapeHtml(title)}</h3>
-          <span class="nx-status-pill danger">neconectat</span>
-        </div>
-        <p>Nu există conexiune ANAF configurată pentru acest mediu.</p>
-      </div>
-    `;
+    return { label: "neconectat", tone: "danger", title: "Necesită conectare" };
   }
 
   const accessActive = Boolean(connection.accessActive);
   const refreshActive = Boolean(connection.refreshActive);
-  const statusLabel = accessActive ? "activă" : refreshActive ? "refresh disponibil" : "reautorizare necesară";
-  const statusClass = accessActive ? "success" : refreshActive ? "warn" : "danger";
+  if (accessActive) return { label: "activ", tone: "success", title: "Conexiune activă" };
+  if (refreshActive) return { label: "refresh", tone: "warn", title: "Refresh disponibil" };
+  return { label: "expirat", tone: "danger", title: "Reautorizare necesară" };
+}
+
+function renderConnectionCard(title, connection, { active = false } = {}) {
+  const state = connectionState(connection);
 
   return `
-    <div class="nx-anaf-status-card">
-      <div class="nx-anaf-status-head">
-        <h3>${escapeHtml(title)}</h3>
-        <span class="nx-status-pill ${statusClass}">${escapeHtml(statusLabel)}</span>
+    <article class="nx-spv-connection ${active ? "active" : ""}">
+      <div class="nx-spv-connection-top">
+        <div>
+          <span>${active ? "Mediu curent" : "Mediu"}</span>
+          <strong>${escapeHtml(title)}</strong>
+        </div>
+        <span class="nx-status-pill ${state.tone}">${escapeHtml(state.label)}</span>
       </div>
 
-      <div class="nx-client-info-grid">
-        <div><span>Certificat</span><b>${escapeHtml(connection.serial_certificate || "-")}</b></div>
-        <div><span>Access expiră</span><b>${escapeHtml(connection.expires_at || "-")}</b></div>
-        <div><span>Refresh expiră</span><b>${escapeHtml(connection.refresh_expires_at || "-")}</b></div>
-        <div><span>Ultima actualizare</span><b>${escapeHtml(connection.updated_at || "-")}</b></div>
-      </div>
+      ${connection ? `
+        <dl class="nx-spv-meta-grid">
+          <div><dt>Certificat</dt><dd>${escapeHtml(connection.serial_certificate || "-")}</dd></div>
+          <div><dt>Access până la</dt><dd>${escapeHtml(connection.expires_at || "-")}</dd></div>
+          <div><dt>Refresh până la</dt><dd>${escapeHtml(connection.refresh_expires_at || "-")}</dd></div>
+          <div><dt>Actualizat</dt><dd>${escapeHtml(connection.updated_at || "-")}</dd></div>
+        </dl>
+      ` : `
+        <div class="nx-spv-empty-line">Nu există token OAuth salvat pentru acest mediu.</div>
+      `}
+    </article>
+  `;
+}
+
+function renderStatusTile({ label, value, detail = "", tone = "neutral" }) {
+  return `
+    <div class="nx-spv-tile ${tone}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+      ${detail ? `<small>${escapeHtml(detail)}</small>` : ""}
+    </div>
+  `;
+}
+
+function renderConfigItem(label, value, { configured = true } = {}) {
+  return `
+    <div class="nx-spv-config-item">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value || "-")}</strong>
+      <em class="${configured ? "ok" : "bad"}">${configured ? "configurat" : "lipsește"}</em>
     </div>
   `;
 }
@@ -57,9 +81,15 @@ function renderNexoraAnafStatusPage(options = {}) {
   const latestProdConnection = options.latestProdConnection || null;
   const lastOauthLog = options.lastOauthLog || null;
   const inviteFlash = options.inviteFlash || null;
+  const hasClientId = Boolean(options.hasClientId);
+  const hasClientSecret = Boolean(options.hasClientSecret);
+  const activeConnection = environment === "prod" ? latestProdConnection : latestTestConnection;
+  const activeState = connectionState(activeConnection);
+  const oauthConfigured = hasClientId && hasClientSecret && redirectUri && redirectUri !== "-";
+  const needsConnection = !activeConnection || activeState.tone === "danger";
 
   const inviteFlashHtml = inviteFlash
-    ? `<div class="nx-alert ${inviteFlash.status === "error" ? "danger" : "success"}">
+    ? `<div class="nx-alert ${inviteFlash.status === "error" ? "danger" : inviteFlash.status === "warning" ? "warn" : "success"}">
         <div style="font-weight:950;margin-bottom:8px">${escapeHtml(inviteFlash.status === "error" ? "Generare cod eșuată" : "Cod pentru contabil generat")}</div>
         <div>${escapeHtml(inviteFlash.message || "Codul de reautorizare este pregătit.")}</div>
         ${inviteFlash.code ? `
@@ -80,14 +110,6 @@ function renderNexoraAnafStatusPage(options = {}) {
       </div>`
     : "";
 
-  const sidebar = renderErpSidebar({
-    currentPath: "/nexora/anaf/status",
-    appName: "Nexora ERP",
-    companyName,
-    isSuperAdmin: Number(user.is_super_admin || 0) === 1,
-    isCompanyAdmin: Number(user.is_company_admin || 0) === 1
-  });
-
   const oauthAlert = oauthState
     ? `<div class="nx-alert ${oauthState === "success" ? "success" : "danger"}">
         ${escapeHtml(oauthMessage || (oauthState === "success" ? "Conexiunea ANAF a fost salvată." : "Conectarea ANAF a eșuat."))}
@@ -98,91 +120,98 @@ function renderNexoraAnafStatusPage(options = {}) {
     ? `<div class="nx-alert danger">Conexiunea ANAF/SPV trebuie reautorizată pentru această companie.</div>`
     : "";
 
-  return `<!doctype html>
-<html lang="ro">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Nexora ERP - Status ANAF</title>
-  <link rel="stylesheet" href="/css/nexora-shell.css">
-</head>
-<body>
-  <div class="nx-app-shell">
-    ${sidebar}
+  const actionsHtml = `
+    <a class="nx-btn" href="/nexora/facturi">Facturi</a>
+    <a class="nx-btn" href="/nexora/anaf/inbox">Inbox</a>
+    <a class="nx-btn primary" href="/oauth/anaf/start?return_to=nexora">Conectează SPV</a>
+  `;
 
-    <main class="nx-main">
-      <header class="nx-topbar">
-        <div>
-          <div class="nx-page-eyebrow">Financiar / ANAF e-Factura</div>
-          <div class="nx-page-title">Status conexiune ANAF</div>
-        </div>
-
-        <div class="nx-actions">
-          <a class="nx-btn" href="/nexora/facturi">Facturi</a>
-          <a class="nx-btn" href="/oauth/anaf/start?return_to=nexora">Conectează SPV</a>
-          <a class="nx-btn" href="/nexora/anaf/inbox">Inbox / sincronizare</a>
-          <a class="nx-btn primary" href="/nexora/anaf/status">Reîmprospătează</a>
-        </div>
-      </header>
-
+  const body = `
       ${oauthAlert}
       ${inviteFlashHtml}
       ${reauthAlert}
 
-      <section class="nx-kpi-grid invoice-kpis">
-        <div class="nx-kpi-card">
-          <div class="nx-kpi-icon ${environment === "prod" ? "green" : "blue"}">SPV</div>
-          <div>
-            <div class="nx-kpi-label">Mediu activ</div>
-            <div class="nx-kpi-value">${escapeHtml(String(environment).toUpperCase())}</div>
-            <div class="nx-kpi-trend ${environment === "prod" ? "up" : "warn"}">${environment === "prod" ? "Trimiteri reale în SPV" : "Mediu de test"}</div>
-          </div>
+      <section class="nx-spv-hero">
+        <div>
+          <span class="nx-status-pill ${environment === "prod" ? "success" : "warn"}">${escapeHtml(String(environment).toUpperCase())}</span>
+          <h1>SPV / e-Factura</h1>
+          <p>${escapeHtml(companyName)}</p>
         </div>
-
-        <div class="nx-kpi-card">
-          <div class="nx-kpi-icon purple">API</div>
-          <div>
-            <div class="nx-kpi-label">API e-Factura</div>
-            <div class="nx-kpi-value small">${escapeHtml(efacturaApiBase)}</div>
-          </div>
+        <div class="nx-spv-hero-actions">
+          <a class="nx-btn primary" href="/oauth/anaf/start?return_to=nexora">Conectează direct</a>
+          <a class="nx-btn" href="/nexora/anaf/inbox">Sincronizează inbox</a>
         </div>
       </section>
 
-      <section class="nx-dashboard-grid">
-        <div class="nx-panel large">
+      <section class="nx-spv-status-strip">
+        ${renderStatusTile({
+          label: "Mediu activ",
+          value: String(environment).toUpperCase(),
+          detail: environment === "prod" ? "trimiteri reale" : "testare",
+          tone: environment === "prod" ? "success" : "warn"
+        })}
+        ${renderStatusTile({
+          label: "Conexiune",
+          value: activeState.title,
+          detail: activeConnection?.updated_at || "fără autorizare",
+          tone: activeState.tone
+        })}
+        ${renderStatusTile({
+          label: "OAuth app",
+          value: oauthConfigured ? "Pregătit" : "Incomplet",
+          detail: redirectUri,
+          tone: oauthConfigured ? "success" : "danger"
+        })}
+        ${renderStatusTile({
+          label: "Ultimul OAuth",
+          value: lastOauthLog?.status || "-",
+          detail: lastOauthLog?.created_at || "fără log",
+          tone: lastOauthLog?.status === "success" ? "success" : lastOauthLog?.status ? "warn" : "neutral"
+        })}
+      </section>
+
+      <div class="nx-spv-layout">
+        <section class="nx-panel">
           <div class="nx-panel-head">
-            <h2>Conexiuni ANAF</h2>
-            <span>TEST / PROD</span>
+            <div>
+              <h2>Conexiuni ANAF</h2>
+              <span>Tokenuri salvate pe compania curentă</span>
+            </div>
           </div>
 
-          <div class="nx-anaf-status-grid">
-            ${renderConnectionCard("Mediu TEST", latestTestConnection)}
-            ${renderConnectionCard("Mediu PRODUCȚIE", latestProdConnection)}
+          <div class="nx-spv-connection-grid">
+            ${renderConnectionCard("TEST", latestTestConnection, { active: environment !== "prod" })}
+            ${renderConnectionCard("PRODUCȚIE", latestProdConnection, { active: environment === "prod" })}
           </div>
-        </div>
+        </section>
 
-        <div class="nx-panel">
-          <div class="nx-panel-head">
-            <h2>Config OAuth</h2>
-            <span>ANAF</span>
-          </div>
+        <aside class="nx-spv-side-stack">
+          <section class="nx-panel">
+            <div class="nx-panel-head">
+              <div>
+                <h2>${needsConnection ? "Conectare SPV" : "Conexiune curentă"}</h2>
+                <span>${escapeHtml(activeState.title)}</span>
+              </div>
+            </div>
 
-          <div class="nx-anaf-box">
-            <div class="nx-anaf-row">
-              <span>Redirect URI</span>
-              <strong>${escapeHtml(redirectUri)}</strong>
+            <div class="nx-spv-action-box ${needsConnection ? "needs-action" : "ready"}">
+              <strong>${needsConnection ? "Autorizare necesară" : "Pregătit pentru sincronizare"}</strong>
+              <p>${needsConnection
+                ? "Conectează compania cu un certificat digital care are drept SPV pe CUI-ul firmei."
+                : "Poți trimite facturi și sincroniza inbox-ul pe mediul activ."}</p>
+              <div class="nx-form-actions">
+                <a class="nx-btn primary" href="/oauth/anaf/start?return_to=nexora">Conectează</a>
+                <a class="nx-btn" href="/nexora/anaf/inbox">Inbox</a>
+              </div>
             </div>
-            <div class="nx-anaf-row">
-              <span>Ultimul OAuth</span>
-              <strong>${escapeHtml(lastOauthLog?.status || "-")}</strong>
-            </div>
-            <div class="nx-anaf-row">
-              <span>Ultimul eveniment</span>
-              <strong>${escapeHtml(lastOauthLog?.event_type || "-")}</strong>
-            </div>
-            <div class="nx-anaf-row">
-              <span>Data log</span>
-              <strong>${escapeHtml(lastOauthLog?.created_at || "-")}</strong>
+          </section>
+
+          <section class="nx-panel">
+            <div class="nx-panel-head">
+              <div>
+                <h2>Cod contabil</h2>
+                <span>autorizare la distanță</span>
+              </div>
             </div>
             <form class="nx-anaf-accountant-form" method="post" action="/anaf/reautorizare-link">
               <input type="hidden" name="redirect_to" value="/nexora/anaf/status?reauth=needed">
@@ -199,17 +228,37 @@ function renderNexoraAnafStatusPage(options = {}) {
 
               <button class="nx-btn primary" type="submit">Generează cod contabil</button>
             </form>
-            <div class="nx-form-actions">
-              <a class="nx-btn" href="/oauth/anaf/start?return_to=nexora">Conectează direct în acest browser</a>
-              <a class="nx-btn" href="/nexora/anaf/inbox">Deschide inbox pentru sincronizare</a>
+          </section>
+
+          <section class="nx-panel">
+            <div class="nx-panel-head">
+              <div>
+                <h2>Config OAuth</h2>
+                <span>aplicație ANAF</span>
+              </div>
             </div>
-          </div>
-        </div>
-      </section>
-    </main>
-  </div>
-</body>
-</html>`;
+            <div class="nx-spv-config-list">
+              ${renderConfigItem("Client ID", hasClientId ? "setat" : "neconfigurat", { configured: hasClientId })}
+              ${renderConfigItem("Client Secret", hasClientSecret ? "setat" : "neconfigurat", { configured: hasClientSecret })}
+              ${renderConfigItem("Redirect URI", redirectUri, { configured: Boolean(redirectUri && redirectUri !== "-") })}
+              ${renderConfigItem("API e-Factura", efacturaApiBase, { configured: Boolean(efacturaApiBase && efacturaApiBase !== "-") })}
+            </div>
+          </section>
+        </aside>
+      </div>
+  `;
+
+  return renderNexoraShell({
+    title: "Status ANAF",
+    appName: "Nexora ERP",
+    companyName,
+    user,
+    currentPath: "/nexora/anaf/status",
+    eyebrow: "Financiar / ANAF e-Factura",
+    pageTitle: "Status conexiune ANAF",
+    actionsHtml,
+    body
+  });
 }
 
 export {

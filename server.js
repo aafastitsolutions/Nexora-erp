@@ -4700,6 +4700,44 @@ function setSetting(k,v){
   setCompanySetting(currentRequestCompanyId(), k, v);
 }
 
+const DEFAULT_ANAF_REDIRECT_URI = "https://minicrm.qr-lab.ro/oauth/anaf/callback";
+
+function normalizeAnafEnvironment(value = "") {
+  return String(value || "").trim().toLowerCase() === "prod" ? "prod" : "test";
+}
+
+function hasScopedCompanySetting(companyId, key) {
+  return Boolean(db.prepare("SELECT 1 FROM app_settings WHERE key=?")
+    .get(companySettingKey(companyId, key)));
+}
+
+function ensureCompanyAnafDefaults(companyId) {
+  const normalizedCompanyId = Number(companyId || 0);
+  if (!normalizedCompanyId) return;
+
+  const company = db.prepare("SELECT is_demo FROM companies WHERE id=?").get(normalizedCompanyId);
+  const defaultEnvironment = normalizeAnafEnvironment(
+    readGlobalSetting("anaf_environment", Number(company?.is_demo || 0) === 1 ? "test" : "prod")
+  );
+  const defaultRedirectUri = String(readGlobalSetting("anaf_redirect_uri", DEFAULT_ANAF_REDIRECT_URI) || DEFAULT_ANAF_REDIRECT_URI).trim();
+
+  if (!hasScopedCompanySetting(normalizedCompanyId, "anaf_environment")) {
+    setCompanySetting(normalizedCompanyId, "anaf_environment", defaultEnvironment);
+  }
+  if (!hasScopedCompanySetting(normalizedCompanyId, "anaf_redirect_uri")) {
+    setCompanySetting(normalizedCompanyId, "anaf_redirect_uri", defaultRedirectUri);
+  }
+}
+
+function backfillCompanyAnafDefaults() {
+  const companies = db.prepare("SELECT id FROM companies").all();
+  for (const company of companies) {
+    ensureCompanyAnafDefaults(company.id);
+  }
+}
+
+backfillCompanyAnafDefaults();
+
 function tipizateRegisterYear(value) {
   const parsed = Number(String(value || "").slice(0, 4));
   return Number.isFinite(parsed) && parsed >= 2000 ? parsed : new Date().getFullYear();
@@ -11294,11 +11332,14 @@ res.redirect(wantsNexora ? "/nexora/settings?tab=logo&ok=logo" : "/setari");
 
 app.get("/nexora/anaf/status", requireAuth, requireSpvAccess, (req, res) => {
   const companyId = Number(req.session.user.company_id || 0);
+  ensureCompanyAnafDefaults(companyId);
   const oauthState = String(req.query.oauth || "");
   const oauthMessage = String(req.query.message || "");
   const reauthRequested = String(req.query.reauth || "").trim() === "needed";
-  const environment = String(getSetting("anaf_environment","test") || "test").trim() || "test";
-  const redirectUri = String(getSetting("anaf_redirect_uri","https://minicrm.qr-lab.ro/oauth/anaf/callback") || "").trim();
+  const environment = normalizeAnafEnvironment(getSetting("anaf_environment","test") || "test");
+  const redirectUri = String(getSetting("anaf_redirect_uri", DEFAULT_ANAF_REDIRECT_URI) || DEFAULT_ANAF_REDIRECT_URI).trim();
+  const hasClientId = Boolean(String(getSetting("anaf_client_id", "") || "").trim());
+  const hasClientSecret = Boolean(String(getSetting("anaf_client_secret", "") || "").trim());
   const efacturaApiBase = `https://api.anaf.ro/${environment === "prod" ? "prod" : "test"}/FCTEL/rest`;
   const inviteFlash = req.session?.anafInviteFlash && typeof req.session.anafInviteFlash === "object"
     ? { ...req.session.anafInviteFlash }
@@ -11346,6 +11387,8 @@ app.get("/nexora/anaf/status", requireAuth, requireSpvAccess, (req, res) => {
     environment,
     efacturaApiBase,
     redirectUri,
+    hasClientId,
+    hasClientSecret,
     oauthState,
     oauthMessage,
     reauthRequested,
@@ -11358,12 +11401,13 @@ app.get("/nexora/anaf/status", requireAuth, requireSpvAccess, (req, res) => {
 
 app.get("/anaf/status", requireAuth, requireSpvAccess, (req,res)=>{
   const companyId = Number(req.session.user.company_id || 0);
+  ensureCompanyAnafDefaults(companyId);
   const oauthState = String(req.query.oauth || "");
   const oauthMessage = String(req.query.message || "");
   const reauthRequested = String(req.query.reauth || "").trim() === "needed";
-  const environment = String(getSetting("anaf_environment","test") || "test").trim() || "test";
+  const environment = normalizeAnafEnvironment(getSetting("anaf_environment","test") || "test");
   const oauthScope = String(getSetting("anaf_scope","") || "").trim();
-  const redirectUri = String(getSetting("anaf_redirect_uri","https://minicrm.qr-lab.ro/oauth/anaf/callback") || "").trim();
+  const redirectUri = String(getSetting("anaf_redirect_uri", DEFAULT_ANAF_REDIRECT_URI) || DEFAULT_ANAF_REDIRECT_URI).trim();
   const authorizeUrl = String(getSetting("anaf_authorize_url","https://logincert.anaf.ro/anaf-oauth2/v1/authorize") || "https://logincert.anaf.ro/anaf-oauth2/v1/authorize").trim();
   const tokenUrl = String(getSetting("anaf_token_url","https://logincert.anaf.ro/anaf-oauth2/v1/token") || "https://logincert.anaf.ro/anaf-oauth2/v1/token").trim();
   const efacturaApiBase = `https://api.anaf.ro/${environment === "prod" ? "prod" : "test"}/FCTEL/rest`;
@@ -11626,8 +11670,9 @@ function spvNeedsManualReauthorizationMessage(message) {
 
 app.post("/anaf/inbox/sync", requireAuth, requireSpvAccess, async (req, res) => {
   const companyId = Number(req.session.user.company_id || 0);
+  ensureCompanyAnafDefaults(companyId);
   const redirectTo = String(req.body?.redirect_to || "/anaf/inbox").trim();
-  const environment = String(getSetting("anaf_environment", "test") || "test").trim();
+  const environment = normalizeAnafEnvironment(getSetting("anaf_environment", "test") || "test");
   const companyCui = String(getSetting("company_cui", COMPANY.cui || "") || "").replace(/^RO/i, "").trim();
   const days = Math.min(60, Math.max(1, Number.parseInt(String(req.body?.days || "60"), 10) || 60));
 

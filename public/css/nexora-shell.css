@@ -592,6 +592,272 @@
   margin-top: 4px;
 }
 
+/* SPV / ANAF status */
+.nx-spv-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+  padding: 20px;
+  border: 1px solid var(--nx-border);
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: var(--nx-shadow);
+}
+
+.nx-spv-hero h1 {
+  margin: 10px 0 4px;
+  font-size: 26px;
+  font-weight: 950;
+}
+
+.nx-spv-hero p {
+  margin: 0;
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.nx-spv-hero-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.nx-spv-status-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.nx-spv-tile {
+  min-height: 104px;
+  padding: 15px;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: var(--nx-shadow);
+}
+
+.nx-spv-tile span,
+.nx-spv-connection-top span,
+.nx-spv-meta-grid dt,
+.nx-spv-config-item span {
+  display: block;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.nx-spv-tile strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 20px;
+  line-height: 1.1;
+  font-weight: 950;
+  overflow-wrap: anywhere;
+}
+
+.nx-spv-tile small {
+  display: block;
+  margin-top: 8px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.nx-spv-tile.success { border-color: rgba(34, 197, 94, 0.22); background: #f0fdf4; }
+.nx-spv-tile.warn { border-color: rgba(245, 158, 11, 0.25); background: #fffbeb; }
+.nx-spv-tile.danger { border-color: rgba(239, 68, 68, 0.22); background: #fef2f2; }
+
+.nx-spv-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 420px;
+  gap: 18px;
+  align-items: start;
+}
+
+.nx-spv-side-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.nx-spv-connection-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.nx-spv-connection {
+  padding: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  background: #f8fafc;
+}
+
+.nx-spv-connection.active {
+  border-color: rgba(99, 91, 255, 0.3);
+  box-shadow: inset 0 0 0 1px rgba(99, 91, 255, 0.12);
+}
+
+.nx-spv-connection-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.nx-spv-connection-top strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 19px;
+  font-weight: 950;
+}
+
+.nx-spv-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.nx-spv-meta-grid div,
+.nx-spv-empty-line,
+.nx-spv-config-item {
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 13px;
+  background: #ffffff;
+}
+
+.nx-spv-meta-grid dd {
+  margin: 5px 0 0;
+  font-size: 13px;
+  font-weight: 850;
+  overflow-wrap: anywhere;
+}
+
+.nx-spv-empty-line {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.nx-spv-action-box {
+  padding: 15px;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  background: #f8fafc;
+}
+
+.nx-spv-action-box.ready {
+  border-color: rgba(34, 197, 94, 0.22);
+  background: #f0fdf4;
+}
+
+.nx-spv-action-box.needs-action {
+  border-color: rgba(245, 158, 11, 0.25);
+  background: #fffbeb;
+}
+
+.nx-spv-action-box strong {
+  display: block;
+  font-size: 18px;
+  font-weight: 950;
+}
+
+.nx-spv-action-box p {
+  margin: 8px 0 14px;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.nx-spv-config-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.nx-spv-config-item {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.7fr) minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.nx-spv-config-item strong {
+  font-size: 13px;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.nx-spv-config-item em {
+  justify-self: end;
+  border-radius: 999px;
+  padding: 5px 8px;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.nx-spv-config-item em.ok {
+  color: #166534;
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.nx-spv-config-item em.bad {
+  color: #991b1b;
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.nx-anaf-accountant-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+@media (max-width: 1280px) {
+  .nx-spv-status-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .nx-spv-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .nx-spv-hero {
+    flex-direction: column;
+  }
+
+  .nx-spv-hero-actions,
+  .nx-spv-hero-actions .nx-btn {
+    width: 100%;
+  }
+
+  .nx-spv-status-strip,
+  .nx-spv-connection-grid,
+  .nx-spv-meta-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .nx-spv-config-item {
+    grid-template-columns: 1fr;
+  }
+
+  .nx-spv-config-item em {
+    justify-self: start;
+  }
+}
+
 /* Nexora data tables */
 .nx-section-head {
   display: flex;
@@ -1120,6 +1386,12 @@
   color: #166534;
   background: rgba(34, 197, 94, 0.12);
   border-color: rgba(34, 197, 94, 0.25);
+}
+
+.nx-alert.warn {
+  color: #92400e;
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(245, 158, 11, 0.25);
 }
 
 .nx-alert.danger {
