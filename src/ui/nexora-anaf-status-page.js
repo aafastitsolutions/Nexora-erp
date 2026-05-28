@@ -119,6 +119,8 @@ function renderNexoraAnafStatusPage(options = {}) {
 
         <div class="nx-actions">
           <a class="nx-btn" href="/nexora/facturi">Facturi</a>
+          <a class="nx-btn" href="/oauth/anaf/start?return_to=nexora">Conectează SPV</a>
+          <a class="nx-btn" href="/nexora/anaf/inbox">Inbox / sincronizare</a>
           <a class="nx-btn primary" href="/nexora/anaf/status">Reîmprospătează</a>
         </div>
       </header>
@@ -197,6 +199,10 @@ function renderNexoraAnafStatusPage(options = {}) {
 
               <button class="nx-btn primary" type="submit">Generează cod contabil</button>
             </form>
+            <div class="nx-form-actions">
+              <a class="nx-btn" href="/oauth/anaf/start?return_to=nexora">Conectează direct în acest browser</a>
+              <a class="nx-btn" href="/nexora/anaf/inbox">Deschide inbox pentru sincronizare</a>
+            </div>
           </div>
         </div>
       </section>

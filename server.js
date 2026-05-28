@@ -1800,7 +1800,7 @@ function canAccessSpvSidebar(userEmail = "") {
   if (!normalizedEmail) return false;
 
   const userRow = db.prepare(`
-    SELECT u.role, c.is_demo
+    SELECT u.role, u.is_company_admin, c.is_demo
     FROM users u
     LEFT JOIN companies c ON c.id = u.company_id
     WHERE lower(u.email)=?
@@ -1812,6 +1812,7 @@ function canAccessSpvSidebar(userEmail = "") {
     email: normalizedEmail,
     role: String(userRow?.role || "").trim().toLowerCase(),
     company_is_demo: Number(userRow?.is_demo || 0),
+    is_company_admin: Number(userRow?.is_company_admin || 0),
     is_super_admin: isSuperAdminUser(normalizedEmail) ? 1 : 0
   });
 }
