@@ -1,4 +1,21 @@
 import { renderNexoraDashboardPage } from "../src/ui/nexora-dashboard-page.js";
+import { renderNexoraShell } from "../src/ui/nexora-shell.js";
+import { formatInvoiceDisplayNumber } from "../lib/invoice-numbering.js";
+
+function renderSearchResultSection({ title, count, rows, emptyText }) {
+  return `
+    <section class="nx-search-result-section">
+      <div class="nx-panel-head">
+        <h2>${title}</h2>
+        <span>${count}</span>
+      </div>
+      <div class="nx-search-result-list">
+        ${rows.length ? rows.join("") : `<div class="nx-empty-state">${emptyText}</div>`}
+      </div>
+    </section>
+  `;
+}
+
 export function registerDashboardRoutes(app, { db, requireAuth, todayISO, escapeHtml, fmtMoney, crmShellStart, crmShellEnd }) {
   app.get("/dashboard", requireAuth, (req, res) => {
     const companyId = Number(req.session.user.company_id || 0);
@@ -538,16 +555,17 @@ ${crmShellEnd()}
     }));
 
     const recentInvoices = db.prepare(`
-      SELECT f.id, f.factura_nr, f.status, f.total, f.moneda, f.data_emitere,
+      SELECT f.id, f.factura_nr, f.total, f.moneda, f.data_emitere,
              cl.name AS client_name
       FROM facturi f
       LEFT JOIN clients cl ON cl.id = f.client_id AND cl.company_id = f.company_id
       WHERE f.company_id = ?
       ORDER BY f.id DESC
-      LIMIT 6
+      LIMIT 3
     `).all(companyId).map((invoice) => ({
       ...invoice,
-      total_formatted: fmtMoney(Number(invoice.total || 0))
+      display_number: formatInvoiceDisplayNumber(invoice),
+      total_formatted: `${fmtMoney(Number(invoice.total || 0))} ${invoice.moneda || "RON"}`
     }));
 
     const efacturaStatusRows = db.prepare(`
@@ -586,6 +604,160 @@ ${crmShellEnd()}
       activities,
       recentInvoices,
       efacturaSummary
+    }));
+  });
+
+  app.get("/nexora/search", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const q = String(req.query?.q || "").trim();
+    const like = `%${q.toLowerCase()}%`;
+
+    const results = q ? {
+      clients: db.prepare(`
+        SELECT DISTINCT cl.id, cl.name, cl.cui, cl.reg_com, cl.email, cl.phone
+        FROM clients cl
+        LEFT JOIN contacts ct
+          ON ct.client_id = cl.id
+         AND COALESCE(ct.company_id, cl.company_id) = cl.company_id
+        WHERE cl.company_id = ?
+          AND (
+            LOWER(COALESCE(cl.name, '')) LIKE ?
+            OR LOWER(COALESCE(cl.cui, '')) LIKE ?
+            OR LOWER(COALESCE(cl.reg_com, '')) LIKE ?
+            OR LOWER(COALESCE(cl.email, '')) LIKE ?
+            OR LOWER(COALESCE(cl.phone, '')) LIKE ?
+            OR LOWER(COALESCE(ct.name, '')) LIKE ?
+            OR LOWER(COALESCE(ct.email, '')) LIKE ?
+            OR LOWER(COALESCE(ct.phone, '')) LIKE ?
+          )
+        ORDER BY cl.name COLLATE NOCASE ASC, cl.id DESC
+        LIMIT 5
+      `).all(companyId, like, like, like, like, like, like, like, like),
+      invoices: db.prepare(`
+        SELECT f.id, f.factura_nr, f.total, f.moneda, f.data_emitere, cl.name AS client_name
+        FROM facturi f
+        LEFT JOIN clients cl ON cl.id = f.client_id AND cl.company_id = f.company_id
+        WHERE f.company_id = ?
+          AND (
+            LOWER(COALESCE(f.factura_nr, '')) LIKE ?
+            OR LOWER(COALESCE(cl.name, '')) LIKE ?
+            OR LOWER(COALESCE(cl.cui, '')) LIKE ?
+          )
+        ORDER BY f.id DESC
+        LIMIT 5
+      `).all(companyId, like, like, like),
+      products: db.prepare(`
+        SELECT id, code, name, kind, price, unit
+        FROM products
+        WHERE company_id = ?
+          AND (
+            LOWER(COALESCE(code, '')) LIKE ?
+            OR LOWER(COALESCE(name, '')) LIKE ?
+            OR LOWER(COALESCE(kind, '')) LIKE ?
+            OR LOWER(COALESCE(lot, '')) LIKE ?
+          )
+        ORDER BY active DESC, name COLLATE NOCASE ASC, id DESC
+        LIMIT 5
+      `).all(companyId, like, like, like, like),
+      documents: db.prepare(`
+        SELECT id, title, category, file_name, file_path, created_at
+        FROM tipizate_docs
+        WHERE company_id = ?
+          AND (
+            LOWER(COALESCE(title, '')) LIKE ?
+            OR LOWER(COALESCE(category, '')) LIKE ?
+            OR LOWER(COALESCE(file_name, '')) LIKE ?
+            OR LOWER(COALESCE(registration_number, '')) LIKE ?
+          )
+        ORDER BY id DESC
+        LIMIT 5
+      `).all(companyId, like, like, like, like)
+    } : {
+      clients: [],
+      invoices: [],
+      products: [],
+      documents: []
+    };
+
+    const clientRows = results.clients.map((row) => `
+      <a class="nx-search-result-row" href="/nexora/clients/${escapeHtml(row.id)}">
+        <span class="nx-search-result-type">Client</span>
+        <div>
+          <b>${escapeHtml(row.name || "Client fără nume")}</b>
+          <em>${escapeHtml([row.cui, row.reg_com, row.email || row.phone].filter(Boolean).join(" · ") || "Fără detalii")}</em>
+        </div>
+        <strong>Deschide</strong>
+      </a>
+    `);
+
+    const invoiceRows = results.invoices.map((row) => `
+      <a class="nx-search-result-row" href="/nexora/facturi/${escapeHtml(row.id)}">
+        <span class="nx-search-result-type">Factură</span>
+        <div>
+          <b>${escapeHtml(formatInvoiceDisplayNumber(row))}</b>
+          <em>${escapeHtml([row.client_name || "Client necunoscut", row.data_emitere ? String(row.data_emitere).slice(0, 10) : "", `${fmtMoney(row.total)} ${row.moneda || "RON"}`].filter(Boolean).join(" · "))}</em>
+        </div>
+        <strong>Deschide</strong>
+      </a>
+    `);
+
+    const productRows = results.products.map((row) => `
+      <a class="nx-search-result-row" href="/nexora/products/${escapeHtml(row.id)}/edit">
+        <span class="nx-search-result-type">Produs</span>
+        <div>
+          <b>${escapeHtml(row.name || "Produs fără nume")}</b>
+          <em>${escapeHtml([row.code, row.kind, `${fmtMoney(row.price)} RON`, row.unit].filter(Boolean).join(" · "))}</em>
+        </div>
+        <strong>Deschide</strong>
+      </a>
+    `);
+
+    const documentRows = results.documents.map((row) => `
+      <a class="nx-search-result-row" href="${escapeHtml(row.file_path ? `/${row.file_path}` : "/nexora/documents")}">
+        <span class="nx-search-result-type">Document</span>
+        <div>
+          <b>${escapeHtml(row.title || "Document fără titlu")}</b>
+          <em>${escapeHtml([row.category, row.file_name, row.created_at].filter(Boolean).join(" · ") || "DMS")}</em>
+        </div>
+        <strong>Deschide</strong>
+      </a>
+    `);
+
+    const totalResults = Object.values(results).reduce((sum, rows) => sum + rows.length, 0);
+    const body = `
+      <section class="nx-content-card nx-search-page">
+        <div class="nx-section-head">
+          <div>
+            <h1>Rezultate căutare</h1>
+            <p>${q ? `Pentru „${escapeHtml(q)}”` : "Introdu un termen de căutare."}</p>
+          </div>
+          <div class="nx-count-pill">${escapeHtml(totalResults)} rezultate</div>
+        </div>
+
+        <form class="nx-search-results-form" method="get" action="/nexora/search">
+          <input name="q" value="${escapeHtml(q)}" aria-label="Caută în ERP" placeholder="Caută în ERP">
+          <button class="nx-btn primary" type="submit">Caută</button>
+        </form>
+
+        <div class="nx-search-results-grid">
+          ${renderSearchResultSection({ title: "Clienți", count: results.clients.length, rows: clientRows, emptyText: "Nu am găsit clienți." })}
+          ${renderSearchResultSection({ title: "Facturi", count: results.invoices.length, rows: invoiceRows, emptyText: "Nu am găsit facturi." })}
+          ${renderSearchResultSection({ title: "Produse", count: results.products.length, rows: productRows, emptyText: "Nu am găsit produse." })}
+          ${renderSearchResultSection({ title: "Documente", count: results.documents.length, rows: documentRows, emptyText: "Nu am găsit documente." })}
+        </div>
+      </section>
+    `;
+
+    res.type("html").send(renderNexoraShell({
+      title: "Căutare Nexora ERP",
+      appName: "Nexora ERP",
+      companyName: req.session.user.company_name || "Workspace",
+      currentPath: "/nexora-dashboard",
+      eyebrow: "Căutare",
+      pageTitle: q ? `Căutare: ${q}` : "Căutare",
+      user: req.session.user,
+      actionsHtml: `<a class="nx-btn" href="/nexora-dashboard">Dashboard</a>`,
+      body
     }));
   });
 }

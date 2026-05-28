@@ -1,5 +1,16 @@
 # Jurnal Modificari MiniCRM
 
+## 2026-05-28
+
+### Modul Dashboard Nexora
+- Lista `Facturi recente` de pe `/nexora-dashboard` a fost curatata vizual si limitata la ultimele 3 facturi.
+- Statusul facturilor nu mai este afisat in cardul de dashboard; randurile arata acum numarul, clientul, data emiterii si totalul.
+- Searchbar-ul din dashboard este functional si trimite catre `/nexora/search`.
+- A fost adaugata pagina de rezultate pentru cautare globala peste clienti, facturi, produse si documente DMS.
+- Verificare modul Client:
+  - exista deja listare `/nexora/clients`, cautare server-side, adaugare client dupa CUI, fisa client, contacte, activitati, contracte, oferte, facturi si timeline;
+  - endpoint-ul `/clients/search` exista deja pentru autocomplete in fluxurile care au nevoie de selectare client.
+
 ## 2026-03-30
 
 ### Identitate si infrastructura

@@ -56,14 +56,12 @@ function renderNexoraDashboardPage(options = {}) {
   const recentInvoicesHtml = recentInvoices.length
     ? recentInvoices.map((invoice) => `
         <a class="nx-invoice-row" href="/nexora/facturi/${escapeHtml(invoice.id)}">
-          <div>
-            <b>${escapeHtml(invoice.factura_nr)}</b>
-            <span>${escapeHtml(invoice.client_name || "Client necunoscut")}</span>
+          <div class="nx-invoice-main">
+            <span class="nx-invoice-number">${escapeHtml(invoice.display_number || invoice.factura_nr || "-")}</span>
+            <b>${escapeHtml(invoice.client_name || "Client necunoscut")}</b>
+            <small>${escapeHtml(invoice.data_emitere ? `Emisă la ${String(invoice.data_emitere).slice(0, 10)}` : "Dată emitere necompletată")}</small>
           </div>
-          <div class="nx-invoice-meta">
-            <strong>${escapeHtml(invoice.total_formatted || invoice.total || "0 RON")}</strong>
-            <em>${escapeHtml(invoice.status || "CIORNA")}</em>
-          </div>
+          <strong class="nx-invoice-total">${escapeHtml(invoice.total_formatted || invoice.total || "0.00 RON")}</strong>
         </a>
       `).join("")
     : `
@@ -91,9 +89,9 @@ function renderNexoraDashboardPage(options = {}) {
           <div class="nx-page-title">Bună ziua, ${escapeHtml(userName)} 👋</div>
         </div>
 
-        <div class="nx-search">
-          <input placeholder="Caută în ERP: clienți, facturi, produse, documente..." />
-        </div>
+        <form class="nx-search" method="get" action="/nexora/search">
+          <input name="q" aria-label="Caută în ERP" placeholder="Caută în ERP: clienți, facturi, produse, documente..." />
+        </form>
 
         <div class="nx-actions">
           <a class="nx-btn" href="/nexora/facturi">Facturi</a>
@@ -185,7 +183,7 @@ function renderNexoraDashboardPage(options = {}) {
         <div class="nx-panel">
           <div class="nx-panel-head">
             <h2>Facturi recente</h2>
-            <span>Ultimele 6</span>
+            <span>Ultimele 3</span>
           </div>
 
           <div class="nx-invoice-list">
