@@ -4603,6 +4603,11 @@ function isTenantScopedSettingKey(k = "") {
     || key === "capital_social";
 }
 
+function canFallbackToGlobalSetting(k = "") {
+  const key = String(k || "").trim();
+  return key.startsWith("anaf_");
+}
+
 function companySettingKey(companyId, k) {
   return `company:${Number(companyId)}:${String(k || "").trim()}`;
 }
@@ -4667,6 +4672,10 @@ function getCompanySetting(companyId, k, def = "") {
       if (companyValue !== null && companyValue !== undefined && String(companyValue).trim() !== "") {
         return companyValue;
       }
+    }
+
+    if (canFallbackToGlobalSetting(k)) {
+      return readGlobalSetting(k, def);
     }
 
     return def;

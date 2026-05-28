@@ -193,6 +193,7 @@ function renderNexoraSettingsPage(options = {}) {
         </div>
         <div class="nx-form-actions">
           <a class="nx-btn" href="/nexora/users">Utilizatori & roluri</a>
+          ${canAccessSpvSettings ? `<a class="nx-btn primary" href="/nexora/anaf/status">SPV / e-Factura</a>` : ""}
           <a class="nx-btn" href="/nexora-dashboard">Dashboard</a>
         </div>
       </div>
@@ -329,7 +330,7 @@ function renderNexoraSettingsPage(options = {}) {
             <button class="nx-btn primary" type="submit">Salvează ANAF</button>
             <a class="nx-btn" href="/oauth/anaf/start?return_to=nexora">Conectează SPV</a>
             <a class="nx-btn" href="/nexora/anaf/status">Status ANAF</a>
-            <a class="nx-btn" href="/nexora/anaf/inbox">Inbox</a>
+            <a class="nx-btn" href="/nexora/anaf/inbox">Inbox / sincronizare</a>
             <a class="nx-btn" href="/nexora/anaf/outbox">Outbox</a>
           </div>
         </form>

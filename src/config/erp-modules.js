@@ -256,7 +256,7 @@ const ERP_MODULES = [
       { label: "Utilizatori & roluri", path: "/nexora/users" },
       { label: "Abonament", path: "/nexora/settings?tab=subscription" },
       { label: "Module active", path: "/nexora/settings?tab=subscription" },
-      { label: "Integrare ANAF", path: "/nexora/settings?tab=spv" }
+      { label: "SPV / e-Factura", path: "/nexora/anaf/status" }
     ]
   }
 ];
