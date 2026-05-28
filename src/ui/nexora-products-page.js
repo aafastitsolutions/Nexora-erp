@@ -25,6 +25,13 @@ function activeBadge(active) {
     : `<span class="nx-status-pill neutral">inactiv</span>`;
 }
 
+function vatOptions(selectedValue = 0) {
+  const selected = Number(selectedValue || 0) === 21 ? 21 : 0;
+  return [0, 21].map((value) => `
+    <option value="${value}" ${selected === value ? "selected" : ""}>${value}%</option>
+  `).join("");
+}
+
 function productForm(product = {}, action = "/produse/create", submitLabel = "Salvează produsul") {
   return `
     <form method="post" action="${escapeHtml(action)}" class="nx-form">
@@ -45,8 +52,9 @@ function productForm(product = {}, action = "/produse/create", submitLabel = "Sa
       </div>
       <div class="nx-two-column-grid compact">
         <label class="nx-field"><span>Preț</span><input name="price" value="${escapeHtml(String(product.price ?? 0))}"></label>
-        <label class="nx-field"><span>TVA %</span><input name="tva_percent" value="${escapeHtml(String(product.tva_percent ?? 19))}"></label>
+        <label class="nx-field"><span>TVA %</span><select name="tva_percent">${vatOptions(product.tva_percent ?? 0)}</select></label>
       </div>
+      <label class="nx-field"><span>Lot</span><input name="lot" value="${escapeHtml(product.lot || "")}" placeholder="ex: LOT-2026-001"></label>
       <label class="nx-field">
         <span>Activ</span>
         <select name="active">
@@ -91,6 +99,7 @@ function renderNexoraProductsPage(options = {}) {
         </td>
         <td>${kindBadge(row.kind)}</td>
         <td>${escapeHtml(row.unit || "-")}</td>
+        <td>${escapeHtml(row.lot || "-")}</td>
         <td class="nx-right">${escapeHtml(money(row.price))}</td>
         <td class="nx-right">${escapeHtml(String(row.tva_percent ?? 0))}%</td>
         <td>${activeBadge(row.active)}</td>
@@ -103,7 +112,7 @@ function renderNexoraProductsPage(options = {}) {
         </td>
       </tr>
     `).join("")
-    : `<tr><td colspan="7"><div class="nx-empty-state">Nu există produse pentru criteriile curente.</div></td></tr>`;
+    : `<tr><td colspan="8"><div class="nx-empty-state">Nu există produse pentru criteriile curente.</div></td></tr>`;
 
   const body = `
     ${alertHtml}
@@ -157,6 +166,7 @@ function renderNexoraProductsPage(options = {}) {
               <th>Denumire</th>
               <th>Tip</th>
               <th>UM</th>
+              <th>Lot</th>
               <th class="nx-right">Preț</th>
               <th class="nx-right">TVA</th>
               <th>Status</th>

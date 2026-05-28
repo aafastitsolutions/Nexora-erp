@@ -426,7 +426,8 @@ export function migrate() {
       name TEXT NOT NULL,
       unit TEXT DEFAULT 'buc',
       price REAL NOT NULL DEFAULT 0,
-      tva_percent REAL NOT NULL DEFAULT 19,
+      tva_percent REAL NOT NULL DEFAULT 0,
+      lot TEXT,
       kind TEXT NOT NULL DEFAULT 'SERVICIU',
       active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -1074,6 +1075,7 @@ export function migrate() {
   ensureColumn("contracts", "company_id", "INTEGER");
 
   ensureColumn("products", "company_id", "INTEGER");
+  ensureColumn("products", "lot", "TEXT");
   ensureColumn("contacts", "company_id", "INTEGER");
   ensureColumn("activities", "employee_id", "INTEGER");
   ensureColumn("activities", "company_id", "INTEGER");

@@ -2511,11 +2511,22 @@ function topMenu(active){
   </div>`;
 }
 
+function normalizeProductVat(value) {
+  const parsed = Number(String(value ?? "0").replace(",", "."));
+  return parsed === 21 ? 21 : 0;
+}
+
+function productVatOptionsHtml(selectedValue = 0) {
+  const selected = normalizeProductVat(selectedValue);
+  return [0, 21].map((value) =>
+    `<option value="${value}" ${selected === value ? "selected" : ""}>${value}%</option>`
+  ).join("");
+}
 
 app.get("/produse", requireAuth, (req, res) => {
   const companyId = Number(req.session.user.company_id || 0);
   const rows = db.prepare(`
-    SELECT id, code, name, unit, price, tva_percent, kind, active, created_at
+    SELECT id, code, name, unit, lot, price, tva_percent, kind, active, created_at
     FROM products
     WHERE company_id=?
     ORDER BY active DESC, name COLLATE NOCASE ASC, id DESC
@@ -2530,6 +2541,7 @@ app.get("/produse", requireAuth, (req, res) => {
       </td>
       <td>${escapeHtml(r.kind || "")}</td>
       <td>${escapeHtml(r.unit || "") || `<span class="crm-muted">—</span>`}</td>
+      <td>${escapeHtml(r.lot || "") || `<span class="crm-muted">—</span>`}</td>
       <td class="crm-right">${escapeHtml(String(Number(r.price || 0).toFixed(2)))}</td>
       <td class="crm-right">${escapeHtml(String(r.tva_percent ?? 0))}%</td>
       <td>${Number(r.active) ? `<span class="crm-badge crm-badge-green">activ</span>` : `<span class="crm-badge crm-badge-neutral">inactiv</span>`}</td>
@@ -2606,8 +2618,13 @@ ${crmShellStart("produse", "Produse / Servicii", "Catalog intern pentru linii de
           </div>
           <div>
             <label class="crm-label">TVA %</label>
-            <input class="crm-input" name="tva_percent" value="19" placeholder="19">
+            <select class="crm-select" name="tva_percent">${productVatOptionsHtml(0)}</select>
           </div>
+        </div>
+
+        <div>
+          <label class="crm-label">Lot</label>
+          <input class="crm-input" name="lot" placeholder="ex: LOT-2026-001">
         </div>
 
         <div>
@@ -2657,6 +2674,7 @@ ${crmShellStart("produse", "Produse / Servicii", "Catalog intern pentru linii de
             <th>Denumire</th>
             <th>Tip</th>
             <th>UM</th>
+            <th>Lot</th>
             <th class="crm-right">Preț</th>
             <th class="crm-right">TVA</th>
             <th>Activ</th>
@@ -2665,7 +2683,7 @@ ${crmShellStart("produse", "Produse / Servicii", "Catalog intern pentru linii de
           </tr>
         </thead>
         <tbody>
-          ${htmlRows || '<tr><td colspan="9"><em>Nu există produse.</em></td></tr>'}
+          ${htmlRows || '<tr><td colspan="10"><em>Nu există produse.</em></td></tr>'}
         </tbody>
       </table>
     </div>
@@ -2683,15 +2701,15 @@ app.get("/nexora/products", requireAuth, (req, res) => {
 
   const rows = q
     ? db.prepare(`
-        SELECT id, code, name, unit, price, tva_percent, kind, active, created_at
+        SELECT id, code, name, unit, lot, price, tva_percent, kind, active, created_at
         FROM products
         WHERE company_id=?
-          AND (code LIKE ? OR name LIKE ? OR kind LIKE ?)
+          AND (code LIKE ? OR name LIKE ? OR kind LIKE ? OR COALESCE(lot,'') LIKE ?)
         ORDER BY active DESC, name COLLATE NOCASE ASC, id DESC
         LIMIT 500
-      `).all(companyId, search, search, search)
+      `).all(companyId, search, search, search, search)
     : db.prepare(`
-        SELECT id, code, name, unit, price, tva_percent, kind, active, created_at
+        SELECT id, code, name, unit, lot, price, tva_percent, kind, active, created_at
         FROM products
         WHERE company_id=?
         ORDER BY active DESC, name COLLATE NOCASE ASC, id DESC
@@ -2713,7 +2731,7 @@ app.get("/nexora/products/:id/edit", requireAuth, (req, res) => {
   if (!Number.isFinite(id)) return res.status(400).send("Bad id");
 
   const row = db.prepare(`
-    SELECT id, code, name, unit, price, tva_percent, kind, active, created_at
+    SELECT id, code, name, unit, lot, price, tva_percent, kind, active, created_at
     FROM products
     WHERE id=? AND company_id=?
   `).get(id, companyId);
@@ -2749,7 +2767,7 @@ app.get("/produse/:id/edit", requireAuth, (req, res) => {
   if (!Number.isFinite(id)) return res.status(400).send("Bad id");
 
   const row = db.prepare(`
-    SELECT id, code, name, unit, price, tva_percent, kind, active, created_at
+    SELECT id, code, name, unit, lot, price, tva_percent, kind, active, created_at
     FROM products
     WHERE id=? AND company_id=?
   `).get(id, companyId);
@@ -2811,12 +2829,16 @@ a:hover{text-decoration:underline}
           <input name="unit" value="${escapeHtml(row.unit || "buc")}">
         </div>
         <div>
+          <label>Lot</label>
+          <input name="lot" value="${escapeHtml(row.lot || "")}" placeholder="ex: LOT-2026-001">
+        </div>
+        <div>
           <label>Preț</label>
           <input name="price" value="${escapeHtml(String(row.price ?? 0))}">
         </div>
         <div>
           <label>TVA %</label>
-          <input name="tva_percent" value="${escapeHtml(String(row.tva_percent ?? 19))}">
+          <select name="tva_percent">${productVatOptionsHtml(row.tva_percent ?? 0)}</select>
         </div>
         <div>
           <label>Activ</label>
@@ -2847,8 +2869,9 @@ app.post("/produse/:id/edit", requireAuth, (req, res) => {
   const code = String(req.body?.code || "").trim();
   const name = String(req.body?.name || "").trim();
   const unit = String(req.body?.unit || "buc").trim() || "buc";
+  const lot = String(req.body?.lot || "").trim();
   const price = Number(String(req.body?.price || "0").replace(",", "."));
-  const tva_percent = Number(String(req.body?.tva_percent || "19").replace(",", "."));
+  const tva_percent = normalizeProductVat(req.body?.tva_percent);
   const kindRaw = String(req.body?.kind || "SERVICIU").trim().toUpperCase();
   const active = String(req.body?.active || "1") === "1" ? 1 : 0;
 
@@ -2857,13 +2880,12 @@ app.post("/produse/:id/edit", requireAuth, (req, res) => {
 
   if (!name) return res.status(400).send("Denumire required");
   if (!Number.isFinite(price) || price < 0) return res.status(400).send("Preț invalid");
-  if (!Number.isFinite(tva_percent) || tva_percent < 0 || tva_percent > 100) return res.status(400).send("TVA invalid");
 
   db.prepare(`
     UPDATE products
-    SET code=?, name=?, unit=?, price=?, tva_percent=?, kind=?, active=?
+    SET code=?, name=?, unit=?, lot=?, price=?, tva_percent=?, kind=?, active=?
     WHERE id=? AND company_id=?
-  `).run(code || null, name, unit, price, tva_percent, kind, active, id, companyId);
+  `).run(code || null, name, unit, lot || null, price, tva_percent, kind, active, id, companyId);
 
   return res.redirect(req.body?.return_to === "nexora" ? `/nexora/products/${id}/edit?ok=saved` : "/produse");
 });
@@ -2874,8 +2896,9 @@ app.post("/produse/create", requireAuth, (req, res) => {
   const code = String(req.body?.code || "").trim();
   const name = String(req.body?.name || "").trim();
   const unit = String(req.body?.unit || "buc").trim() || "buc";
+  const lot = String(req.body?.lot || "").trim();
   const price = Number(String(req.body?.price || "0").replace(",", "."));
-  const tva_percent = Number(String(req.body?.tva_percent || "19").replace(",", "."));
+  const tva_percent = normalizeProductVat(req.body?.tva_percent);
   const kindRaw = String(req.body?.kind || "SERVICIU").trim().toUpperCase();
   const active = String(req.body?.active || "1") === "1" ? 1 : 0;
 
@@ -2884,12 +2907,11 @@ app.post("/produse/create", requireAuth, (req, res) => {
 
   if (!name) return res.status(400).send("Denumire required");
   if (!Number.isFinite(price) || price < 0) return res.status(400).send("Preț invalid");
-  if (!Number.isFinite(tva_percent) || tva_percent < 0 || tva_percent > 100) return res.status(400).send("TVA invalid");
 
   db.prepare(`
-    INSERT INTO products (code, name, unit, price, tva_percent, kind, active, company_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(code || null, name, unit, price, tva_percent, kind, active, companyId);
+    INSERT INTO products (code, name, unit, lot, price, tva_percent, kind, active, company_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(code || null, name, unit, lot || null, price, tva_percent, kind, active, companyId);
 
   return res.redirect(req.body?.return_to === "nexora" ? "/nexora/products?ok=created" : "/produse");
 });
