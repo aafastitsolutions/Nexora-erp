@@ -329,7 +329,9 @@ export function verifyUser(email, password) {
 export function canAccessSpvUser(user) {
   if (Number(user?.company_is_demo || 0) === 1) return false;
   const role = String(user?.role || "").trim().toLowerCase();
-  return Boolean(Number(user?.is_super_admin || 0)) || role === "accounting";
+  return Boolean(Number(user?.is_super_admin || 0)) ||
+    Boolean(Number(user?.is_company_admin || 0)) ||
+    role === "accounting";
 }
 
 export function requireModule(moduleKey) {
