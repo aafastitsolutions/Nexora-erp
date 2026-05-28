@@ -157,7 +157,7 @@ function refreshSessionUserAccess(sessionUser) {
   const effectiveModules = isSuperAdmin
     ? [...ALL_MODULE_KEYS]
     : normalizeUserModules(
-        intersectModules(userModules, companyAccess.allowedModules),
+        userModules,
         companyAccess.allowedModules,
         companyAccess.subscription || {},
         roleModules,
@@ -282,7 +282,7 @@ export function verifyUserAttempt(email, password) {
   const effectiveModules = isSuperAdmin
     ? [...ALL_MODULE_KEYS]
     : normalizeUserModules(
-        intersectModules(userModules, companyAccess.allowedModules),
+        userModules,
         companyAccess.allowedModules,
         companyAccess.subscription || {},
         roleModules,

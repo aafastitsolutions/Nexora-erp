@@ -10446,6 +10446,9 @@ app.get("/nexora/settings", requireAuth, (req, res) => {
 const companyId = Number(req.session.user.company_id || 0);
 const isCompanyAdmin = String(req.session.user.role || "").toLowerCase() === "admin" || Number(req.session.user.is_company_admin || 0) === 1;
 const canAccessSpvSettings = canAccessSpvUser(req.session.user);
+if (String(req.query?.tab || "").trim().toLowerCase() === "spv" && canAccessSpvSettings) {
+  return res.redirect("/nexora/anaf/status");
+}
 const companyContext = getCompanySubscriptionContext(companyId);
 const companyDetails = companyContext.company || {};
 const activeSubscription = companyContext.subscription || null;
@@ -10527,6 +10530,9 @@ app.get("/setari", requireAuth,(req,res)=>{
 const companyId = Number(req.session.user.company_id || 0);
 const isCompanyAdmin = String(req.session.user.role || "").toLowerCase() === "admin" || Number(req.session.user.is_company_admin || 0) === 1;
 const canAccessSpvSettings = canAccessSpvUser(req.session.user);
+if (String(req.query?.tab || "").trim().toLowerCase() === "spv" && canAccessSpvSettings) {
+  return res.redirect("/anaf/status");
+}
 const companyContext = getCompanySubscriptionContext(companyId);
 const companyDetails = companyContext.company || {};
 const activeSubscription = companyContext.subscription || null;
