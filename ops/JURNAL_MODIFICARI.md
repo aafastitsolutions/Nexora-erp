@@ -11,6 +11,15 @@
   - exista deja listare `/nexora/clients`, cautare server-side, adaugare client dupa CUI, fisa client, contacte, activitati, contracte, oferte, facturi si timeline;
   - endpoint-ul `/clients/search` exista deja pentru autocomplete in fluxurile care au nevoie de selectare client.
 
+### Infrastructura Cloudflare Nexora
+- A fost creat tunnel-ul Cloudflare dedicat `nexora` pentru hostname-ul `https://nexora.aafastitsolutions.ro`.
+- Hostname-ul nou a fost conectat la aplicatia locala Nexora de pe `127.0.0.1:3000`.
+- Serviciul user systemd `cloudflared-nexora.service` a fost creat si activat.
+- Variabila operationala `APP_URL` a fost setata la `https://nexora.aafastitsolutions.ro`.
+- Ruta veche `crm.qr-lab.ro` a fost scoasa din ingress-ul local `qr-lab`; domeniul raspunde acum cu `404`.
+- Tunnel-ul Cloudflare vechi `minicrm` a fost sters; domeniul vechi `minicrm.qr-lab.ro` raspunde acum cu `1033`.
+- Redirect-urile ANAF/SPV nu au fost modificate in aceasta etapa, pentru a nu schimba fluxul OAuth fara realinierea aplicatiei in contul ANAF.
+
 ## 2026-03-30
 
 ### Identitate si infrastructura
