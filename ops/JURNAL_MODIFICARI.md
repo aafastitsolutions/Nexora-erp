@@ -18,6 +18,8 @@
 - Variabila operationala `APP_URL` a fost setata la `https://nexora.aafastitsolutions.ro`.
 - Ruta veche `crm.qr-lab.ro` a fost scoasa din ingress-ul local `qr-lab`; domeniul raspunde acum cu `404`.
 - Tunnel-ul Cloudflare vechi `minicrm` a fost sters; domeniul vechi `minicrm.qr-lab.ro` raspunde acum cu `1033`.
+- Landing-ul public vechi MiniCRM de pe ruta `/` si `/landing` a fost dezactivat; utilizatorii neautentificati sunt trimisi direct la login, iar utilizatorii autentificati la workspace-ul lor.
+- Pagina de login a fost rebotezata vizual pe Nexora (`Nexora Login`, `Nexora ERP Cloud`), ca pe domeniul nou sa nu mai apara identitatea MiniCRM.
 
 ### ANAF / SPV pe domeniul Nexora
 - Redirect-ul OAuth ANAF implicit a fost mutat pe `https://nexora.aafastitsolutions.ro/oauth/anaf/callback`.

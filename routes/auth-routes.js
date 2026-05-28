@@ -705,12 +705,12 @@ function renderAuthPage({
 </style>
 </head>
 <body>
-  <div class="bg-logo" id="bgLogo">MiniCRM</div>
+  <div class="bg-logo" id="bgLogo">Nexora</div>
   <div class="auth-shell">
     <section class="auth-brand">
-      <div class="brand-chip">MiniCRM Cloud Ready</div>
-      <h2 class="brand-title">CRM și ERP modular pentru companii pe abonament.</h2>
-      <p class="brand-copy">Activezi compania, alegi planul lunar și intri direct într-un workspace propriu, cu utilizatori și module controlate pe rol.</p>
+      <div class="brand-chip">Nexora ERP Cloud</div>
+      <h2 class="brand-title">ERP modular pentru companii care vor control operațional.</h2>
+      <p class="brand-copy">Intri direct în workspace-ul companiei, cu utilizatori, module și documente controlate pe rol.</p>
       <div class="brand-points">
         <div class="brand-point">
           <strong>Companii separate</strong>
@@ -718,7 +718,7 @@ function renderAuthPage({
         </div>
         <div class="brand-point">
           <strong>Planuri predefinite</strong>
-          <span>Activezi modulele CRM și ERP în funcție de abonament.</span>
+          <span>Activezi modulele Nexora în funcție de abonament.</span>
         </div>
         <div class="brand-point">
           <strong>Drepturi pe utilizator</strong>
@@ -809,7 +809,7 @@ export function registerAuthRoutes(app, { db, verifyUser, verifyUserAttempt }) {
 
     res.type("html").send(renderAuthPage({
       title: "Login",
-      heading: "MiniCRM Login",
+      heading: "Nexora Login",
       description: "Intri in compania ta sau pornesti imediat un workspace demo, cu date separate si prezentare completa a platformei.",
       formHtml,
       footerHtml: `Nu ai inca un workspace? <a href="/signup/company">Configureaza companie noua</a>.`

@@ -3822,10 +3822,10 @@ function renderPublicLandingPage(req, res) {
 }
 
 app.get(["/", "/landing"], (req, res) => {
-  if (req.path === "/" && req.session?.user) {
+  if (req.session?.user) {
     return res.redirect(resolveWorkspaceHome(req.session.user));
   }
-  return renderPublicLandingPage(req, res);
+  return res.redirect("/login");
 });
 
 app.get("/contract-form", requireAuth, (req, res) => {
