@@ -1,6 +1,6 @@
 import crypto from "crypto";
 
-const DEFAULT_ANAF_REDIRECT_URI = "https://minicrm.qr-lab.ro/oauth/anaf/callback";
+const DEFAULT_ANAF_REDIRECT_URI = "https://nexora.aafastitsolutions.ro/oauth/anaf/callback";
 const DEFAULT_ANAF_AUTHORIZE_URL = "https://logincert.anaf.ro/anaf-oauth2/v1/authorize";
 const DEFAULT_ANAF_TOKEN_URL = "https://logincert.anaf.ro/anaf-oauth2/v1/token";
 const DEFAULT_INVITE_TTL_HOURS = 24;

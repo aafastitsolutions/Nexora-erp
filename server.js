@@ -4722,7 +4722,7 @@ function setSetting(k,v){
   setCompanySetting(currentRequestCompanyId(), k, v);
 }
 
-const DEFAULT_ANAF_REDIRECT_URI = "https://minicrm.qr-lab.ro/oauth/anaf/callback";
+const DEFAULT_ANAF_REDIRECT_URI = "https://nexora.aafastitsolutions.ro/oauth/anaf/callback";
 
 function normalizeAnafEnvironment(value = "") {
   return String(value || "").trim().toLowerCase() === "prod" ? "prod" : "test";
@@ -10538,7 +10538,7 @@ const settings = {
   capital_social: getSetting("capital_social", ""),
   invoice_footer: getSetting("invoice_footer", "Factura este valabila fara semnatura conform legii."),
   anaf_environment: getSetting("anaf_environment", "test"),
-  anaf_redirect_uri: getSetting("anaf_redirect_uri", "https://minicrm.qr-lab.ro/oauth/anaf/callback"),
+  anaf_redirect_uri: getSetting("anaf_redirect_uri", "https://nexora.aafastitsolutions.ro/oauth/anaf/callback"),
   anaf_client_id: getSetting("anaf_client_id", ""),
   anaf_client_secret: getSetting("anaf_client_secret", "")
 };
@@ -11115,7 +11115,7 @@ ${crmShellStart("setari", "Setări", "Configurare firmă, facturi și identitate
           </div>
           <div>
             <label class="crm-label">Redirect URI</label>
-            <input class="crm-input" name="anaf_redirect_uri" value="${escapeHtml(getSetting("anaf_redirect_uri","https://minicrm.qr-lab.ro/oauth/anaf/callback"))}">
+            <input class="crm-input" name="anaf_redirect_uri" value="${escapeHtml(getSetting("anaf_redirect_uri","https://nexora.aafastitsolutions.ro/oauth/anaf/callback"))}">
           </div>
         </div>
 

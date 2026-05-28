@@ -34,7 +34,7 @@ function ensureUniqueCompanySlug(db, baseName) {
   return slug;
 }
 
-const DEFAULT_ANAF_REDIRECT_URI = "https://minicrm.qr-lab.ro/oauth/anaf/callback";
+const DEFAULT_ANAF_REDIRECT_URI = "https://nexora.aafastitsolutions.ro/oauth/anaf/callback";
 
 function readGlobalSetting(db, key, fallback = "") {
   return db.prepare("SELECT value FROM app_settings WHERE key=?").get(key)?.value || fallback;

@@ -18,7 +18,12 @@
 - Variabila operationala `APP_URL` a fost setata la `https://nexora.aafastitsolutions.ro`.
 - Ruta veche `crm.qr-lab.ro` a fost scoasa din ingress-ul local `qr-lab`; domeniul raspunde acum cu `404`.
 - Tunnel-ul Cloudflare vechi `minicrm` a fost sters; domeniul vechi `minicrm.qr-lab.ro` raspunde acum cu `1033`.
-- Redirect-urile ANAF/SPV nu au fost modificate in aceasta etapa, pentru a nu schimba fluxul OAuth fara realinierea aplicatiei in contul ANAF.
+
+### ANAF / SPV pe domeniul Nexora
+- Redirect-ul OAuth ANAF implicit a fost mutat pe `https://nexora.aafastitsolutions.ro/oauth/anaf/callback`.
+- Setarile salvate in `app_settings` pentru `anaf_redirect_uri` si pentru companiile configurate au fost actualizate pe domeniul Nexora.
+- Aplicatia Nexora a fost repornita dupa actualizarea redirect-ului.
+- Observatie operationala: aceeasi adresa trebuie trecuta si in aplicatia din contul ANAF/SPV, altfel ANAF va respinge callback-ul OAuth.
 
 ## 2026-03-30
 
