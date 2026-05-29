@@ -1,5 +1,35 @@
 # Jurnal Modificari MiniCRM
 
+## 2026-05-29
+
+### Modul Financiar & Contabilitate Nexora
+- A fost mutat punctul principal al modulului Financiar & Contabilitate pe `/nexora/accounting`, fara modificari pe fluxurile de facturi si e-Factura/ANAF.
+- Au fost adaugate tabele contabile dedicate pentru:
+  - plati si incasari operationale;
+  - note contabile / registre;
+  - bugete;
+  - tranzactii bancare pentru reconciliere.
+- Au fost facute functionale meniurile:
+  - `Cheltuieli`;
+  - `Declaratii`;
+  - `Plati`;
+  - `Incasari`;
+  - `Registre`;
+  - `Bonuri de consum`;
+  - `Balanta`;
+  - `Cashflow`;
+  - `Bugete`;
+  - `Reconciliere bancara`;
+  - `TVA`;
+  - `Active fixe`.
+- `Declaratii` include acum catalog rapid pentru modelele uzuale ANAF (`D100`, `D101`, `D112`, `D300`, `D390`, `D394`, `D406`, `D700`, `D710`, `D212`) cu link catre sursa oficiala ANAF pentru descarcarea PDF-urilor inteligente.
+- Fluxul de declaratii ramane local/manual pana la rezolvarea accesului OAuth/SPV ANAF: se pot pregati, incarca fisiere, urmari statusuri si recipise, dar nu s-a activat trimiterea automata catre ANAF.
+- `TVA` centralizeaza informativ TVA colectata din facturi existente si TVA deductibila din cheltuieli, fara sa modifice modulul Facturi.
+- `Active fixe` foloseste registrul de inventar existent si adauga calcul informativ de amortizare liniara.
+- Validare:
+  - au fost rulate verificarile `node --check` pentru `routes/accounting-routes.js`, `src/ui/nexora-accounting-pages.js`, `db.js` si `src/config/erp-modules.js`;
+  - migratia SQLite a fost rulata local si noile tabele au fost create.
+
 ## 2026-05-28
 
 ### Modul Dashboard Nexora

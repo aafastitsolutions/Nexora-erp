@@ -11,7 +11,7 @@ const ERP_MODULES = [
     key: "finance",
     label: "Financiar & Contabilitate",
     icon: "file-text",
-    path: "/nexora/facturi",
+    path: "/nexora/accounting",
     legacyModuleKeys: ["facturi", "accounting"],
     children: [
       { label: "Contabilitate generală", path: "/nexora/accounting" },
@@ -21,6 +21,7 @@ const ERP_MODULES = [
       { label: "Plăți", path: "/nexora/accounting/payments" },
       { label: "Încasări", path: "/nexora/accounting/receipts" },
       { label: "Registre", path: "/nexora/accounting/registers" },
+      { label: "Bonuri de consum", path: "/nexora/accounting/consumption" },
       { label: "Balanță", path: "/nexora/accounting/trial-balance" },
       { label: "Cashflow", path: "/nexora/accounting/cashflow" },
       { label: "Bugete", path: "/nexora/accounting/budgets" },

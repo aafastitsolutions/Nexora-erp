@@ -1,8 +1,18 @@
 import { formatInvoiceDisplayNumber } from "../lib/invoice-numbering.js";
 import {
+  renderNexoraAccountingBankReconciliationPage,
+  renderNexoraAccountingBudgetsPage,
+  renderNexoraAccountingCashflowPage,
+  renderNexoraAccountingConsumptionDetailPage,
+  renderNexoraAccountingConsumptionPage,
   renderNexoraAccountingDeclarationDetailPage,
   renderNexoraAccountingDeclarationsPage,
-  renderNexoraAccountingExpensesPage
+  renderNexoraAccountingExpensesPage,
+  renderNexoraAccountingFixedAssetsPage,
+  renderNexoraAccountingRegistersPage,
+  renderNexoraAccountingTransactionsPage,
+  renderNexoraAccountingTrialBalancePage,
+  renderNexoraAccountingVatPage
 } from "../src/ui/nexora-accounting-pages.js";
 import { renderNexoraHubPage } from "../src/ui/nexora-hub-page.js";
 
@@ -92,6 +102,92 @@ function csvEscape(value) {
   return text;
 }
 
+const ANAF_FORMS_URL = "https://static.anaf.ro/static/10/Anaf/formulare/toate_formularele.htm";
+const ANAF_DECLARATIONS_PORTAL_URL = "https://www.anaf.ro/declaratii/";
+
+const DECLARATION_CATALOG = [
+  {
+    code: "D100",
+    title: "Declarație privind obligațiile de plată la bugetul de stat",
+    description: "Impozit micro/profit, dividende și alte obligații declarative recurente.",
+    frequency: "lunar / trimestrial",
+    channel: "SPV / e-guvernare",
+    sourceUrl: ANAF_FORMS_URL
+  },
+  {
+    code: "D101",
+    title: "Declarație privind impozitul pe profit",
+    description: "Regularizare anuală pentru contribuabilii plătitori de impozit pe profit.",
+    frequency: "anual",
+    channel: "SPV / e-guvernare",
+    sourceUrl: ANAF_FORMS_URL
+  },
+  {
+    code: "D112",
+    title: "Obligații salariale și evidența nominală a persoanelor asigurate",
+    description: "Contribuții sociale, impozit pe venit și salariați/asigurați.",
+    frequency: "lunar",
+    channel: "SPV / e-guvernare",
+    sourceUrl: ANAF_FORMS_URL
+  },
+  {
+    code: "D300",
+    title: "Decont de taxă pe valoarea adăugată",
+    description: "TVA colectată, TVA deductibilă și sold de plată/rambursare.",
+    frequency: "lunar / trimestrial",
+    channel: "SPV / e-guvernare",
+    sourceUrl: ANAF_FORMS_URL
+  },
+  {
+    code: "D390",
+    title: "Declarație recapitulativă operațiuni intracomunitare",
+    description: "Livrări, achiziții și servicii intracomunitare VIES.",
+    frequency: "lunar, când există operațiuni",
+    channel: "SPV / e-guvernare",
+    sourceUrl: ANAF_FORMS_URL
+  },
+  {
+    code: "D394",
+    title: "Declarație informativă livrări/prestări și achiziții pe teritoriul național",
+    description: "Detaliere operațiuni interne relevante pentru TVA.",
+    frequency: "lunar / trimestrial",
+    channel: "SPV / e-guvernare",
+    sourceUrl: ANAF_FORMS_URL
+  },
+  {
+    code: "D406",
+    title: "SAF-T - fișierul standard de control fiscal",
+    description: "Raportare fiscal-contabilă detaliată, de regulă XML validat și PDF cu XML atașat.",
+    frequency: "lunar / trimestrial / anual",
+    channel: "SPV",
+    sourceUrl: ANAF_FORMS_URL
+  },
+  {
+    code: "D700",
+    title: "Declarație pentru înregistrare/modificare categorii obligații fiscale",
+    description: "Vector fiscal: TVA, impozite, contribuții și alte mențiuni fiscale.",
+    frequency: "la modificare",
+    channel: "SPV",
+    sourceUrl: ANAF_FORMS_URL
+  },
+  {
+    code: "D710",
+    title: "Declarație rectificativă",
+    description: "Corectarea obligațiilor declarate anterior.",
+    frequency: "la nevoie",
+    channel: "SPV / e-guvernare",
+    sourceUrl: ANAF_FORMS_URL
+  },
+  {
+    code: "D212",
+    title: "Declarația unică",
+    description: "Venituri persoane fizice, PFA și contribuții estimate/realizate.",
+    frequency: "anual",
+    channel: "Portal formulare ANAF",
+    sourceUrl: ANAF_DECLARATIONS_PORTAL_URL
+  }
+];
+
 function uploadDirPath(path, __dirname, folderName) {
   return path.join(__dirname, "public", "uploads", "accounting", folderName);
 }
@@ -110,6 +206,43 @@ function saveUploadedFile({ fs, path, __dirname, file, folderName }) {
 function moneyInput(value) {
   const normalized = Number(value || 0);
   return Number.isFinite(normalized) ? normalized : 0;
+}
+
+function normalizeAccountingStatus(value, fallback = "NECORELATA") {
+  return String(value || fallback).trim().toUpperCase().replace(/\s+/g, "_");
+}
+
+function buildPeriodFilter(query = {}) {
+  return {
+    dateFrom: parseDateFilter(query.date_from),
+    dateTo: parseDateFilter(query.date_to),
+    status: String(query.status || "").trim().toUpperCase(),
+    search: String(query.search || "").trim()
+  };
+}
+
+function addPeriodWhere({ where, params, dateExpression, filters }) {
+  if (filters.dateFrom) {
+    where.push(`date(${dateExpression}) >= date(?)`);
+    params.push(filters.dateFrom);
+  }
+  if (filters.dateTo) {
+    where.push(`date(${dateExpression}) <= date(?)`);
+    params.push(filters.dateTo);
+  }
+}
+
+function currentDateIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function monthsBetween(startDate, endDate) {
+  const start = String(startDate || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) return 0;
+  const end = String(endDate || currentDateIso()).slice(0, 10);
+  const [sy, sm] = start.split("-").map(Number);
+  const [ey, em] = end.split("-").map(Number);
+  return Math.max(0, (ey - sy) * 12 + (em - sm) + 1);
 }
 
 function declarationStatusBadge(escapeHtml, status) {
@@ -185,6 +318,25 @@ export function registerAccountingRoutes(app, { db, requireAuth, requireSpvAcces
       FROM anaf_inbox
       WHERE company_id=?
     `).get(companyId) || {};
+    const cash = db.prepare(`
+      SELECT
+        IFNULL(SUM(CASE WHEN direction='IN' THEN amount ELSE 0 END), 0) AS in_amount,
+        IFNULL(SUM(CASE WHEN direction='OUT' THEN amount ELSE 0 END), 0) AS out_amount,
+        SUM(CASE WHEN direction='IN' THEN 1 ELSE 0 END) AS in_count,
+        SUM(CASE WHEN direction='OUT' THEN 1 ELSE 0 END) AS out_count
+      FROM accounting_cash_transactions
+      WHERE company_id=?
+    `).get(companyId) || {};
+    const entries = db.prepare(`
+      SELECT COUNT(*) AS total_count, IFNULL(SUM(amount),0) AS total_amount
+      FROM accounting_entries
+      WHERE company_id=?
+    `).get(companyId) || {};
+    const budgets = db.prepare(`
+      SELECT COUNT(*) AS total_count, IFNULL(SUM(planned_amount),0) AS total_amount
+      FROM accounting_budgets
+      WHERE company_id=?
+    `).get(companyId) || {};
 
     return res.type("html").send(renderNexoraHubPage({
       companyName: req.session.user.company_name || "",
@@ -192,22 +344,28 @@ export function registerAccountingRoutes(app, { db, requireAuth, requireSpvAcces
       currentPath: "/nexora/accounting",
       eyebrow: "Financiar & Contabilitate",
       title: "Contabilitate",
-      description: "Hub Nexora pentru facturi, cheltuieli, declarații, bonuri de consum și e-Factura.",
+      description: "Hub Nexora pentru cheltuieli, plăți, încasări, registre, bugete, TVA, declarații și active fixe.",
       stats: [
-        { icon: "F", label: "Facturi", value: invoiceStats.total_count || 0, hint: `${fmtMoney(invoiceStats.total_amount || 0)} total` },
-        { icon: "O", label: "Deschise", value: invoiceStats.open_count || 0 },
         { icon: "C", label: "Cheltuieli", value: expenses.total_count || 0, hint: `${fmtMoney(expenses.total_amount || 0)} total` },
+        { icon: "IN", label: "Încasări", value: cash.in_count || 0, hint: `${fmtMoney(cash.in_amount || 0)} total` },
+        { icon: "OUT", label: "Plăți", value: cash.out_count || 0, hint: `${fmtMoney(cash.out_amount || 0)} total` },
+        { icon: "REG", label: "Note contabile", value: entries.total_count || 0, hint: `${fmtMoney(entries.total_amount || 0)} rulaj` },
         { icon: "D", label: "Declarații deschise", value: declarations.open_count || 0 },
-        { icon: "SPV", label: "Inbox nou", value: inbox.new_count || 0 }
+        { icon: "BUG", label: "Bugete", value: budgets.total_count || 0, hint: `${fmtMoney(budgets.total_amount || 0)} planificat` }
       ],
       links: [
-        { label: "Facturi Nexora", href: "/nexora/facturi" },
-        { label: "ANAF Status", href: "/nexora/anaf/status" },
-        { label: "Inbox e-Factura", href: "/nexora/anaf/inbox" },
         { label: "Cheltuieli", href: "/nexora/accounting/expenses" },
         { label: "Declarații", href: "/nexora/accounting/declarations" },
-        { label: "Bonuri de consum", href: "/nexora/accounting/consumption" },
-        { label: "Receivables", href: "/nexora/accounting/receivables" }
+        { label: "Plăți", href: "/nexora/accounting/payments" },
+        { label: "Încasări", href: "/nexora/accounting/receipts" },
+        { label: "Registre", href: "/nexora/accounting/registers" },
+        { label: "Balanță", href: "/nexora/accounting/trial-balance" },
+        { label: "Cashflow", href: "/nexora/accounting/cashflow" },
+        { label: "Bugete", href: "/nexora/accounting/budgets" },
+        { label: "Reconciliere bancară", href: "/nexora/accounting/bank-reconciliation" },
+        { label: "TVA", href: "/nexora/accounting/vat" },
+        { label: "Active fixe", href: "/nexora/accounting/fixed-assets" },
+        { label: "Bonuri de consum", href: "/nexora/accounting/consumption" }
       ]
     }));
   });
@@ -312,7 +470,8 @@ export function registerAccountingRoutes(app, { db, requireAuth, requireSpvAcces
       rows,
       stats,
       ok: String(req.query?.ok || ""),
-      filters: { statusFilter, typeFilter, search }
+      filters: { statusFilter, typeFilter, search },
+      declarationCatalog: DECLARATION_CATALOG
     }));
   });
 
@@ -331,6 +490,663 @@ export function registerAccountingRoutes(app, { db, requireAuth, requireSpvAcces
       user: req.session.user,
       row,
       ok: String(req.query?.ok || "")
+    }));
+  });
+
+  function renderCashTransactions(req, res, direction) {
+    const companyId = Number(req.session.user.company_id || 0);
+    const filters = buildPeriodFilter(req.query);
+    const where = ["company_id=?", "direction=?"];
+    const params = [companyId, direction];
+    addPeriodWhere({ where, params, dateExpression: "COALESCE(transaction_date, created_at)", filters });
+    if (filters.status) {
+      where.push("UPPER(COALESCE(status,''))=?");
+      params.push(filters.status);
+    }
+    if (filters.search) {
+      const like = `%${filters.search.toLowerCase()}%`;
+      where.push("(LOWER(COALESCE(partner_name,'')) LIKE ? OR LOWER(COALESCE(partner_cui,'')) LIKE ? OR LOWER(COALESCE(document_number,'')) LIKE ? OR LOWER(COALESCE(reference,'')) LIKE ? OR LOWER(COALESCE(category,'')) LIKE ?)");
+      params.push(like, like, like, like, like);
+    }
+
+    const rows = db.prepare(`
+      SELECT id, direction, transaction_date, partner_name, partner_cui, document_type, document_number,
+             category, payment_method, bank_account, amount, vat_amount, currency, reference, status,
+             matched_document_type, matched_document_id, notes, attachment_path, created_at
+      FROM accounting_cash_transactions
+      WHERE ${where.join(" AND ")}
+      ORDER BY date(COALESCE(transaction_date, created_at)) DESC, id DESC
+      LIMIT 250
+    `).all(...params);
+
+    const stats = db.prepare(`
+      SELECT
+        COUNT(*) AS total_count,
+        IFNULL(SUM(amount),0) AS total_amount,
+        SUM(CASE WHEN UPPER(COALESCE(status,'')) IN ('CONFIRMATA','RECONCILIATA') THEN 1 ELSE 0 END) AS confirmed_count,
+        SUM(CASE WHEN UPPER(COALESCE(status,'')) NOT IN ('CONFIRMATA','RECONCILIATA') THEN 1 ELSE 0 END) AS open_count
+      FROM accounting_cash_transactions
+      WHERE company_id=? AND direction=?
+    `).get(companyId, direction) || {};
+
+    return res.type("html").send(renderNexoraAccountingTransactionsPage({
+      companyName: req.session.user.company_name || "",
+      user: req.session.user,
+      direction,
+      rows,
+      stats,
+      filters,
+      fmtMoney,
+      ok: String(req.query?.ok || "")
+    }));
+  }
+
+  app.get("/nexora/accounting/payments", requireAuth, (req, res) => renderCashTransactions(req, res, "OUT"));
+  app.get("/nexora/accounting/receipts", requireAuth, (req, res) => renderCashTransactions(req, res, "IN"));
+
+  function createCashTransaction(req, res, direction) {
+    const companyId = Number(req.session.user.company_id || 0);
+    const attachmentPath = saveUploadedFile({ fs, path, __dirname, file: req.file, folderName: "cash" });
+    const finalDirection = direction === "IN" ? "IN" : "OUT";
+    db.prepare(`
+      INSERT INTO accounting_cash_transactions (
+        company_id, direction, transaction_date, partner_name, partner_cui, document_type, document_number,
+        category, payment_method, bank_account, amount, vat_amount, currency, reference, status, notes,
+        attachment_path, created_by_email, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `).run(
+      companyId,
+      finalDirection,
+      String(req.body?.transaction_date || "").trim() || currentDateIso(),
+      String(req.body?.partner_name || "").trim(),
+      String(req.body?.partner_cui || "").trim(),
+      String(req.body?.document_type || "").trim().toUpperCase(),
+      String(req.body?.document_number || "").trim(),
+      String(req.body?.category || "").trim().toUpperCase(),
+      String(req.body?.payment_method || "BANCA").trim().toUpperCase(),
+      String(req.body?.bank_account || "").trim(),
+      moneyInput(req.body?.amount),
+      moneyInput(req.body?.vat_amount),
+      String(req.body?.currency || "RON").trim().toUpperCase(),
+      String(req.body?.reference || "").trim(),
+      normalizeAccountingStatus(req.body?.status),
+      String(req.body?.notes || "").trim(),
+      attachmentPath || null,
+      String(req.session.user.email || "").trim().toLowerCase()
+    );
+    res.redirect(finalDirection === "IN" ? "/nexora/accounting/receipts?ok=created" : "/nexora/accounting/payments?ok=created");
+  }
+
+  app.post("/nexora/accounting/payments/create", requireAuth, upload.single("attachment"), (req, res) => createCashTransaction(req, res, "OUT"));
+  app.post("/nexora/accounting/receipts/create", requireAuth, upload.single("attachment"), (req, res) => createCashTransaction(req, res, "IN"));
+
+  app.get("/nexora/accounting/registers", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const filters = buildPeriodFilter(req.query);
+    const where = ["company_id=?"];
+    const params = [companyId];
+    addPeriodWhere({ where, params, dateExpression: "COALESCE(entry_date, created_at)", filters });
+    if (filters.search) {
+      const like = `%${filters.search.toLowerCase()}%`;
+      where.push("(LOWER(COALESCE(document_type,'')) LIKE ? OR LOWER(COALESCE(document_number,'')) LIKE ? OR LOWER(COALESCE(partner_name,'')) LIKE ? OR LOWER(COALESCE(account_debit,'')) LIKE ? OR LOWER(COALESCE(account_credit,'')) LIKE ? OR LOWER(COALESCE(description,'')) LIKE ?)");
+      params.push(like, like, like, like, like, like);
+    }
+
+    const rows = db.prepare(`
+      SELECT id, entry_date, document_type, document_number, partner_name, account_debit, account_credit,
+             amount, currency, tax_code, description, source_type, created_at
+      FROM accounting_entries
+      WHERE ${where.join(" AND ")}
+      ORDER BY date(COALESCE(entry_date, created_at)) DESC, id DESC
+      LIMIT 300
+    `).all(...params);
+    const stats = db.prepare(`
+      SELECT COUNT(*) AS total_count,
+             IFNULL(SUM(amount),0) AS debit_total,
+             IFNULL(SUM(amount),0) AS credit_total,
+             SUM(CASE WHEN UPPER(COALESCE(source_type,''))='MANUAL' THEN 1 ELSE 0 END) AS manual_count
+      FROM accounting_entries
+      WHERE company_id=?
+    `).get(companyId) || {};
+
+    return res.type("html").send(renderNexoraAccountingRegistersPage({
+      companyName: req.session.user.company_name || "",
+      user: req.session.user,
+      rows,
+      stats,
+      filters,
+      fmtMoney,
+      ok: String(req.query?.ok || "")
+    }));
+  });
+
+  app.post("/nexora/accounting/registers/create", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    db.prepare(`
+      INSERT INTO accounting_entries (
+        company_id, entry_date, document_type, document_number, partner_name,
+        account_debit, account_credit, amount, currency, tax_code, description,
+        source_type, created_by_email, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'MANUAL', ?, datetime('now'))
+    `).run(
+      companyId,
+      String(req.body?.entry_date || "").trim() || currentDateIso(),
+      String(req.body?.document_type || "").trim().toUpperCase(),
+      String(req.body?.document_number || "").trim(),
+      String(req.body?.partner_name || "").trim(),
+      String(req.body?.account_debit || "").trim(),
+      String(req.body?.account_credit || "").trim(),
+      moneyInput(req.body?.amount),
+      String(req.body?.currency || "RON").trim().toUpperCase(),
+      String(req.body?.tax_code || "").trim().toUpperCase(),
+      String(req.body?.description || "").trim(),
+      String(req.session.user.email || "").trim().toLowerCase()
+    );
+    res.redirect("/nexora/accounting/registers?ok=created");
+  });
+
+  app.get("/nexora/accounting/trial-balance", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const filters = buildPeriodFilter(req.query);
+    const where = ["company_id=?"];
+    const params = [companyId];
+    addPeriodWhere({ where, params, dateExpression: "COALESCE(entry_date, created_at)", filters });
+    const whereSql = where.join(" AND ");
+
+    const debitRows = db.prepare(`
+      SELECT account_debit AS account, IFNULL(SUM(amount),0) AS debit_turnover
+      FROM accounting_entries
+      WHERE ${whereSql}
+      GROUP BY account_debit
+    `).all(...params);
+    const creditRows = db.prepare(`
+      SELECT account_credit AS account, IFNULL(SUM(amount),0) AS credit_turnover
+      FROM accounting_entries
+      WHERE ${whereSql}
+      GROUP BY account_credit
+    `).all(...params);
+
+    const byAccount = new Map();
+    for (const row of debitRows) {
+      const account = String(row.account || "").trim() || "-";
+      byAccount.set(account, { account, debit_turnover: Number(row.debit_turnover || 0), credit_turnover: 0 });
+    }
+    for (const row of creditRows) {
+      const account = String(row.account || "").trim() || "-";
+      const current = byAccount.get(account) || { account, debit_turnover: 0, credit_turnover: 0 };
+      current.credit_turnover = Number(row.credit_turnover || 0);
+      byAccount.set(account, current);
+    }
+    const balances = Array.from(byAccount.values()).sort((a, b) => a.account.localeCompare(b.account, "ro")).map((row) => {
+      const net = Number(row.debit_turnover || 0) - Number(row.credit_turnover || 0);
+      return {
+        ...row,
+        debit_balance: net > 0 ? net : 0,
+        credit_balance: net < 0 ? Math.abs(net) : 0
+      };
+    });
+    const totals = balances.reduce((acc, row) => {
+      acc.debit_turnover += Number(row.debit_turnover || 0);
+      acc.credit_turnover += Number(row.credit_turnover || 0);
+      acc.debit_balance += Number(row.debit_balance || 0);
+      acc.credit_balance += Number(row.credit_balance || 0);
+      return acc;
+    }, { debit_turnover: 0, credit_turnover: 0, debit_balance: 0, credit_balance: 0 });
+
+    return res.type("html").send(renderNexoraAccountingTrialBalancePage({
+      companyName: req.session.user.company_name || "",
+      user: req.session.user,
+      balances,
+      totals,
+      filters,
+      fmtMoney
+    }));
+  });
+
+  app.get("/nexora/accounting/cashflow", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const summary = db.prepare(`
+      SELECT substr(COALESCE(transaction_date, created_at), 1, 7) AS period,
+             IFNULL(SUM(CASE WHEN direction='IN' THEN amount ELSE 0 END),0) AS in_amount,
+             IFNULL(SUM(CASE WHEN direction='OUT' THEN amount ELSE 0 END),0) AS out_amount,
+             COUNT(*) AS total_count
+      FROM accounting_cash_transactions
+      WHERE company_id=?
+      GROUP BY period
+      ORDER BY period DESC
+      LIMIT 12
+    `).all(companyId);
+    const recent = db.prepare(`
+      SELECT id, direction, transaction_date, partner_name, category, amount, currency, status
+      FROM accounting_cash_transactions
+      WHERE company_id=?
+      ORDER BY date(COALESCE(transaction_date, created_at)) DESC, id DESC
+      LIMIT 20
+    `).all(companyId);
+    const totals = db.prepare(`
+      SELECT COUNT(*) AS total_count,
+             IFNULL(SUM(CASE WHEN direction='IN' THEN amount ELSE 0 END),0) AS in_amount,
+             IFNULL(SUM(CASE WHEN direction='OUT' THEN amount ELSE 0 END),0) AS out_amount
+      FROM accounting_cash_transactions
+      WHERE company_id=?
+    `).get(companyId) || {};
+
+    return res.type("html").send(renderNexoraAccountingCashflowPage({
+      companyName: req.session.user.company_name || "",
+      user: req.session.user,
+      summary,
+      recent,
+      totals,
+      fmtMoney
+    }));
+  });
+
+  app.get("/nexora/accounting/budgets", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const rows = db.prepare(`
+      SELECT b.*,
+             IFNULL((
+               SELECT SUM(t.amount)
+               FROM accounting_cash_transactions t
+               WHERE t.company_id=b.company_id
+                 AND date(COALESCE(t.transaction_date, t.created_at)) BETWEEN date(b.period_start) AND date(b.period_end)
+                 AND UPPER(COALESCE(t.category,'')) = UPPER(COALESCE(b.category,''))
+                 AND t.direction = CASE WHEN UPPER(COALESCE(b.budget_type,''))='VENIT' THEN 'IN' ELSE 'OUT' END
+             ), 0) AS actual_amount
+      FROM accounting_budgets b
+      WHERE b.company_id=?
+      ORDER BY date(b.period_start) DESC, b.id DESC
+      LIMIT 200
+    `).all(companyId);
+    const totals = rows.reduce((acc, row) => {
+      acc.planned_amount += Number(row.planned_amount || 0);
+      acc.actual_amount += Number(row.actual_amount || 0);
+      return acc;
+    }, { planned_amount: 0, actual_amount: 0 });
+
+    return res.type("html").send(renderNexoraAccountingBudgetsPage({
+      companyName: req.session.user.company_name || "",
+      user: req.session.user,
+      rows,
+      totals,
+      fmtMoney,
+      ok: String(req.query?.ok || "")
+    }));
+  });
+
+  app.post("/nexora/accounting/budgets/create", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    db.prepare(`
+      INSERT INTO accounting_budgets (
+        company_id, period_label, period_start, period_end, budget_type, category,
+        planned_amount, currency, owner, notes, created_by_email, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `).run(
+      companyId,
+      String(req.body?.period_label || "").trim(),
+      String(req.body?.period_start || "").trim() || currentDateIso(),
+      String(req.body?.period_end || "").trim() || currentDateIso(),
+      String(req.body?.budget_type || "CHELTUIALA").trim().toUpperCase(),
+      String(req.body?.category || "").trim().toUpperCase(),
+      moneyInput(req.body?.planned_amount),
+      String(req.body?.currency || "RON").trim().toUpperCase(),
+      String(req.body?.owner || "").trim(),
+      String(req.body?.notes || "").trim(),
+      String(req.session.user.email || "").trim().toLowerCase()
+    );
+    res.redirect("/nexora/accounting/budgets?ok=created");
+  });
+
+  app.get("/nexora/accounting/bank-reconciliation", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const rows = db.prepare(`
+      SELECT id, bank_name, account_iban, transaction_date, value_date, direction, partner_name,
+             description, reference, amount, currency, reconciliation_status, matched_cash_transaction_id, notes
+      FROM accounting_bank_transactions
+      WHERE company_id=?
+      ORDER BY date(COALESCE(transaction_date, created_at)) DESC, id DESC
+      LIMIT 200
+    `).all(companyId);
+    const candidates = db.prepare(`
+      SELECT id, direction, transaction_date, partner_name, amount, currency
+      FROM accounting_cash_transactions
+      WHERE company_id=?
+        AND UPPER(COALESCE(status,'')) <> 'RECONCILIATA'
+      ORDER BY date(COALESCE(transaction_date, created_at)) DESC, id DESC
+      LIMIT 80
+    `).all(companyId);
+    const stats = db.prepare(`
+      SELECT COUNT(*) AS total_count,
+             SUM(CASE WHEN UPPER(COALESCE(reconciliation_status,''))='RECONCILIATA' THEN 1 ELSE 0 END) AS matched_count,
+             SUM(CASE WHEN UPPER(COALESCE(reconciliation_status,''))<>'RECONCILIATA' THEN 1 ELSE 0 END) AS open_count
+      FROM accounting_bank_transactions
+      WHERE company_id=?
+    `).get(companyId) || {};
+
+    return res.type("html").send(renderNexoraAccountingBankReconciliationPage({
+      companyName: req.session.user.company_name || "",
+      user: req.session.user,
+      rows,
+      candidates,
+      stats,
+      fmtMoney,
+      ok: String(req.query?.ok || "")
+    }));
+  });
+
+  app.post("/nexora/accounting/bank-reconciliation/create", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    db.prepare(`
+      INSERT INTO accounting_bank_transactions (
+        company_id, bank_name, account_iban, transaction_date, value_date, direction,
+        partner_name, description, reference, amount, currency, reconciliation_status,
+        notes, created_by_email, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'NECORELATA', ?, ?, datetime('now'))
+    `).run(
+      companyId,
+      String(req.body?.bank_name || "").trim(),
+      String(req.body?.account_iban || "").trim(),
+      String(req.body?.transaction_date || "").trim() || currentDateIso(),
+      String(req.body?.value_date || "").trim() || null,
+      String(req.body?.direction || "OUT").trim().toUpperCase() === "IN" ? "IN" : "OUT",
+      String(req.body?.partner_name || "").trim(),
+      String(req.body?.description || "").trim(),
+      String(req.body?.reference || "").trim(),
+      moneyInput(req.body?.amount),
+      String(req.body?.currency || "RON").trim().toUpperCase(),
+      String(req.body?.notes || "").trim(),
+      String(req.session.user.email || "").trim().toLowerCase()
+    );
+    res.redirect("/nexora/accounting/bank-reconciliation?ok=created");
+  });
+
+  app.post("/nexora/accounting/bank-reconciliation/:id/match", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const bankId = Number(req.params.id || 0);
+    const cashId = Number(req.body?.cash_transaction_id || 0);
+    const bankRow = db.prepare(`SELECT id FROM accounting_bank_transactions WHERE id=? AND company_id=?`).get(bankId, companyId);
+    if (!bankRow) return res.status(404).send("Tranzacția bancară nu există.");
+
+    if (!cashId) {
+      db.prepare(`
+        UPDATE accounting_bank_transactions
+        SET reconciliation_status='NECORELATA', matched_cash_transaction_id=NULL, updated_at=datetime('now')
+        WHERE id=? AND company_id=?
+      `).run(bankId, companyId);
+      return res.redirect("/nexora/accounting/bank-reconciliation?ok=updated");
+    }
+
+    const cashRow = db.prepare(`SELECT id FROM accounting_cash_transactions WHERE id=? AND company_id=?`).get(cashId, companyId);
+    if (!cashRow) return res.status(404).send("Tranzacția cash nu există.");
+
+    db.exec("BEGIN");
+    try {
+      db.prepare(`
+        UPDATE accounting_bank_transactions
+        SET reconciliation_status='RECONCILIATA', matched_cash_transaction_id=?, updated_at=datetime('now')
+        WHERE id=? AND company_id=?
+      `).run(cashId, bankId, companyId);
+      db.prepare(`
+        UPDATE accounting_cash_transactions
+        SET status='RECONCILIATA', updated_at=datetime('now')
+        WHERE id=? AND company_id=?
+      `).run(cashId, companyId);
+      db.exec("COMMIT");
+    } catch (error) {
+      try { db.exec("ROLLBACK"); } catch {}
+      return res.status(500).send(`Reconcilierea nu a putut fi salvată: ${String(error?.message || error)}`);
+    }
+    res.redirect("/nexora/accounting/bank-reconciliation?ok=updated");
+  });
+
+  app.get("/nexora/accounting/vat", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const filters = buildPeriodFilter(req.query);
+    const invoiceWhere = ["f.company_id=?"];
+    const invoiceParams = [companyId];
+    addPeriodWhere({ where: invoiceWhere, params: invoiceParams, dateExpression: "COALESCE(f.data_emitere, f.created_at)", filters });
+    const expenseWhere = ["company_id=?"];
+    const expenseParams = [companyId];
+    addPeriodWhere({ where: expenseWhere, params: expenseParams, dateExpression: "COALESCE(issue_date, created_at)", filters });
+
+    const outputRows = db.prepare(`
+      SELECT COALESCE(f.data_emitere, f.created_at) AS doc_date,
+             'TVA colectată' AS source,
+             c.name AS partner_name,
+             f.factura_nr AS doc_number,
+             f.subtotal AS base_amount,
+             f.tva_valoare AS vat_amount,
+             'TVA19' AS tax_code
+      FROM facturi f
+      JOIN clients c ON c.id=f.client_id AND c.company_id=f.company_id
+      WHERE ${invoiceWhere.join(" AND ")}
+      ORDER BY date(COALESCE(f.data_emitere, f.created_at)) DESC, f.id DESC
+      LIMIT 300
+    `).all(...invoiceParams);
+    const inputRows = db.prepare(`
+      SELECT COALESCE(issue_date, created_at) AS doc_date,
+             'TVA deductibilă' AS source,
+             supplier_name AS partner_name,
+             doc_number,
+             subtotal AS base_amount,
+             vat_amount,
+             'TVA deductibilă' AS tax_code
+      FROM accounting_expenses
+      WHERE ${expenseWhere.join(" AND ")}
+      ORDER BY date(COALESCE(issue_date, created_at)) DESC, id DESC
+      LIMIT 300
+    `).all(...expenseParams);
+    const rows = [...outputRows, ...inputRows]
+      .sort((a, b) => String(b.doc_date || "").localeCompare(String(a.doc_date || "")))
+      .slice(0, 500);
+    const stats = {
+      output_vat: outputRows.reduce((sum, row) => sum + Number(row.vat_amount || 0), 0),
+      input_vat: inputRows.reduce((sum, row) => sum + Number(row.vat_amount || 0), 0)
+    };
+
+    return res.type("html").send(renderNexoraAccountingVatPage({
+      companyName: req.session.user.company_name || "",
+      user: req.session.user,
+      rows,
+      stats,
+      filters,
+      fmtMoney
+    }));
+  });
+
+  app.get("/nexora/accounting/fixed-assets", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const today = currentDateIso();
+    const rows = db.prepare(`
+      SELECT id, asset_code, asset_name, category, purchase_date, purchase_value, status, supplier_name,
+             invoice_number, useful_life_months, residual_value, depreciation_method
+      FROM inventory_assets
+      WHERE company_id=? AND UPPER(COALESCE(asset_type,''))='MIJLOC_FIX'
+      ORDER BY date(COALESCE(purchase_date, created_at)) DESC, id DESC
+      LIMIT 250
+    `).all(companyId).map((row) => {
+      const usefulLife = Math.max(1, Number(row.useful_life_months || 36));
+      const depreciable = Math.max(0, Number(row.purchase_value || 0) - Number(row.residual_value || 0));
+      const monthly = depreciable / usefulLife;
+      const elapsed = Math.min(usefulLife, monthsBetween(row.purchase_date, today));
+      const accumulated = Math.min(depreciable, monthly * elapsed);
+      return {
+        ...row,
+        monthly_depreciation: monthly,
+        accumulated_depreciation: accumulated,
+        net_value: Math.max(0, Number(row.purchase_value || 0) - accumulated)
+      };
+    });
+    const stats = rows.reduce((acc, row) => {
+      acc.total_count += 1;
+      acc.purchase_value += Number(row.purchase_value || 0);
+      acc.monthly_depreciation += Number(row.monthly_depreciation || 0);
+      acc.net_value += Number(row.net_value || 0);
+      return acc;
+    }, { total_count: 0, purchase_value: 0, monthly_depreciation: 0, net_value: 0 });
+
+    return res.type("html").send(renderNexoraAccountingFixedAssetsPage({
+      companyName: req.session.user.company_name || "",
+      user: req.session.user,
+      rows,
+      stats,
+      fmtMoney,
+      ok: String(req.query?.ok || "")
+    }));
+  });
+
+  app.post("/nexora/accounting/fixed-assets/create", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    db.prepare(`
+      INSERT INTO inventory_assets (
+        company_id, asset_code, asset_name, category, asset_type, unit, quantity_scriptic,
+        minimum_quantity, location, purchase_date, purchase_value, status, supplier_name,
+        invoice_number, useful_life_months, residual_value, depreciation_method, notes,
+        created_by_email, updated_at
+      )
+      VALUES (?, ?, ?, ?, 'MIJLOC_FIX', 'buc', 1, 0, ?, ?, ?, 'IN_STOC', ?, ?, ?, ?, 'LINIARA', ?, ?, datetime('now'))
+    `).run(
+      companyId,
+      String(req.body?.asset_code || "").trim(),
+      String(req.body?.asset_name || "").trim(),
+      String(req.body?.category || "IMOBILIZARI").trim().toUpperCase(),
+      String(req.body?.location || "").trim(),
+      String(req.body?.purchase_date || "").trim() || currentDateIso(),
+      moneyInput(req.body?.purchase_value),
+      String(req.body?.supplier_name || "").trim(),
+      String(req.body?.invoice_number || "").trim(),
+      Math.max(1, Number(req.body?.useful_life_months || 36)),
+      moneyInput(req.body?.residual_value),
+      String(req.body?.notes || "").trim(),
+      String(req.session.user.email || "").trim().toLowerCase()
+    );
+    res.redirect("/nexora/accounting/fixed-assets?ok=created");
+  });
+
+  app.get("/nexora/accounting/consumption", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const products = db.prepare(`
+      SELECT id, code, name, unit, price
+      FROM products
+      WHERE company_id=? AND active=1
+      ORDER BY name COLLATE NOCASE ASC
+    `).all(companyId);
+    const vouchers = db.prepare(`
+      SELECT cv.id, cv.voucher_number, cv.issue_date, cv.department, cv.issued_to, cv.notes,
+             IFNULL(SUM(cvi.line_total), 0) AS total_amount,
+             COUNT(cvi.id) AS items_count
+      FROM consumption_vouchers cv
+      LEFT JOIN consumption_voucher_items cvi ON cvi.voucher_id = cv.id
+      WHERE cv.company_id=?
+      GROUP BY cv.id
+      ORDER BY date(cv.issue_date) DESC, cv.id DESC
+      LIMIT 150
+    `).all(companyId);
+    const stats = db.prepare(`
+      SELECT
+        COUNT(DISTINCT cv.id) AS total_count,
+        IFNULL(SUM(cvi.line_total),0) AS total_amount,
+        COUNT(DISTINCT CASE WHEN substr(COALESCE(cv.issue_date, cv.created_at, ''), 1, 7)=strftime('%Y-%m','now') THEN cv.id END) AS month_count
+      FROM consumption_vouchers cv
+      LEFT JOIN consumption_voucher_items cvi ON cvi.voucher_id=cv.id
+      WHERE cv.company_id=?
+    `).get(companyId) || {};
+
+    return res.type("html").send(renderNexoraAccountingConsumptionPage({
+      companyName: req.session.user.company_name || "",
+      user: req.session.user,
+      products,
+      vouchers,
+      stats,
+      fmtMoney,
+      ok: String(req.query?.ok || "")
+    }));
+  });
+
+  app.post("/nexora/accounting/consumption/create", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const productIds = Array.isArray(req.body?.product_id) ? req.body.product_id : [req.body?.product_id];
+    const quantities = Array.isArray(req.body?.qty) ? req.body.qty : [req.body?.qty];
+    const units = Array.isArray(req.body?.unit) ? req.body.unit : [req.body?.unit];
+    const unitCosts = Array.isArray(req.body?.unit_cost) ? req.body.unit_cost : [req.body?.unit_cost];
+    const items = [];
+
+    for (let index = 0; index < productIds.length; index += 1) {
+      const productId = Number(productIds[index] || 0);
+      const qty = moneyInput(quantities[index]);
+      if (!productId || qty <= 0) continue;
+      const product = db.prepare(`SELECT id, name, unit, price FROM products WHERE id=? AND company_id=?`).get(productId, companyId);
+      if (!product) continue;
+      const unit = String(units[index] || product.unit || "buc").trim();
+      const unitCost = moneyInput(unitCosts[index] || product.price || 0);
+      items.push({
+        productId,
+        productName: product.name,
+        unit,
+        qty,
+        unitCost,
+        lineTotal: qty * unitCost
+      });
+    }
+
+    if (!items.length) return res.status(400).send("Adaugă cel puțin o poziție în bon.");
+
+    db.exec("BEGIN");
+    try {
+      const voucherResult = db.prepare(`
+        INSERT INTO consumption_vouchers (company_id, voucher_number, issue_date, department, issued_to, notes, created_by_email)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        companyId,
+        String(req.body?.voucher_number || "").trim(),
+        String(req.body?.issue_date || "").trim() || currentDateIso(),
+        String(req.body?.department || "").trim(),
+        String(req.body?.issued_to || "").trim(),
+        String(req.body?.notes || "").trim(),
+        String(req.session.user.email || "").trim().toLowerCase()
+      );
+      const voucherId = Number(voucherResult.lastInsertRowid);
+      const insertItem = db.prepare(`
+        INSERT INTO consumption_voucher_items (voucher_id, product_id, product_name, qty, unit, unit_cost, line_total, company_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const item of items) {
+        insertItem.run(voucherId, item.productId, item.productName, item.qty, item.unit, item.unitCost, item.lineTotal, companyId);
+      }
+      db.exec("COMMIT");
+      res.redirect(`/nexora/accounting/consumption/${voucherId}?ok=created`);
+    } catch (error) {
+      try { db.exec("ROLLBACK"); } catch {}
+      res.status(500).send(`Bonul de consum nu a putut fi salvat: ${String(error?.message || error)}`);
+    }
+  });
+
+  app.get("/nexora/accounting/consumption/:id", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const id = Number(req.params.id || 0);
+    const voucher = db.prepare(`
+      SELECT id, voucher_number, issue_date, department, issued_to, notes, created_by_email, created_at
+      FROM consumption_vouchers
+      WHERE id=? AND company_id=?
+    `).get(id, companyId);
+    if (!voucher) return res.status(404).send("Bon inexistent");
+    const items = db.prepare(`
+      SELECT product_name, qty, unit, unit_cost, line_total
+      FROM consumption_voucher_items
+      WHERE voucher_id=? AND company_id=?
+      ORDER BY id ASC
+    `).all(id, companyId);
+
+    return res.type("html").send(renderNexoraAccountingConsumptionDetailPage({
+      companyName: req.session.user.company_name || "",
+      user: req.session.user,
+      voucher,
+      items,
+      fmtMoney
     }));
   });
 

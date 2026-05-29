@@ -815,6 +815,91 @@ export function migrate() {
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS accounting_cash_transactions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      direction TEXT NOT NULL DEFAULT 'OUT',
+      transaction_date TEXT NOT NULL DEFAULT (date('now')),
+      partner_name TEXT,
+      partner_cui TEXT,
+      document_type TEXT,
+      document_number TEXT,
+      category TEXT,
+      payment_method TEXT NOT NULL DEFAULT 'BANCA',
+      bank_account TEXT,
+      amount REAL NOT NULL DEFAULT 0,
+      vat_amount REAL NOT NULL DEFAULT 0,
+      currency TEXT NOT NULL DEFAULT 'RON',
+      reference TEXT,
+      status TEXT NOT NULL DEFAULT 'NECORELATA',
+      matched_document_type TEXT,
+      matched_document_id INTEGER,
+      notes TEXT,
+      attachment_path TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS accounting_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      entry_date TEXT NOT NULL DEFAULT (date('now')),
+      document_type TEXT,
+      document_number TEXT,
+      partner_name TEXT,
+      account_debit TEXT NOT NULL,
+      account_credit TEXT NOT NULL,
+      amount REAL NOT NULL DEFAULT 0,
+      currency TEXT NOT NULL DEFAULT 'RON',
+      tax_code TEXT,
+      description TEXT,
+      source_type TEXT NOT NULL DEFAULT 'MANUAL',
+      source_id INTEGER,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS accounting_budgets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      period_label TEXT,
+      period_start TEXT NOT NULL,
+      period_end TEXT NOT NULL,
+      budget_type TEXT NOT NULL DEFAULT 'CHELTUIALA',
+      category TEXT NOT NULL,
+      planned_amount REAL NOT NULL DEFAULT 0,
+      currency TEXT NOT NULL DEFAULT 'RON',
+      owner TEXT,
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS accounting_bank_transactions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      bank_name TEXT,
+      account_iban TEXT,
+      transaction_date TEXT NOT NULL DEFAULT (date('now')),
+      value_date TEXT,
+      direction TEXT NOT NULL DEFAULT 'OUT',
+      partner_name TEXT,
+      description TEXT,
+      reference TEXT,
+      amount REAL NOT NULL DEFAULT 0,
+      currency TEXT NOT NULL DEFAULT 'RON',
+      reconciliation_status TEXT NOT NULL DEFAULT 'NECORELATA',
+      matched_cash_transaction_id INTEGER,
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (matched_cash_transaction_id) REFERENCES accounting_cash_transactions(id) ON DELETE SET NULL
+    );
+
     CREATE TABLE IF NOT EXISTS consumption_vouchers (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       company_id INTEGER NOT NULL,
@@ -1137,6 +1222,70 @@ export function migrate() {
   ensureColumn("accounting_declarations", "notes", "TEXT");
   ensureColumn("accounting_declarations", "created_by_email", "TEXT");
   ensureColumn("accounting_declarations", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
+  ensureColumn("accounting_cash_transactions", "company_id", "INTEGER");
+  ensureColumn("accounting_cash_transactions", "direction", "TEXT NOT NULL DEFAULT 'OUT'");
+  ensureColumn("accounting_cash_transactions", "transaction_date", "TEXT");
+  ensureColumn("accounting_cash_transactions", "partner_name", "TEXT");
+  ensureColumn("accounting_cash_transactions", "partner_cui", "TEXT");
+  ensureColumn("accounting_cash_transactions", "document_type", "TEXT");
+  ensureColumn("accounting_cash_transactions", "document_number", "TEXT");
+  ensureColumn("accounting_cash_transactions", "category", "TEXT");
+  ensureColumn("accounting_cash_transactions", "payment_method", "TEXT NOT NULL DEFAULT 'BANCA'");
+  ensureColumn("accounting_cash_transactions", "bank_account", "TEXT");
+  ensureColumn("accounting_cash_transactions", "amount", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("accounting_cash_transactions", "vat_amount", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("accounting_cash_transactions", "currency", "TEXT NOT NULL DEFAULT 'RON'");
+  ensureColumn("accounting_cash_transactions", "reference", "TEXT");
+  ensureColumn("accounting_cash_transactions", "status", "TEXT NOT NULL DEFAULT 'NECORELATA'");
+  ensureColumn("accounting_cash_transactions", "matched_document_type", "TEXT");
+  ensureColumn("accounting_cash_transactions", "matched_document_id", "INTEGER");
+  ensureColumn("accounting_cash_transactions", "notes", "TEXT");
+  ensureColumn("accounting_cash_transactions", "attachment_path", "TEXT");
+  ensureColumn("accounting_cash_transactions", "created_by_email", "TEXT");
+  ensureColumn("accounting_cash_transactions", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
+  ensureColumn("accounting_entries", "company_id", "INTEGER");
+  ensureColumn("accounting_entries", "entry_date", "TEXT");
+  ensureColumn("accounting_entries", "document_type", "TEXT");
+  ensureColumn("accounting_entries", "document_number", "TEXT");
+  ensureColumn("accounting_entries", "partner_name", "TEXT");
+  ensureColumn("accounting_entries", "account_debit", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("accounting_entries", "account_credit", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("accounting_entries", "amount", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("accounting_entries", "currency", "TEXT NOT NULL DEFAULT 'RON'");
+  ensureColumn("accounting_entries", "tax_code", "TEXT");
+  ensureColumn("accounting_entries", "description", "TEXT");
+  ensureColumn("accounting_entries", "source_type", "TEXT NOT NULL DEFAULT 'MANUAL'");
+  ensureColumn("accounting_entries", "source_id", "INTEGER");
+  ensureColumn("accounting_entries", "created_by_email", "TEXT");
+  ensureColumn("accounting_entries", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
+  ensureColumn("accounting_budgets", "company_id", "INTEGER");
+  ensureColumn("accounting_budgets", "period_label", "TEXT");
+  ensureColumn("accounting_budgets", "period_start", "TEXT");
+  ensureColumn("accounting_budgets", "period_end", "TEXT");
+  ensureColumn("accounting_budgets", "budget_type", "TEXT NOT NULL DEFAULT 'CHELTUIALA'");
+  ensureColumn("accounting_budgets", "category", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("accounting_budgets", "planned_amount", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("accounting_budgets", "currency", "TEXT NOT NULL DEFAULT 'RON'");
+  ensureColumn("accounting_budgets", "owner", "TEXT");
+  ensureColumn("accounting_budgets", "notes", "TEXT");
+  ensureColumn("accounting_budgets", "created_by_email", "TEXT");
+  ensureColumn("accounting_budgets", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
+  ensureColumn("accounting_bank_transactions", "company_id", "INTEGER");
+  ensureColumn("accounting_bank_transactions", "bank_name", "TEXT");
+  ensureColumn("accounting_bank_transactions", "account_iban", "TEXT");
+  ensureColumn("accounting_bank_transactions", "transaction_date", "TEXT");
+  ensureColumn("accounting_bank_transactions", "value_date", "TEXT");
+  ensureColumn("accounting_bank_transactions", "direction", "TEXT NOT NULL DEFAULT 'OUT'");
+  ensureColumn("accounting_bank_transactions", "partner_name", "TEXT");
+  ensureColumn("accounting_bank_transactions", "description", "TEXT");
+  ensureColumn("accounting_bank_transactions", "reference", "TEXT");
+  ensureColumn("accounting_bank_transactions", "amount", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("accounting_bank_transactions", "currency", "TEXT NOT NULL DEFAULT 'RON'");
+  ensureColumn("accounting_bank_transactions", "reconciliation_status", "TEXT NOT NULL DEFAULT 'NECORELATA'");
+  ensureColumn("accounting_bank_transactions", "matched_cash_transaction_id", "INTEGER");
+  ensureColumn("accounting_bank_transactions", "notes", "TEXT");
+  ensureColumn("accounting_bank_transactions", "created_by_email", "TEXT");
+  ensureColumn("accounting_bank_transactions", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
   ensureColumn("consumption_vouchers", "company_id", "INTEGER");
   ensureColumn("consumption_vouchers", "voucher_number", "TEXT");
   ensureColumn("consumption_vouchers", "issue_date", "TEXT");
@@ -1167,6 +1316,9 @@ export function migrate() {
   ensureColumn("inventory_assets", "status", "TEXT NOT NULL DEFAULT 'IN_STOC'");
   ensureColumn("inventory_assets", "supplier_name", "TEXT");
   ensureColumn("inventory_assets", "invoice_number", "TEXT");
+  ensureColumn("inventory_assets", "useful_life_months", "INTEGER NOT NULL DEFAULT 36");
+  ensureColumn("inventory_assets", "residual_value", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("inventory_assets", "depreciation_method", "TEXT NOT NULL DEFAULT 'LINIARA'");
   ensureColumn("inventory_assets", "notes", "TEXT");
   ensureColumn("inventory_assets", "created_by_email", "TEXT");
   ensureColumn("inventory_assets", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
@@ -1279,6 +1431,15 @@ export function migrate() {
     CREATE INDEX IF NOT EXISTS idx_accounting_declarations_company_id ON accounting_declarations(company_id);
     CREATE INDEX IF NOT EXISTS idx_accounting_declarations_due_date ON accounting_declarations(due_date DESC);
     CREATE INDEX IF NOT EXISTS idx_accounting_declarations_status ON accounting_declarations(status);
+    CREATE INDEX IF NOT EXISTS idx_accounting_cash_company_date ON accounting_cash_transactions(company_id, transaction_date DESC);
+    CREATE INDEX IF NOT EXISTS idx_accounting_cash_direction ON accounting_cash_transactions(direction);
+    CREATE INDEX IF NOT EXISTS idx_accounting_cash_status ON accounting_cash_transactions(status);
+    CREATE INDEX IF NOT EXISTS idx_accounting_entries_company_date ON accounting_entries(company_id, entry_date DESC);
+    CREATE INDEX IF NOT EXISTS idx_accounting_entries_debit ON accounting_entries(account_debit);
+    CREATE INDEX IF NOT EXISTS idx_accounting_entries_credit ON accounting_entries(account_credit);
+    CREATE INDEX IF NOT EXISTS idx_accounting_budgets_company_period ON accounting_budgets(company_id, period_start, period_end);
+    CREATE INDEX IF NOT EXISTS idx_accounting_bank_company_date ON accounting_bank_transactions(company_id, transaction_date DESC);
+    CREATE INDEX IF NOT EXISTS idx_accounting_bank_status ON accounting_bank_transactions(reconciliation_status);
     CREATE INDEX IF NOT EXISTS idx_consumption_vouchers_company_id ON consumption_vouchers(company_id);
     CREATE INDEX IF NOT EXISTS idx_consumption_vouchers_issue_date ON consumption_vouchers(issue_date DESC);
     CREATE INDEX IF NOT EXISTS idx_consumption_voucher_items_voucher_id ON consumption_voucher_items(voucher_id);
