@@ -44,6 +44,7 @@ import { registerContractsRoutes } from "./routes/contracts-routes.js";
 import { registerCrmRoutes } from "./routes/crm-routes.js";
 import { registerDashboardRoutes } from "./routes/dashboard-routes.js";
 import { registerFacturiRoutes } from "./routes/facturi-routes.js";
+import { registerHrRoutes } from "./routes/hr-routes.js";
 import { registerInventoryRoutes } from "./routes/inventory-routes.js";
 import { registerProcurementRoutes } from "./routes/procurement-routes.js";
 import { registerProjectsRoutes } from "./routes/projects-routes.js";
@@ -4580,6 +4581,7 @@ registerInventoryRoutes(app, { db, requireAuth, escapeHtml, fmtMoney, crmShellSt
 registerProcurementRoutes(app, { db, requireAuth, fmtMoney, fs, path, __dirname, upload });
 registerProjectsRoutes(app, { db, requireAuth, fs, path, __dirname });
 registerClientPortalRoutes(app, { db, requireAuth, fs, path, __dirname, upload });
+registerHrRoutes(app, { db, requireAuth });
 
 db.prepare(`
 CREATE TABLE IF NOT EXISTS app_settings(

@@ -1304,6 +1304,133 @@ export function migrate() {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS hr_contracts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      employee_id INTEGER NOT NULL,
+      contract_number TEXT NOT NULL,
+      contract_type TEXT NOT NULL DEFAULT 'CIM',
+      start_date TEXT NOT NULL DEFAULT (date('now')),
+      end_date TEXT,
+      salary_base REAL NOT NULL DEFAULT 0,
+      work_norm TEXT NOT NULL DEFAULT '8h/zi',
+      status TEXT NOT NULL DEFAULT 'ACTIV',
+      notes TEXT,
+      document_path TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+      UNIQUE(company_id, contract_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS hr_payroll_runs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      run_number TEXT NOT NULL,
+      period_label TEXT NOT NULL,
+      period_start TEXT,
+      period_end TEXT,
+      payment_date TEXT,
+      status TEXT NOT NULL DEFAULT 'DRAFT',
+      total_gross REAL NOT NULL DEFAULT 0,
+      total_net REAL NOT NULL DEFAULT 0,
+      total_taxes REAL NOT NULL DEFAULT 0,
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(company_id, run_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS hr_payroll_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      run_id INTEGER NOT NULL,
+      employee_id INTEGER NOT NULL,
+      base_salary REAL NOT NULL DEFAULT 0,
+      gross_pay REAL NOT NULL DEFAULT 0,
+      deductions REAL NOT NULL DEFAULT 0,
+      net_pay REAL NOT NULL DEFAULT 0,
+      employer_cost REAL NOT NULL DEFAULT 0,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (run_id) REFERENCES hr_payroll_runs(id) ON DELETE CASCADE,
+      FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+      UNIQUE(company_id, run_id, employee_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS hr_leave_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      employee_id INTEGER NOT NULL,
+      leave_number TEXT NOT NULL,
+      leave_type TEXT NOT NULL DEFAULT 'ODIHNA',
+      start_date TEXT NOT NULL,
+      end_date TEXT NOT NULL,
+      days REAL NOT NULL DEFAULT 1,
+      status TEXT NOT NULL DEFAULT 'PENDING',
+      requested_at TEXT NOT NULL DEFAULT (datetime('now')),
+      approved_at TEXT,
+      notes TEXT,
+      created_by_email TEXT,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+      UNIQUE(company_id, leave_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS hr_timesheets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      employee_id INTEGER NOT NULL,
+      work_date TEXT NOT NULL DEFAULT (date('now')),
+      hours_worked REAL NOT NULL DEFAULT 8,
+      overtime_hours REAL NOT NULL DEFAULT 0,
+      leave_hours REAL NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'DRAFT',
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+      UNIQUE(company_id, employee_id, work_date)
+    );
+
+    CREATE TABLE IF NOT EXISTS hr_recruitment_candidates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      candidate_name TEXT NOT NULL,
+      email TEXT,
+      phone TEXT,
+      position TEXT NOT NULL,
+      stage TEXT NOT NULL DEFAULT 'APLICAT',
+      source TEXT,
+      expected_salary REAL NOT NULL DEFAULT 0,
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS hr_performance_reviews (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      employee_id INTEGER NOT NULL,
+      review_period TEXT NOT NULL,
+      review_date TEXT NOT NULL DEFAULT (date('now')),
+      reviewer TEXT,
+      score REAL NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'DRAFT',
+      strengths TEXT,
+      goals TEXT,
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS accounting_expenses (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       company_id INTEGER NOT NULL,
@@ -1834,6 +1961,15 @@ export function migrate() {
     CREATE INDEX IF NOT EXISTS idx_client_portal_uploads_client_created ON client_portal_uploads(company_id, client_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_client_portal_uploads_ticket ON client_portal_uploads(company_id, ticket_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_dashboard_preferences_user ON dashboard_preferences(company_id, user_id);
+    CREATE INDEX IF NOT EXISTS idx_hr_contracts_employee ON hr_contracts(company_id, employee_id);
+    CREATE INDEX IF NOT EXISTS idx_hr_contracts_status ON hr_contracts(company_id, status);
+    CREATE INDEX IF NOT EXISTS idx_hr_payroll_runs_company_period ON hr_payroll_runs(company_id, period_label);
+    CREATE INDEX IF NOT EXISTS idx_hr_payroll_items_run ON hr_payroll_items(company_id, run_id);
+    CREATE INDEX IF NOT EXISTS idx_hr_leave_employee_status ON hr_leave_requests(company_id, employee_id, status);
+    CREATE INDEX IF NOT EXISTS idx_hr_leave_dates ON hr_leave_requests(company_id, start_date, end_date);
+    CREATE INDEX IF NOT EXISTS idx_hr_timesheets_date ON hr_timesheets(company_id, work_date);
+    CREATE INDEX IF NOT EXISTS idx_hr_recruitment_stage ON hr_recruitment_candidates(company_id, stage);
+    CREATE INDEX IF NOT EXISTS idx_hr_reviews_employee ON hr_performance_reviews(company_id, employee_id, review_date);
   `);
 
   ensureColumn("users", "module_permissions", "TEXT");
@@ -2235,6 +2371,14 @@ export function migrate() {
   ensureColumn("tipizate_register", "recipient", "TEXT");
   ensureColumn("tipizate_register", "notes", "TEXT");
   ensureColumn("employees", "company_id", "INTEGER");
+  ensureColumn("employees", "employee_code", "TEXT");
+  ensureColumn("employees", "department", "TEXT");
+  ensureColumn("employees", "hire_date", "TEXT");
+  ensureColumn("employees", "salary", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("employees", "contract_type", "TEXT DEFAULT 'CIM'");
+  ensureColumn("employees", "manager", "TEXT");
+  ensureColumn("employees", "notes", "TEXT");
+  ensureColumn("employees", "updated_at", "TEXT");
   ensureColumn("anaf_messages", "company_id", "INTEGER");
   ensureColumn("anaf_connections", "company_id", "INTEGER");
   ensureColumn("anaf_inbox", "company_id", "INTEGER");

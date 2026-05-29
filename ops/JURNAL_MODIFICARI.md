@@ -2,6 +2,29 @@
 
 ## 2026-05-29
 
+### Modul Resurse Umane Nexora
+- A fost extins modulul Resurse Umane cu backend si UI functional pentru toate meniurile active:
+  - `Angajati`;
+  - `Contracte`;
+  - `Payroll`;
+  - `Concedii`;
+  - `Pontaj`;
+  - `Recrutare`;
+  - `Evaluari`.
+- Au fost adaugate tabele dedicate pentru contracte HR, state payroll, linii payroll, cereri de concediu, pontaje, candidati si evaluari de performanta.
+- `Angajati` permite acum date HR extinse: cod angajat, departament, data angajarii, salariu, tip contract, manager si observatii.
+- `Contracte` permite inregistrarea contractelor/actelor aditionale cu numar automat si legare la angajat.
+- `Payroll` permite creare stat lunar, generare automata de linii pentru angajatii activi si calcul brut/net/taxe estimate.
+- `Concedii` permite creare cereri, calcul zile si aprobare/respingere.
+- `Pontaj` permite salvare sau actualizare pontaj zilnic pe angajat.
+- `Recrutare` permite introducere candidati si mutarea lor intre etape.
+- `Evaluari` permite inregistrarea evaluarilor de performanta cu scor, obiective si feedback.
+- Toate listele si actiunile sunt filtrate pe compania autentificata.
+- Validare:
+  - au fost rulate verificarile `node --check` pentru `db.js`, `server.js`, `routes/hr-routes.js` si `src/ui/nexora-employees-page.js`;
+  - a fost rulat un smoke test local care creeaza in tranzactie angajat, contract, payroll, concediu, pontaj, candidat si evaluare, apoi verifica toate cele 7 pagini HR cu raspuns `200`;
+  - testul a fost finalizat cu `ROLLBACK`.
+
 ### Setari Dashboard Nexora
 - A fost adaugat meniul `Setari dashboard` pe `/nexora-dashboard/settings`.
 - Preferintele sunt salvate per utilizator in tabela `dashboard_preferences`.
