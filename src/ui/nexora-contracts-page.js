@@ -1,4 +1,5 @@
 import { renderNexoraShell } from "./nexora-shell.js";
+import { renderSalesNav } from "./nexora-sales-pages.js";
 
 function escapeHtml(value = "") {
   return String(value)
@@ -54,6 +55,7 @@ function renderNexoraContractsPage(options = {}) {
     : `<tr><td colspan="6"><div class="nx-empty-state">Nu există contracte pentru criteriile curente.</div></td></tr>`;
 
   const body = `
+    ${renderSalesNav("/nexora/contracts")}
     <section class="nx-kpi-grid invoice-kpis">
       <div class="nx-kpi-card">
         <div class="nx-kpi-icon blue">▣</div>
@@ -154,6 +156,7 @@ function renderNexoraContractDetailPage(options = {}) {
     : "";
 
   const body = `
+    ${renderSalesNav("/nexora/contracts")}
     ${alertHtml}
 
     <section class="nx-content-card">

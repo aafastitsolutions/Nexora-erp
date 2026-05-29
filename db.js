@@ -493,6 +493,137 @@ export function migrate() {
       FOREIGN KEY (quote_id) REFERENCES quotes(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS sales_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      order_number TEXT NOT NULL,
+      client_id INTEGER NOT NULL,
+      quote_id INTEGER,
+      status TEXT NOT NULL DEFAULT 'NOUA',
+      order_date TEXT NOT NULL DEFAULT (date('now')),
+      due_date TEXT,
+      delivery_address TEXT,
+      contact_name TEXT,
+      contact_phone TEXT,
+      currency TEXT NOT NULL DEFAULT 'RON',
+      subtotal REAL NOT NULL DEFAULT 0,
+      discount_amount REAL NOT NULL DEFAULT 0,
+      total REAL NOT NULL DEFAULT 0,
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+      FOREIGN KEY (quote_id) REFERENCES quotes(id) ON DELETE SET NULL,
+      UNIQUE(company_id, order_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS sales_order_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER NOT NULL,
+      company_id INTEGER NOT NULL,
+      product_id INTEGER,
+      item_name TEXT NOT NULL,
+      sku TEXT,
+      qty REAL NOT NULL DEFAULT 1,
+      unit TEXT,
+      unit_price REAL NOT NULL DEFAULT 0,
+      discount_percent REAL NOT NULL DEFAULT 0,
+      line_total REAL NOT NULL DEFAULT 0,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (order_id) REFERENCES sales_orders(id) ON DELETE CASCADE,
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS sales_price_lists (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      currency TEXT NOT NULL DEFAULT 'RON',
+      valid_from TEXT,
+      valid_to TEXT,
+      status TEXT NOT NULL DEFAULT 'ACTIVA',
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS sales_price_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      price_list_id INTEGER NOT NULL,
+      company_id INTEGER NOT NULL,
+      product_id INTEGER,
+      product_name TEXT NOT NULL,
+      unit TEXT,
+      base_price REAL NOT NULL DEFAULT 0,
+      sale_price REAL NOT NULL DEFAULT 0,
+      min_qty REAL NOT NULL DEFAULT 1,
+      margin_percent REAL NOT NULL DEFAULT 0,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (price_list_id) REFERENCES sales_price_lists(id) ON DELETE CASCADE,
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS sales_discounts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      discount_type TEXT NOT NULL DEFAULT 'PROCENT',
+      discount_value REAL NOT NULL DEFAULT 0,
+      target_type TEXT NOT NULL DEFAULT 'GLOBAL',
+      target_ref TEXT,
+      valid_from TEXT,
+      valid_to TEXT,
+      status TEXT NOT NULL DEFAULT 'ACTIV',
+      combinable INTEGER NOT NULL DEFAULT 0,
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS sales_deliveries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      delivery_number TEXT NOT NULL,
+      order_id INTEGER,
+      client_id INTEGER,
+      status TEXT NOT NULL DEFAULT 'PREGATITA',
+      scheduled_date TEXT,
+      delivered_at TEXT,
+      courier TEXT,
+      awb TEXT,
+      delivery_address TEXT,
+      contact_name TEXT,
+      contact_phone TEXT,
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (order_id) REFERENCES sales_orders(id) ON DELETE SET NULL,
+      FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL,
+      UNIQUE(company_id, delivery_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS sales_delivery_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      delivery_id INTEGER NOT NULL,
+      company_id INTEGER NOT NULL,
+      order_item_id INTEGER,
+      product_id INTEGER,
+      item_name TEXT NOT NULL,
+      qty REAL NOT NULL DEFAULT 1,
+      unit TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (delivery_id) REFERENCES sales_deliveries(id) ON DELETE CASCADE,
+      FOREIGN KEY (order_item_id) REFERENCES sales_order_items(id) ON DELETE SET NULL,
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL
+    );
+
     CREATE TABLE IF NOT EXISTS facturi (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       factura_nr TEXT NOT NULL UNIQUE,
@@ -1044,6 +1175,19 @@ export function migrate() {
     CREATE INDEX IF NOT EXISTS idx_quotes_year_seq ON quotes(year, seq);
     CREATE INDEX IF NOT EXISTS idx_quotes_status ON quotes(status);
     CREATE INDEX IF NOT EXISTS idx_quote_items_quote_id ON quote_items(quote_id);
+    CREATE INDEX IF NOT EXISTS idx_sales_orders_company_id ON sales_orders(company_id);
+    CREATE INDEX IF NOT EXISTS idx_sales_orders_client_id ON sales_orders(client_id);
+    CREATE INDEX IF NOT EXISTS idx_sales_orders_status ON sales_orders(status);
+    CREATE INDEX IF NOT EXISTS idx_sales_orders_order_date ON sales_orders(order_date DESC);
+    CREATE INDEX IF NOT EXISTS idx_sales_order_items_order_id ON sales_order_items(order_id);
+    CREATE INDEX IF NOT EXISTS idx_sales_price_lists_company_id ON sales_price_lists(company_id);
+    CREATE INDEX IF NOT EXISTS idx_sales_price_items_list_id ON sales_price_items(price_list_id);
+    CREATE INDEX IF NOT EXISTS idx_sales_discounts_company_id ON sales_discounts(company_id);
+    CREATE INDEX IF NOT EXISTS idx_sales_discounts_status ON sales_discounts(status);
+    CREATE INDEX IF NOT EXISTS idx_sales_deliveries_company_id ON sales_deliveries(company_id);
+    CREATE INDEX IF NOT EXISTS idx_sales_deliveries_order_id ON sales_deliveries(order_id);
+    CREATE INDEX IF NOT EXISTS idx_sales_deliveries_status ON sales_deliveries(status);
+    CREATE INDEX IF NOT EXISTS idx_sales_delivery_items_delivery_id ON sales_delivery_items(delivery_id);
     CREATE INDEX IF NOT EXISTS idx_facturi_client_id ON facturi(client_id);
     CREATE INDEX IF NOT EXISTS idx_facturi_an_seq ON facturi(an, seq);
     CREATE INDEX IF NOT EXISTS idx_facturi_status ON facturi(status);
@@ -1166,6 +1310,89 @@ export function migrate() {
   ensureColumn("activities", "company_id", "INTEGER");
   ensureColumn("quotes", "company_id", "INTEGER");
   ensureColumn("quote_items", "company_id", "INTEGER");
+  ensureColumn("sales_orders", "company_id", "INTEGER");
+  ensureColumn("sales_orders", "order_number", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("sales_orders", "client_id", "INTEGER");
+  ensureColumn("sales_orders", "quote_id", "INTEGER");
+  ensureColumn("sales_orders", "status", "TEXT NOT NULL DEFAULT 'NOUA'");
+  ensureColumn("sales_orders", "order_date", "TEXT");
+  ensureColumn("sales_orders", "due_date", "TEXT");
+  ensureColumn("sales_orders", "delivery_address", "TEXT");
+  ensureColumn("sales_orders", "contact_name", "TEXT");
+  ensureColumn("sales_orders", "contact_phone", "TEXT");
+  ensureColumn("sales_orders", "currency", "TEXT NOT NULL DEFAULT 'RON'");
+  ensureColumn("sales_orders", "subtotal", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("sales_orders", "discount_amount", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("sales_orders", "total", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("sales_orders", "notes", "TEXT");
+  ensureColumn("sales_orders", "created_by_email", "TEXT");
+  ensureColumn("sales_orders", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
+  ensureColumn("sales_order_items", "order_id", "INTEGER");
+  ensureColumn("sales_order_items", "company_id", "INTEGER");
+  ensureColumn("sales_order_items", "product_id", "INTEGER");
+  ensureColumn("sales_order_items", "item_name", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("sales_order_items", "sku", "TEXT");
+  ensureColumn("sales_order_items", "qty", "REAL NOT NULL DEFAULT 1");
+  ensureColumn("sales_order_items", "unit", "TEXT");
+  ensureColumn("sales_order_items", "unit_price", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("sales_order_items", "discount_percent", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("sales_order_items", "line_total", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("sales_order_items", "notes", "TEXT");
+  ensureColumn("sales_price_lists", "company_id", "INTEGER");
+  ensureColumn("sales_price_lists", "name", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("sales_price_lists", "currency", "TEXT NOT NULL DEFAULT 'RON'");
+  ensureColumn("sales_price_lists", "valid_from", "TEXT");
+  ensureColumn("sales_price_lists", "valid_to", "TEXT");
+  ensureColumn("sales_price_lists", "status", "TEXT NOT NULL DEFAULT 'ACTIVA'");
+  ensureColumn("sales_price_lists", "notes", "TEXT");
+  ensureColumn("sales_price_lists", "created_by_email", "TEXT");
+  ensureColumn("sales_price_lists", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
+  ensureColumn("sales_price_items", "price_list_id", "INTEGER");
+  ensureColumn("sales_price_items", "company_id", "INTEGER");
+  ensureColumn("sales_price_items", "product_id", "INTEGER");
+  ensureColumn("sales_price_items", "product_name", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("sales_price_items", "unit", "TEXT");
+  ensureColumn("sales_price_items", "base_price", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("sales_price_items", "sale_price", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("sales_price_items", "min_qty", "REAL NOT NULL DEFAULT 1");
+  ensureColumn("sales_price_items", "margin_percent", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("sales_price_items", "notes", "TEXT");
+  ensureColumn("sales_discounts", "company_id", "INTEGER");
+  ensureColumn("sales_discounts", "name", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("sales_discounts", "discount_type", "TEXT NOT NULL DEFAULT 'PROCENT'");
+  ensureColumn("sales_discounts", "discount_value", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("sales_discounts", "target_type", "TEXT NOT NULL DEFAULT 'GLOBAL'");
+  ensureColumn("sales_discounts", "target_ref", "TEXT");
+  ensureColumn("sales_discounts", "valid_from", "TEXT");
+  ensureColumn("sales_discounts", "valid_to", "TEXT");
+  ensureColumn("sales_discounts", "status", "TEXT NOT NULL DEFAULT 'ACTIV'");
+  ensureColumn("sales_discounts", "combinable", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("sales_discounts", "notes", "TEXT");
+  ensureColumn("sales_discounts", "created_by_email", "TEXT");
+  ensureColumn("sales_discounts", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
+  ensureColumn("sales_deliveries", "company_id", "INTEGER");
+  ensureColumn("sales_deliveries", "delivery_number", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("sales_deliveries", "order_id", "INTEGER");
+  ensureColumn("sales_deliveries", "client_id", "INTEGER");
+  ensureColumn("sales_deliveries", "status", "TEXT NOT NULL DEFAULT 'PREGATITA'");
+  ensureColumn("sales_deliveries", "scheduled_date", "TEXT");
+  ensureColumn("sales_deliveries", "delivered_at", "TEXT");
+  ensureColumn("sales_deliveries", "courier", "TEXT");
+  ensureColumn("sales_deliveries", "awb", "TEXT");
+  ensureColumn("sales_deliveries", "delivery_address", "TEXT");
+  ensureColumn("sales_deliveries", "contact_name", "TEXT");
+  ensureColumn("sales_deliveries", "contact_phone", "TEXT");
+  ensureColumn("sales_deliveries", "notes", "TEXT");
+  ensureColumn("sales_deliveries", "created_by_email", "TEXT");
+  ensureColumn("sales_deliveries", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
+  ensureColumn("sales_delivery_items", "delivery_id", "INTEGER");
+  ensureColumn("sales_delivery_items", "company_id", "INTEGER");
+  ensureColumn("sales_delivery_items", "order_item_id", "INTEGER");
+  ensureColumn("sales_delivery_items", "product_id", "INTEGER");
+  ensureColumn("sales_delivery_items", "item_name", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("sales_delivery_items", "qty", "REAL NOT NULL DEFAULT 1");
+  ensureColumn("sales_delivery_items", "unit", "TEXT");
+  ensureColumn("sales_delivery_items", "notes", "TEXT");
   ensureColumn("facturi", "employee_id", "INTEGER");
   ensureColumn("facturi", "company_id", "INTEGER");
   ensureColumn("facturi_linii", "descriere", "TEXT");
@@ -1440,6 +1667,14 @@ export function migrate() {
     CREATE INDEX IF NOT EXISTS idx_accounting_budgets_company_period ON accounting_budgets(company_id, period_start, period_end);
     CREATE INDEX IF NOT EXISTS idx_accounting_bank_company_date ON accounting_bank_transactions(company_id, transaction_date DESC);
     CREATE INDEX IF NOT EXISTS idx_accounting_bank_status ON accounting_bank_transactions(reconciliation_status);
+    CREATE INDEX IF NOT EXISTS idx_sales_orders_company_date ON sales_orders(company_id, order_date DESC);
+    CREATE INDEX IF NOT EXISTS idx_sales_orders_company_status ON sales_orders(company_id, status);
+    CREATE INDEX IF NOT EXISTS idx_sales_order_items_company_order ON sales_order_items(company_id, order_id);
+    CREATE INDEX IF NOT EXISTS idx_sales_price_lists_company_status ON sales_price_lists(company_id, status);
+    CREATE INDEX IF NOT EXISTS idx_sales_price_items_company_list ON sales_price_items(company_id, price_list_id);
+    CREATE INDEX IF NOT EXISTS idx_sales_discounts_company_status ON sales_discounts(company_id, status);
+    CREATE INDEX IF NOT EXISTS idx_sales_deliveries_company_status ON sales_deliveries(company_id, status);
+    CREATE INDEX IF NOT EXISTS idx_sales_delivery_items_company_delivery ON sales_delivery_items(company_id, delivery_id);
     CREATE INDEX IF NOT EXISTS idx_consumption_vouchers_company_id ON consumption_vouchers(company_id);
     CREATE INDEX IF NOT EXISTS idx_consumption_vouchers_issue_date ON consumption_vouchers(issue_date DESC);
     CREATE INDEX IF NOT EXISTS idx_consumption_voucher_items_voucher_id ON consumption_voucher_items(voucher_id);

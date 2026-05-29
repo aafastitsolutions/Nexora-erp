@@ -2,6 +2,32 @@
 
 ## 2026-05-29
 
+### Modul Vanzari Nexora
+- A fost mutat punctul principal al modulului Vanzari pe `/nexora/sales`.
+- Meniul `Facturare` a fost scos din submeniul Vanzari, pentru ca acest modul sa ramana separat de facturi.
+- Au fost pastrate ca functionale meniurile existente:
+  - `Oferte`;
+  - `Clienti`;
+  - `Contracte`.
+- Au fost facute functionale meniurile lipsa:
+  - `Comenzi`;
+  - `Preturi`;
+  - `Discounturi`;
+  - `Livrari`.
+- Au fost adaugate tabele dedicate pentru:
+  - comenzi de vanzare si pozitii de comanda;
+  - liste de pret si pozitii de pret;
+  - reguli/campanii de discount;
+  - livrari si pozitii livrate.
+- `Comenzi` permite creare comanda din client sau oferta, adaugare pozitii, totalizare si schimbare status, fara generare factura.
+- `Preturi` permite definirea listelor de pret si a preturilor comerciale pe produs.
+- `Discounturi` permite definirea campaniilor/regulilor comerciale pe global, client, produs sau categorie.
+- `Livrari` permite creare livrare din comanda sau client, urmarire curier/AWB/status si pozitii livrate.
+- Validare:
+  - au fost rulate verificarile `node --check` pentru schema, rute si pagini UI;
+  - migratia SQLite a fost rulata local si noile tabele `sales_*` au fost create;
+  - render-ele pentru paginile noi de Vanzari au fost verificate local.
+
 ### Modul Financiar & Contabilitate Nexora
 - A fost mutat punctul principal al modulului Financiar & Contabilitate pe `/nexora/accounting`, fara modificari pe fluxurile de facturi si e-Factura/ANAF.
 - Au fost adaugate tabele contabile dedicate pentru:

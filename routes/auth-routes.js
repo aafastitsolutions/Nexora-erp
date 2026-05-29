@@ -184,7 +184,7 @@ function resolvePostLoginPath(user) {
   const firstAllowedPath = [
     ["dashboard", "/nexora-dashboard"],
     ["finance", "/nexora/accounting"],
-    ["sales", "/nexora/quotes"],
+    ["sales", "/nexora/sales"],
     ["crm", "/nexora/clients"],
     ["inventory", "/nexora/inventory"],
     ["projects", "/nexora/projects"],

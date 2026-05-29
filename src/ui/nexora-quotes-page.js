@@ -1,4 +1,5 @@
 import { renderNexoraShell } from "./nexora-shell.js";
+import { renderSalesNav } from "./nexora-sales-pages.js";
 
 function escapeHtml(value = "") {
   return String(value)
@@ -49,6 +50,7 @@ function renderNexoraQuotesPage(ctx = {}) {
   ).join("");
 
   const body = `
+    ${renderSalesNav("/nexora/quotes")}
     <section class="nx-content-card">
     <div class="nx-section-head">
       <div>
@@ -165,6 +167,7 @@ function renderNexoraQuoteDetailPage(ctx = {}) {
   const title = quote.quote_number ? `Ofertă ${quote.quote_number}` : "Ofertă";
 
   const body = `
+    ${renderSalesNav("/nexora/quotes")}
     <section class="nx-content-card">
       <div class="nx-section-head">
         <div>

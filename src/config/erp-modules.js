@@ -43,7 +43,7 @@ const ERP_MODULES = [
     key: "sales",
     label: "Vânzări",
     icon: "trending-up",
-    path: "/nexora/quotes",
+    path: "/nexora/sales",
     legacyModuleKeys: ["quotes", "contracts", "facturi", "clients"],
     children: [
       { label: "Oferte", path: "/nexora/quotes" },
@@ -52,7 +52,6 @@ const ERP_MODULES = [
       { label: "Prețuri", path: "/nexora/sales/prices" },
       { label: "Discounturi", path: "/nexora/sales/discounts" },
       { label: "Contracte", path: "/nexora/contracts" },
-      { label: "Facturare", path: "/nexora/facturi" },
       { label: "Livrări", path: "/nexora/deliveries" }
     ]
   },

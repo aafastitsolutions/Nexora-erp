@@ -45,6 +45,7 @@ import { registerFacturiRoutes } from "./routes/facturi-routes.js";
 import { registerInventoryRoutes } from "./routes/inventory-routes.js";
 import { registerProjectsRoutes } from "./routes/projects-routes.js";
 import { registerQuotesRoutes } from "./routes/quotes-routes.js";
+import { registerSalesRoutes } from "./routes/sales-routes.js";
 import { db, migrate } from "./db.js";
 import bcrypt from "bcrypt";
 import { canAccessSpvUser, requireAuth, requireRole, requireModule, requireSpvAccess, requireSuperAdmin, seedAdminFromEnv, verifyUser, verifyUserAttempt } from "./auth.js";
@@ -144,6 +145,7 @@ registerClientsRoutes(app, {
   normalizeCui,
   requireAuth
 });
+registerSalesRoutes(app, { db, requireAuth, fmtMoney });
 
 function nextQuoteNumber(){
   const year = new Date().getFullYear();
