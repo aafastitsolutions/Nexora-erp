@@ -185,7 +185,7 @@ function resolvePostLoginPath(user) {
     ["dashboard", "/nexora-dashboard"],
     ["finance", "/nexora/accounting"],
     ["sales", "/nexora/sales"],
-    ["crm", "/nexora/clients"],
+    ["crm", "/nexora/crm"],
     ["inventory", "/nexora/inventory"],
     ["projects", "/nexora/projects"],
     ["documents", "/nexora/documents"],

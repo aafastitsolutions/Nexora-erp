@@ -1,4 +1,5 @@
 import { renderErpSidebar } from "./erp-sidebar.js";
+import { renderCrmNav } from "./nexora-crm-pages.js";
 
 function escapeHtml(value = "") {
   return String(value)
@@ -76,6 +77,8 @@ function renderNexoraClientsPage(options = {}) {
         </div>
       </header>
 
+      ${renderCrmNav("/nexora/clients")}
+
       <section class="nx-content-card">
         <div class="nx-section-head">
           <div>
@@ -143,6 +146,8 @@ function renderNexoraClientNewPage(options = {}) {
           <a class="nx-btn" href="/nexora/clients">Înapoi la clienți</a>
         </div>
       </header>
+
+      ${renderCrmNav("/nexora/clients")}
 
       <section class="nx-content-card">
         <div class="nx-section-head">

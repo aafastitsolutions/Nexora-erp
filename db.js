@@ -460,6 +460,102 @@ export function migrate() {
       FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE SET NULL
     );
 
+    CREATE TABLE IF NOT EXISTS crm_leads (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      year INTEGER NOT NULL,
+      seq INTEGER NOT NULL,
+      lead_number TEXT NOT NULL,
+      name TEXT NOT NULL,
+      company_name TEXT,
+      contact_name TEXT,
+      email TEXT,
+      phone TEXT,
+      source TEXT NOT NULL DEFAULT 'MANUAL',
+      status TEXT NOT NULL DEFAULT 'NOU',
+      owner_email TEXT,
+      estimated_value REAL NOT NULL DEFAULT 0,
+      probability INTEGER NOT NULL DEFAULT 10,
+      next_step TEXT,
+      next_followup_date TEXT,
+      notes TEXT,
+      converted_client_id INTEGER,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (converted_client_id) REFERENCES clients(id) ON DELETE SET NULL,
+      UNIQUE(company_id, lead_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS crm_opportunities (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      year INTEGER NOT NULL,
+      seq INTEGER NOT NULL,
+      opportunity_number TEXT NOT NULL,
+      client_id INTEGER,
+      lead_id INTEGER,
+      title TEXT NOT NULL,
+      stage TEXT NOT NULL DEFAULT 'CALIFICARE',
+      status TEXT NOT NULL DEFAULT 'DESCHISA',
+      amount REAL NOT NULL DEFAULT 0,
+      probability INTEGER NOT NULL DEFAULT 25,
+      expected_close_date TEXT,
+      owner_email TEXT,
+      source TEXT,
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL,
+      FOREIGN KEY (lead_id) REFERENCES crm_leads(id) ON DELETE SET NULL,
+      UNIQUE(company_id, opportunity_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS crm_followups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      client_id INTEGER,
+      lead_id INTEGER,
+      opportunity_id INTEGER,
+      activity_type TEXT NOT NULL DEFAULT 'TASK',
+      subject TEXT NOT NULL,
+      notes TEXT,
+      due_date TEXT,
+      priority TEXT NOT NULL DEFAULT 'MEDIE',
+      status TEXT NOT NULL DEFAULT 'DESCHIS',
+      completed_at TEXT,
+      owner_email TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL,
+      FOREIGN KEY (lead_id) REFERENCES crm_leads(id) ON DELETE SET NULL,
+      FOREIGN KEY (opportunity_id) REFERENCES crm_opportunities(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS crm_email_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      client_id INTEGER,
+      lead_id INTEGER,
+      opportunity_id INTEGER,
+      direction TEXT NOT NULL DEFAULT 'OUT',
+      recipient_email TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'PREGATIT',
+      sent_at TEXT,
+      opened_at TEXT,
+      replied_at TEXT,
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL,
+      FOREIGN KEY (lead_id) REFERENCES crm_leads(id) ON DELETE SET NULL,
+      FOREIGN KEY (opportunity_id) REFERENCES crm_opportunities(id) ON DELETE SET NULL
+    );
+
     CREATE TABLE IF NOT EXISTS quotes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       quote_number TEXT NOT NULL UNIQUE,
@@ -1195,6 +1291,14 @@ export function migrate() {
     CREATE INDEX IF NOT EXISTS idx_activities_contact_id ON activities(contact_id);
     CREATE INDEX IF NOT EXISTS idx_activities_type ON activities(type);
     CREATE INDEX IF NOT EXISTS idx_activities_done ON activities(done);
+    CREATE INDEX IF NOT EXISTS idx_crm_leads_company_status ON crm_leads(company_id, status);
+    CREATE INDEX IF NOT EXISTS idx_crm_leads_company_created ON crm_leads(company_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_crm_opportunities_company_stage ON crm_opportunities(company_id, stage);
+    CREATE INDEX IF NOT EXISTS idx_crm_opportunities_client ON crm_opportunities(company_id, client_id);
+    CREATE INDEX IF NOT EXISTS idx_crm_followups_company_due ON crm_followups(company_id, due_date, status);
+    CREATE INDEX IF NOT EXISTS idx_crm_followups_company_status ON crm_followups(company_id, status);
+    CREATE INDEX IF NOT EXISTS idx_crm_email_events_company_status ON crm_email_events(company_id, status);
+    CREATE INDEX IF NOT EXISTS idx_crm_email_events_company_created ON crm_email_events(company_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_quotes_client_id ON quotes(client_id);
     CREATE INDEX IF NOT EXISTS idx_quotes_year_seq ON quotes(year, seq);
     CREATE INDEX IF NOT EXISTS idx_quotes_status ON quotes(status);
@@ -1335,6 +1439,71 @@ export function migrate() {
   ensureColumn("contacts", "company_id", "INTEGER");
   ensureColumn("activities", "employee_id", "INTEGER");
   ensureColumn("activities", "company_id", "INTEGER");
+  ensureColumn("crm_leads", "company_id", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("crm_leads", "year", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("crm_leads", "seq", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("crm_leads", "lead_number", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("crm_leads", "name", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("crm_leads", "company_name", "TEXT");
+  ensureColumn("crm_leads", "contact_name", "TEXT");
+  ensureColumn("crm_leads", "email", "TEXT");
+  ensureColumn("crm_leads", "phone", "TEXT");
+  ensureColumn("crm_leads", "source", "TEXT NOT NULL DEFAULT 'MANUAL'");
+  ensureColumn("crm_leads", "status", "TEXT NOT NULL DEFAULT 'NOU'");
+  ensureColumn("crm_leads", "owner_email", "TEXT");
+  ensureColumn("crm_leads", "estimated_value", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("crm_leads", "probability", "INTEGER NOT NULL DEFAULT 10");
+  ensureColumn("crm_leads", "next_step", "TEXT");
+  ensureColumn("crm_leads", "next_followup_date", "TEXT");
+  ensureColumn("crm_leads", "notes", "TEXT");
+  ensureColumn("crm_leads", "converted_client_id", "INTEGER");
+  ensureColumn("crm_leads", "created_by_email", "TEXT");
+  ensureColumn("crm_leads", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
+  ensureColumn("crm_opportunities", "company_id", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("crm_opportunities", "year", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("crm_opportunities", "seq", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("crm_opportunities", "opportunity_number", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("crm_opportunities", "client_id", "INTEGER");
+  ensureColumn("crm_opportunities", "lead_id", "INTEGER");
+  ensureColumn("crm_opportunities", "title", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("crm_opportunities", "stage", "TEXT NOT NULL DEFAULT 'CALIFICARE'");
+  ensureColumn("crm_opportunities", "status", "TEXT NOT NULL DEFAULT 'DESCHISA'");
+  ensureColumn("crm_opportunities", "amount", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("crm_opportunities", "probability", "INTEGER NOT NULL DEFAULT 25");
+  ensureColumn("crm_opportunities", "expected_close_date", "TEXT");
+  ensureColumn("crm_opportunities", "owner_email", "TEXT");
+  ensureColumn("crm_opportunities", "source", "TEXT");
+  ensureColumn("crm_opportunities", "notes", "TEXT");
+  ensureColumn("crm_opportunities", "created_by_email", "TEXT");
+  ensureColumn("crm_opportunities", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
+  ensureColumn("crm_followups", "company_id", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("crm_followups", "client_id", "INTEGER");
+  ensureColumn("crm_followups", "lead_id", "INTEGER");
+  ensureColumn("crm_followups", "opportunity_id", "INTEGER");
+  ensureColumn("crm_followups", "activity_type", "TEXT NOT NULL DEFAULT 'TASK'");
+  ensureColumn("crm_followups", "subject", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("crm_followups", "notes", "TEXT");
+  ensureColumn("crm_followups", "due_date", "TEXT");
+  ensureColumn("crm_followups", "priority", "TEXT NOT NULL DEFAULT 'MEDIE'");
+  ensureColumn("crm_followups", "status", "TEXT NOT NULL DEFAULT 'DESCHIS'");
+  ensureColumn("crm_followups", "completed_at", "TEXT");
+  ensureColumn("crm_followups", "owner_email", "TEXT");
+  ensureColumn("crm_followups", "created_by_email", "TEXT");
+  ensureColumn("crm_followups", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
+  ensureColumn("crm_email_events", "company_id", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("crm_email_events", "client_id", "INTEGER");
+  ensureColumn("crm_email_events", "lead_id", "INTEGER");
+  ensureColumn("crm_email_events", "opportunity_id", "INTEGER");
+  ensureColumn("crm_email_events", "direction", "TEXT NOT NULL DEFAULT 'OUT'");
+  ensureColumn("crm_email_events", "recipient_email", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("crm_email_events", "subject", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("crm_email_events", "status", "TEXT NOT NULL DEFAULT 'PREGATIT'");
+  ensureColumn("crm_email_events", "sent_at", "TEXT");
+  ensureColumn("crm_email_events", "opened_at", "TEXT");
+  ensureColumn("crm_email_events", "replied_at", "TEXT");
+  ensureColumn("crm_email_events", "notes", "TEXT");
+  ensureColumn("crm_email_events", "created_by_email", "TEXT");
+  ensureColumn("crm_email_events", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
   ensureColumn("quotes", "company_id", "INTEGER");
   ensureColumn("quote_items", "company_id", "INTEGER");
   ensureColumn("sales_quote_imports", "company_id", "INTEGER NOT NULL DEFAULT 0");
@@ -1693,6 +1862,14 @@ export function migrate() {
     CREATE INDEX IF NOT EXISTS idx_clients_cui ON clients(cui);
     CREATE INDEX IF NOT EXISTS idx_clients_company_id ON clients(company_id);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_clients_company_cui_unique ON clients(company_id, cui);
+    CREATE INDEX IF NOT EXISTS idx_crm_leads_company_status ON crm_leads(company_id, status);
+    CREATE INDEX IF NOT EXISTS idx_crm_leads_company_created ON crm_leads(company_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_crm_opportunities_company_stage ON crm_opportunities(company_id, stage);
+    CREATE INDEX IF NOT EXISTS idx_crm_opportunities_client ON crm_opportunities(company_id, client_id);
+    CREATE INDEX IF NOT EXISTS idx_crm_followups_company_due ON crm_followups(company_id, due_date, status);
+    CREATE INDEX IF NOT EXISTS idx_crm_followups_company_status ON crm_followups(company_id, status);
+    CREATE INDEX IF NOT EXISTS idx_crm_email_events_company_status ON crm_email_events(company_id, status);
+    CREATE INDEX IF NOT EXISTS idx_crm_email_events_company_created ON crm_email_events(company_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_sales_quote_imports_company_year_seq ON sales_quote_imports(company_id, year, seq);
     CREATE INDEX IF NOT EXISTS idx_sales_quote_imports_client_id ON sales_quote_imports(company_id, client_id);
     CREATE INDEX IF NOT EXISTS idx_sales_quote_imports_created_at ON sales_quote_imports(company_id, created_at DESC);

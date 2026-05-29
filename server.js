@@ -40,6 +40,7 @@ import { createWorkspace, registerAuthRoutes } from "./routes/auth-routes.js";
 import { registerBillingRoutes, registerBillingWebhook } from "./routes/billing-routes.js";
 import { registerClientsRoutes } from "./routes/clients-routes.js";
 import { registerContractsRoutes } from "./routes/contracts-routes.js";
+import { registerCrmRoutes } from "./routes/crm-routes.js";
 import { registerDashboardRoutes } from "./routes/dashboard-routes.js";
 import { registerFacturiRoutes } from "./routes/facturi-routes.js";
 import { registerInventoryRoutes } from "./routes/inventory-routes.js";
@@ -145,6 +146,7 @@ registerClientsRoutes(app, {
   normalizeCui,
   requireAuth
 });
+registerCrmRoutes(app, { db, requireAuth, fmtMoney });
 registerSalesRoutes(app, { db, requireAuth, fmtMoney });
 
 function nextQuoteNumber(){

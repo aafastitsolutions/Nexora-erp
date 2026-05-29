@@ -2,6 +2,23 @@
 
 ## 2026-05-29
 
+### Modul CRM Nexora
+- A fost mutat punctul principal al modulului CRM pe `/nexora/crm`.
+- Au fost facute functionale meniurile:
+  - `Lead-uri`;
+  - `Pipeline`;
+  - `Follow-up`;
+  - `Activitati`;
+  - `Email tracking`;
+  - `Relatii clienti`.
+- Au fost adaugate tabele CRM dedicate pentru lead-uri, oportunitati, follow-up-uri si evenimente de email.
+- `Lead-uri` permite creare lead, filtrare, schimbare status si conversie in client.
+- `Pipeline` permite creare oportunitati si mutarea lor intre etape comerciale.
+- `Follow-up` permite programarea actiunilor CRM pe client, lead sau oportunitate si marcarea lor ca realizate.
+- `Activitati` centralizeaza activitatile CRM si activitatile existente din fisa clientului.
+- `Email tracking` permite inregistrarea emailurilor comerciale si actualizarea statusului: pregatit, trimis, deschis, raspuns sau esuat.
+- Pagina `Relatii clienti` ramane conectata la portofoliul existent de clienti si primeste navigatia interna CRM.
+
 ### Modul Vanzari Nexora
 - A fost mutat punctul principal al modulului Vanzari pe `/nexora/sales`.
 - Meniul `Facturare` a fost scos din submeniul Vanzari, pentru ca acest modul sa ramana separat de facturi.

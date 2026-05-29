@@ -59,7 +59,7 @@ const ERP_MODULES = [
     key: "crm",
     label: "CRM",
     icon: "users",
-    path: "/nexora/clients",
+    path: "/nexora/crm",
     legacyModuleKeys: ["clients"],
     children: [
       { label: "Lead-uri", path: "/nexora/crm/leads" },

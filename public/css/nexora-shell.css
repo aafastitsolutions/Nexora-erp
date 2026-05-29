@@ -1173,6 +1173,95 @@
   margin: 0;
 }
 
+.nx-row-form {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.nx-row-form select,
+.nx-row-form input {
+  min-height: 38px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 8px 10px;
+  font: inherit;
+}
+
+.nx-crm-board {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(220px, 1fr));
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.nx-crm-board-column {
+  min-width: 220px;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  background: #f8fafc;
+  padding: 10px;
+}
+
+.nx-crm-board-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.nx-crm-board-head b {
+  font-size: 13px;
+}
+
+.nx-crm-board-head span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: right;
+}
+
+.nx-crm-board-card {
+  display: grid;
+  gap: 9px;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #ffffff;
+  padding: 11px;
+  margin-bottom: 10px;
+}
+
+.nx-crm-board-card > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.nx-crm-board-card b {
+  font-size: 13px;
+}
+
+.nx-crm-board-card span,
+.nx-crm-board-card p {
+  color: #64748b;
+  font-size: 12px;
+  margin: 0;
+}
+
+.nx-crm-board-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-weight: 900;
+}
+
+.nx-inline-form.nx-crm-activity-form {
+  grid-template-columns: 120px 1.2fr 1fr 1fr 1fr 150px 1.5fr auto;
+}
+
 /* Nexora client detail */
 .nx-client-layout {
   display: grid;
