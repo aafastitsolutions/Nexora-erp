@@ -20,14 +20,42 @@ function quoteBadge(status) {
   return `<span class="nx-status-pill ${cls}">${escapeHtml(s)}</span>`;
 }
 
+function formatFileSize(bytes = 0) {
+  const size = Number(bytes || 0);
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function renderImportFlash(ok = "", err = "", registrationNumber = "") {
+  if (ok === "imported") {
+    return `<div class="nx-alert success">Document importat și înregistrat cu numărul ${escapeHtml(registrationNumber || "-")}.</div>`;
+  }
+
+  const messages = {
+    client_required: "Alege un client existent sau completează datele pentru client nou.",
+    client_missing: "Clientul selectat nu mai există.",
+    client_create_required: "Completează numele clientului nou.",
+    file_size: "Fișierul depășește limita permisă.",
+    file_type: "Poți importa doar PDF, Word sau Excel.",
+    no_file: "Alege un fișier pentru import.",
+    save_failed: "Importul nu a putut fi salvat."
+  };
+  return err ? `<div class="nx-alert danger">${escapeHtml(messages[err] || messages.save_failed)}</div>` : "";
+}
+
 function renderNexoraQuotesPage(ctx = {}) {
   const {
     currentPath = "/nexora/quotes",
     userEmail = "",
     companyName = "",
     quotes = [],
+    importedQuotes = [],
     clients = [],
     q = "",
+    ok = "",
+    err = "",
+    registrationNumber = "",
     fmtMoney = (v) => String(v ?? "")
   } = ctx;
 
@@ -49,8 +77,36 @@ function renderNexoraQuotesPage(ctx = {}) {
     `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name || "")} (${escapeHtml(c.cui || "")})</option>`
   ).join("");
 
+  const importClientOptions = [
+    `<option value="">Alege client existent</option>`,
+    ...clients.map((c) => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name || "")} (${escapeHtml(c.cui || "")})</option>`)
+  ].join("");
+
+  const importedRows = importedQuotes.map((x) => `
+    <tr>
+      <td>
+        <b>${escapeHtml(x.registration_number || "-")}</b>
+        <div class="nx-table-sub">${escapeHtml(x.created_at || "")}</div>
+      </td>
+      <td>
+        <b>${escapeHtml(x.client_name || "")}</b>
+        <div class="nx-table-sub">${escapeHtml(x.client_cui || "")}</div>
+      </td>
+      <td>
+        <b>${escapeHtml(x.title || "")}</b>
+        <div class="nx-table-sub">${escapeHtml(x.original_file_name || "")} · ${escapeHtml(String(x.extension || "").replace(".", "").toUpperCase())} · ${escapeHtml(formatFileSize(x.file_size))}</div>
+      </td>
+      <td class="nx-right">
+        <a class="nx-btn" href="/nexora/quotes/imports/${escapeHtml(x.id)}/download">Descarcă</a>
+      </td>
+    </tr>
+  `).join("");
+
+  const flashHtml = renderImportFlash(ok, err, registrationNumber);
+
   const body = `
     ${renderSalesNav("/nexora/quotes")}
+    ${flashHtml}
     <section class="nx-content-card">
     <div class="nx-section-head">
       <div>
@@ -89,20 +145,90 @@ function renderNexoraQuotesPage(ctx = {}) {
       <section class="nx-panel">
         <div class="nx-panel-head">
           <div>
-            <h2>Caută oferte</h2>
-            <p>Caută după număr ofertă, client sau CUI.</p>
+            <h2>Import document ofertă</h2>
+            <p>Înregistrează PDF, Word sau Excel și leagă documentul de client.</p>
           </div>
         </div>
 
-        <form method="get" action="/nexora/quotes" class="nx-form">
-          <label class="nx-field"><span>Căutare</span><input name="q" value="${escapeHtml(q)}" placeholder="Q-2026-0001 / client / CUI"></label>
+        <form method="post" action="/nexora/quotes/import" enctype="multipart/form-data" class="nx-form">
+          <div class="nx-two-column-grid compact">
+            <label class="nx-field"><span>Titlu intern</span><input name="title" placeholder="Ex: ofertă primită furnizor / client"></label>
+            <label class="nx-field"><span>Document</span><input type="file" name="quote_file" accept=".pdf,.doc,.docx,.xls,.xlsx" required></label>
+          </div>
+
+          <div class="nx-two-column-grid compact">
+            <label class="nx-field">
+              <span>Tip client</span>
+              <select name="client_mode" data-quote-import-mode>
+                <option value="existent">Client existent</option>
+                <option value="nou">Client nou</option>
+              </select>
+            </label>
+            <label class="nx-field" data-quote-existing-client>
+              <span>Client existent</span>
+              <select name="client_id">${importClientOptions}</select>
+            </label>
+          </div>
+
+          <div data-quote-new-client style="display:none">
+            <div class="nx-two-column-grid compact">
+              <label class="nx-field"><span>Nume client nou</span><input name="new_client_name" placeholder="Denumire client"></label>
+              <label class="nx-field"><span>CUI / cod intern</span><input name="new_client_cui" placeholder="RO123456 sau cod intern"></label>
+            </div>
+            <div class="nx-two-column-grid compact">
+              <label class="nx-field"><span>Email</span><input name="new_client_email" placeholder="contact@client.ro"></label>
+              <label class="nx-field"><span>Telefon</span><input name="new_client_phone" placeholder="+40..."></label>
+            </div>
+            <label class="nx-field"><span>Adresă</span><input name="new_client_address" placeholder="Adresă client"></label>
+          </div>
+
+          <label class="nx-field"><span>Note</span><textarea name="notes" rows="3"></textarea></label>
           <div class="nx-form-actions">
-            <button class="nx-btn primary" type="submit">Caută</button>
-            <a class="nx-btn" href="/nexora/quotes">Reset</a>
+            <button class="nx-btn primary" type="submit">Importă și înregistrează</button>
           </div>
         </form>
       </section>
     </div>
+
+    <section class="nx-panel">
+      <div class="nx-panel-head">
+        <div>
+          <h2>Caută oferte</h2>
+          <p>Caută după număr ofertă, număr înregistrare, client, CUI sau document.</p>
+        </div>
+      </div>
+
+      <form method="get" action="/nexora/quotes" class="nx-inline-form">
+        <label class="nx-field"><span>Căutare</span><input name="q" value="${escapeHtml(q)}" placeholder="Q-2026-0001 / OFE-2026-00001 / client / CUI"></label>
+        <div class="nx-form-actions">
+          <button class="nx-btn primary" type="submit">Caută</button>
+          <a class="nx-btn" href="/nexora/quotes">Reset</a>
+        </div>
+      </form>
+    </section>
+
+    <section class="nx-content-card">
+      <div class="nx-section-head">
+        <div>
+          <h2>Oferte importate</h2>
+          <p>Documente externe înregistrate automat și atribuite clienților.</p>
+        </div>
+      </div>
+
+      <div class="nx-table-wrap">
+        <table class="nx-table">
+          <thead>
+            <tr>
+              <th>Număr înregistrare</th>
+              <th>Client</th>
+              <th>Document</th>
+              <th class="nx-right">Acțiuni</th>
+            </tr>
+          </thead>
+          <tbody>${importedRows || `<tr><td colspan="4"><div class="nx-empty-state">Nu există documente importate încă.</div></td></tr>`}</tbody>
+        </table>
+      </div>
+    </section>
 
     <section class="nx-content-card">
       <div class="nx-section-head">
@@ -128,6 +254,21 @@ function renderNexoraQuotesPage(ctx = {}) {
         </table>
       </div>
     </section>
+    <script>
+      (() => {
+        const mode = document.querySelector("[data-quote-import-mode]");
+        const existingClient = document.querySelector("[data-quote-existing-client]");
+        const newClient = document.querySelector("[data-quote-new-client]");
+        if (!mode || !existingClient || !newClient) return;
+        const sync = () => {
+          const isNew = mode.value === "nou";
+          existingClient.style.display = isNew ? "none" : "";
+          newClient.style.display = isNew ? "" : "none";
+        };
+        mode.addEventListener("change", sync);
+        sync();
+      })();
+    </script>
   `;
 
   return renderNexoraShell({

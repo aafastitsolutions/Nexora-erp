@@ -1,4 +1,142 @@
+import multer from "multer";
 import { renderNexoraQuoteDetailPage, renderNexoraQuotesPage } from "../src/ui/nexora-quotes-page.js";
+
+const QUOTE_IMPORT_EXTENSIONS = new Set([".pdf", ".doc", ".docx", ".xls", ".xlsx"]);
+const QUOTE_IMPORT_ERROR_CODES = new Set([
+  "client_required",
+  "client_missing",
+  "client_create_required",
+  "file_size",
+  "file_type",
+  "no_file",
+  "save_failed"
+]);
+
+function safeText(value = "") {
+  return String(value || "").trim();
+}
+
+function quoteImportError(code) {
+  const error = new Error(code);
+  error.code = code;
+  return error;
+}
+
+function safeFileName(value = "document") {
+  return safeText(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Za-z0-9._-]/g, "_")
+    .replace(/_+/g, "_") || "document";
+}
+
+function decodeUploadedFileName(value = "", fallback = "document") {
+  const original = safeText(value) || fallback;
+  const decoded = Buffer.from(original, "latin1").toString("utf8");
+  return decoded.includes("\uFFFD") ? original : decoded;
+}
+
+function normalizeClientIdentifier(value = "") {
+  return safeText(value)
+    .toUpperCase()
+    .replace(/^RO\s*/i, "")
+    .replace(/[^A-Z0-9-]/g, "");
+}
+
+function generatedClientIdentifier() {
+  return `CLI-${Date.now().toString(36).toUpperCase()}`;
+}
+
+function formatQuoteImportRegistrationNumber(year, seq) {
+  return `OFE-${year}-${String(seq).padStart(5, "0")}`;
+}
+
+function nextQuoteImportRegistration(db, companyId) {
+  const year = new Date().getFullYear();
+  let seq = Number(db.prepare(`
+    SELECT COALESCE(MAX(seq), 0) + 1 AS next_seq
+    FROM sales_quote_imports
+    WHERE company_id=? AND year=?
+  `).get(companyId, year)?.next_seq || 1);
+  let registrationNumber = "";
+  do {
+    registrationNumber = formatQuoteImportRegistrationNumber(year, seq);
+    seq += 1;
+  } while (db.prepare("SELECT id FROM sales_quote_imports WHERE company_id=? AND registration_number=?").get(companyId, registrationNumber));
+
+  return { year, seq: seq - 1, registrationNumber };
+}
+
+function removeFileQuietly(fs, filePath = "") {
+  try {
+    if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  } catch {
+    // ignore cleanup failures after rejected uploads
+  }
+}
+
+function quoteImportStorageDirectory(path, __dirname, companyId) {
+  return path.join(__dirname, "uploads", "sales", "offers", `company-${companyId}`);
+}
+
+function resolveQuoteImportFilePath(path, __dirname, companyId, storedPath = "") {
+  const normalized = safeText(storedPath).replaceAll("\\", "/").replace(/^\/+/, "");
+  const prefix = `uploads/sales/offers/company-${companyId}/`;
+  if (!normalized.startsWith(prefix)) return "";
+  const appRoot = path.resolve(__dirname);
+  const absolute = path.resolve(path.join(appRoot, normalized));
+  return absolute.startsWith(appRoot + path.sep) ? absolute : "";
+}
+
+function resolveImportedQuoteClient(db, companyId, payload = {}) {
+  const mode = safeText(payload.client_mode).toLowerCase();
+  const existingClientId = Number(payload.client_id || 0);
+
+  if (mode !== "nou") {
+    if (existingClientId) {
+      const client = db.prepare("SELECT id, name, cui FROM clients WHERE id=? AND company_id=?").get(existingClientId, companyId);
+      if (!client) throw quoteImportError("client_missing");
+      return client;
+    }
+    if (!safeText(payload.new_client_name)) throw quoteImportError("client_required");
+  }
+
+  const name = safeText(payload.new_client_name);
+  if (!name) throw quoteImportError("client_create_required");
+
+  const rawIdentifier = normalizeClientIdentifier(payload.new_client_cui);
+  let identifier = rawIdentifier || generatedClientIdentifier();
+  if (!rawIdentifier) {
+    let suffix = 1;
+    while (db.prepare("SELECT id FROM clients WHERE company_id=? AND cui=?").get(companyId, identifier)) {
+      identifier = `${generatedClientIdentifier()}-${suffix}`;
+      suffix += 1;
+    }
+  }
+
+  const existing = db.prepare("SELECT id, name, cui FROM clients WHERE company_id=? AND cui=?").get(companyId, identifier);
+  if (existing) return existing;
+
+  try {
+    const info = db.prepare(`
+      INSERT INTO clients (cui, name, address, email, phone, vat, inactive, client_status, company_id)
+      VALUES (?, ?, ?, ?, ?, 0, 0, 'verde', ?)
+    `).run(
+      identifier,
+      name,
+      safeText(payload.new_client_address) || null,
+      safeText(payload.new_client_email) || null,
+      safeText(payload.new_client_phone) || null,
+      companyId
+    );
+    return { id: info.lastInsertRowid, name, cui: identifier };
+  } catch (error) {
+    const fallback = db.prepare("SELECT id, name, cui FROM clients WHERE company_id=? AND cui=?").get(companyId, identifier);
+    if (fallback) return fallback;
+    throw error;
+  }
+}
+
 export function registerQuotesRoutes(app, deps) {
   const {
     COMPANY,
@@ -20,6 +158,24 @@ export function registerQuotesRoutes(app, deps) {
     path,
     fs
   } = deps;
+
+  const quoteImportTempDir = path.join(__dirname, "uploads", "quote-import-temp");
+  fs.mkdirSync(quoteImportTempDir, { recursive: true });
+  const quoteImportUpload = multer({ dest: quoteImportTempDir, limits: { fileSize: 30 * 1024 * 1024 } });
+
+  function uploadQuoteImport(req, res, next) {
+    quoteImportUpload.single("quote_file")(req, res, (error) => {
+      if (error?.code === "LIMIT_FILE_SIZE") return res.redirect("/nexora/quotes?err=file_size");
+      if (error) return res.redirect("/nexora/quotes?err=save_failed");
+      return next();
+    });
+  }
+
+  function redirectQuotesImport(res, params = {}) {
+    const search = new URLSearchParams(params);
+    const suffix = String(search) ? `?${search}` : "";
+    return res.redirect(`/nexora/quotes${suffix}`);
+  }
 
   function createQuote(req, res, redirectTo = "classic") {
     const companyId = Number(req.session.user.company_id || 0);
@@ -81,16 +237,125 @@ export function registerQuotesRoutes(app, deps) {
       ORDER BY name COLLATE NOCASE ASC
     `).all(companyId);
 
+    const importedQuotes = q
+      ? db.prepare(`
+          SELECT i.*, cl.name AS client_name, cl.cui AS client_cui
+          FROM sales_quote_imports i
+          JOIN clients cl ON cl.id=i.client_id AND cl.company_id=i.company_id
+          WHERE i.company_id=? AND (
+            i.registration_number LIKE ?
+            OR i.title LIKE ?
+            OR i.original_file_name LIKE ?
+            OR cl.name LIKE ?
+            OR cl.cui LIKE ?
+          )
+          ORDER BY i.id DESC
+          LIMIT 200
+        `).all(companyId, search, search, search, search, search)
+      : db.prepare(`
+          SELECT i.*, cl.name AS client_name, cl.cui AS client_cui
+          FROM sales_quote_imports i
+          JOIN clients cl ON cl.id=i.client_id AND cl.company_id=i.company_id
+          WHERE i.company_id=?
+          ORDER BY i.id DESC
+          LIMIT 200
+        `).all(companyId);
+
     return res.type("html").send(renderNexoraQuotesPage({
       currentPath: "/nexora/quotes",
       user: req.session.user,
       userEmail: req.session.user.email || "",
       companyName: req.session.user.company_name || "",
       quotes,
+      importedQuotes,
       clients,
       q,
+      ok: safeText(req.query?.ok),
+      err: safeText(req.query?.err),
+      registrationNumber: safeText(req.query?.reg),
       fmtMoney
     }));
+  });
+
+  app.post("/nexora/quotes/import", requireAuth, uploadQuoteImport, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    if (!req.file) return redirectQuotesImport(res, { err: "no_file" });
+
+    const tempPath = req.file.path;
+    const extension = path.extname(String(req.file.originalname || "")).toLowerCase();
+    if (!QUOTE_IMPORT_EXTENSIONS.has(extension)) {
+      removeFileQuietly(fs, tempPath);
+      return redirectQuotesImport(res, { err: "file_type" });
+    }
+
+    const incomingName = decodeUploadedFileName(req.file.originalname, `oferta${extension}`).replaceAll("\\", "/");
+    const originalFileName = path.basename(incomingName).slice(0, 255) || `oferta${extension}`;
+    const title = safeText(req.body?.title) || originalFileName.replace(/\.[^.]+$/, "") || "Oferta importata";
+    const directory = quoteImportStorageDirectory(path, __dirname, companyId);
+    fs.mkdirSync(directory, { recursive: true });
+
+    const storedFileName = `${Date.now()}-${safeFileName(originalFileName)}`;
+    const destination = path.join(directory, storedFileName);
+    const filePath = `uploads/sales/offers/company-${companyId}/${storedFileName}`;
+
+    try {
+      fs.renameSync(tempPath, destination);
+
+      const registerImport = db.transaction(() => {
+        const client = resolveImportedQuoteClient(db, companyId, req.body || {});
+        const registration = nextQuoteImportRegistration(db, companyId);
+        const info = db.prepare(`
+          INSERT INTO sales_quote_imports (
+            company_id, year, seq, registration_number, client_id, title,
+            original_file_name, stored_file_name, file_path, mime_type, file_size,
+            extension, notes, created_by_email
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          companyId,
+          registration.year,
+          registration.seq,
+          registration.registrationNumber,
+          client.id,
+          title,
+          originalFileName,
+          storedFileName,
+          filePath,
+          safeText(req.file.mimetype) || null,
+          Number(req.file.size || 0),
+          extension,
+          safeText(req.body?.notes) || null,
+          safeText(req.session.user.email)
+        );
+        return { id: info.lastInsertRowid, registrationNumber: registration.registrationNumber };
+      });
+
+      const result = registerImport();
+      return redirectQuotesImport(res, { ok: "imported", reg: result.registrationNumber });
+    } catch (error) {
+      removeFileQuietly(fs, destination);
+      removeFileQuietly(fs, tempPath);
+      console.error("[Quotes] import failed", error);
+      const code = QUOTE_IMPORT_ERROR_CODES.has(error?.code || error?.message) ? (error.code || error.message) : "save_failed";
+      return redirectQuotesImport(res, { err: code });
+    }
+  });
+
+  app.get("/nexora/quotes/imports/:id/download", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const id = Number(req.params.id || 0);
+    if (!Number.isFinite(id) || id <= 0) return res.status(400).send("Bad id");
+
+    const row = db.prepare(`
+      SELECT *
+      FROM sales_quote_imports
+      WHERE id=? AND company_id=?
+    `).get(id, companyId);
+    if (!row) return res.status(404).send("Documentul nu a fost gasit.");
+
+    const absolute = resolveQuoteImportFilePath(path, __dirname, companyId, row.file_path);
+    if (!absolute || !fs.existsSync(absolute)) return res.status(404).send("Fisierul nu a fost gasit.");
+    return res.download(absolute, row.original_file_name || row.stored_file_name || "oferta");
   });
 
   app.get("/nexora/quotes/:id", requireAuth, (req, res) => {

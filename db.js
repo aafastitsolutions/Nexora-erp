@@ -493,6 +493,30 @@ export function migrate() {
       FOREIGN KEY (quote_id) REFERENCES quotes(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS sales_quote_imports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      year INTEGER NOT NULL,
+      seq INTEGER NOT NULL,
+      registration_number TEXT NOT NULL,
+      client_id INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      source_type TEXT NOT NULL DEFAULT 'IMPORT',
+      original_file_name TEXT NOT NULL,
+      stored_file_name TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      mime_type TEXT,
+      file_size INTEGER NOT NULL DEFAULT 0,
+      extension TEXT,
+      status TEXT NOT NULL DEFAULT 'IMPORTATA',
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+      UNIQUE(company_id, registration_number)
+    );
+
     CREATE TABLE IF NOT EXISTS sales_orders (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       company_id INTEGER NOT NULL,
@@ -1175,6 +1199,9 @@ export function migrate() {
     CREATE INDEX IF NOT EXISTS idx_quotes_year_seq ON quotes(year, seq);
     CREATE INDEX IF NOT EXISTS idx_quotes_status ON quotes(status);
     CREATE INDEX IF NOT EXISTS idx_quote_items_quote_id ON quote_items(quote_id);
+    CREATE INDEX IF NOT EXISTS idx_sales_quote_imports_company_year_seq ON sales_quote_imports(company_id, year, seq);
+    CREATE INDEX IF NOT EXISTS idx_sales_quote_imports_client_id ON sales_quote_imports(company_id, client_id);
+    CREATE INDEX IF NOT EXISTS idx_sales_quote_imports_created_at ON sales_quote_imports(company_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_sales_orders_company_id ON sales_orders(company_id);
     CREATE INDEX IF NOT EXISTS idx_sales_orders_client_id ON sales_orders(client_id);
     CREATE INDEX IF NOT EXISTS idx_sales_orders_status ON sales_orders(status);
@@ -1310,6 +1337,23 @@ export function migrate() {
   ensureColumn("activities", "company_id", "INTEGER");
   ensureColumn("quotes", "company_id", "INTEGER");
   ensureColumn("quote_items", "company_id", "INTEGER");
+  ensureColumn("sales_quote_imports", "company_id", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("sales_quote_imports", "year", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("sales_quote_imports", "seq", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("sales_quote_imports", "registration_number", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("sales_quote_imports", "client_id", "INTEGER");
+  ensureColumn("sales_quote_imports", "title", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("sales_quote_imports", "source_type", "TEXT NOT NULL DEFAULT 'IMPORT'");
+  ensureColumn("sales_quote_imports", "original_file_name", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("sales_quote_imports", "stored_file_name", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("sales_quote_imports", "file_path", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("sales_quote_imports", "mime_type", "TEXT");
+  ensureColumn("sales_quote_imports", "file_size", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("sales_quote_imports", "extension", "TEXT");
+  ensureColumn("sales_quote_imports", "status", "TEXT NOT NULL DEFAULT 'IMPORTATA'");
+  ensureColumn("sales_quote_imports", "notes", "TEXT");
+  ensureColumn("sales_quote_imports", "created_by_email", "TEXT");
+  ensureColumn("sales_quote_imports", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
   ensureColumn("sales_orders", "company_id", "INTEGER");
   ensureColumn("sales_orders", "order_number", "TEXT NOT NULL DEFAULT ''");
   ensureColumn("sales_orders", "client_id", "INTEGER");
@@ -1649,6 +1693,9 @@ export function migrate() {
     CREATE INDEX IF NOT EXISTS idx_clients_cui ON clients(cui);
     CREATE INDEX IF NOT EXISTS idx_clients_company_id ON clients(company_id);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_clients_company_cui_unique ON clients(company_id, cui);
+    CREATE INDEX IF NOT EXISTS idx_sales_quote_imports_company_year_seq ON sales_quote_imports(company_id, year, seq);
+    CREATE INDEX IF NOT EXISTS idx_sales_quote_imports_client_id ON sales_quote_imports(company_id, client_id);
+    CREATE INDEX IF NOT EXISTS idx_sales_quote_imports_created_at ON sales_quote_imports(company_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_tipizate_docs_client_id ON tipizate_docs(client_id);
     CREATE INDEX IF NOT EXISTS idx_dms_autofill_client_id ON dms_autofill_documents(client_id);
     CREATE INDEX IF NOT EXISTS idx_dms_client_files_company_client ON dms_client_files(company_id, client_id, created_at DESC);

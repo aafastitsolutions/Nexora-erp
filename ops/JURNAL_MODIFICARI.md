@@ -23,6 +23,10 @@
 - `Preturi` permite definirea listelor de pret si a preturilor comerciale pe produs.
 - `Discounturi` permite definirea campaniilor/regulilor comerciale pe global, client, produs sau categorie.
 - `Livrari` permite creare livrare din comanda sau client, urmarire curier/AWB/status si pozitii livrate.
+- `Oferte` permite acum import de documente PDF, Word (`.doc`, `.docx`) si Excel (`.xls`, `.xlsx`).
+- La importul unei oferte se aloca automat un numar de inregistrare de tip `OFE-YYYY-00001`.
+- Documentul importat poate fi atribuit unui client existent sau unui client nou creat direct din formularul de import.
+- Ofertele importate sunt listate intr-un registru separat, cu numar de inregistrare, client, document si actiune de descarcare.
 - Validare:
   - au fost rulate verificarile `node --check` pentru schema, rute si pagini UI;
   - migratia SQLite a fost rulata local si noile tabele `sales_*` au fost create;
