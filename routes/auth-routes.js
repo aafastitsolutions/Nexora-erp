@@ -1,4 +1,5 @@
 import bcrypt from "bcrypt";
+import QRCode from "qrcode";
 import { DEMO_PLAN_CODE, ROLE_MODULES, hasModuleKeyAccess, normalizeCompanyModules, normalizeUserModules, parseModuleList } from "../lib/app-config.js";
 import { renderPlanCards } from "../lib/plan-cards.js";
 import { buildTotpUri, formatTotpSecret, generateTotpSecret, verifyTotpCode } from "../lib/totp.js";
@@ -182,7 +183,25 @@ function completeTotpLogin(req, res, pending) {
   });
 }
 
-function renderTotpChallengePage({ mode = "verify", email = "", secret = "", uri = "", error = "" } = {}) {
+async function buildTotpQrDataUrl(uri = "") {
+  if (!uri) return "";
+  try {
+    return await QRCode.toDataURL(uri, {
+      errorCorrectionLevel: "M",
+      margin: 2,
+      width: 232,
+      color: {
+        dark: "#0f172a",
+        light: "#ffffff"
+      }
+    });
+  } catch (error) {
+    console.error("TOTP QR generation failed:", error);
+    return "";
+  }
+}
+
+function renderTotpChallengePage({ mode = "verify", email = "", secret = "", uri = "", qrDataUrl = "", error = "" } = {}) {
   const isSetup = mode === "setup";
   const errorHtml = error
     ? `<div style="margin-bottom:16px;padding:14px 16px;border-radius:16px;border:1px solid #fecaca;background:#fef2f2;color:#991b1b;font-size:14px;line-height:1.5">${escapeHtml(error)}</div>`
@@ -190,16 +209,24 @@ function renderTotpChallengePage({ mode = "verify", email = "", secret = "", uri
   const setupHtml = isSetup ? `
     <div style="display:grid;gap:12px;margin-bottom:16px">
       <div style="padding:14px 16px;border:1px solid #dbeafe;background:#eff6ff;border-radius:16px;color:#1e3a8a;line-height:1.45">
-        Deschide Google Authenticator, Microsoft Authenticator sau 1Password și adaugă un cont nou folosind cheia de mai jos.
+        Deschide Google Authenticator, Microsoft Authenticator sau 1Password, scanează codul QR, apoi introdu codul de 6 cifre afișat în aplicație.
       </div>
+      ${qrDataUrl ? `
+        <div style="display:grid;place-items:center;padding:16px;border:1px solid #dbe3ef;background:#fff;border-radius:18px">
+          <img src="${escapeHtml(qrDataUrl)}" width="232" height="232" alt="Cod QR pentru activare TOTP" style="display:block;width:232px;height:232px;border-radius:12px" />
+        </div>
+      ` : ""}
       <div>
-        <label>Cheie manuală</label>
+        <label>Cheie manuală, dacă nu poți scana QR-ul</label>
         <input readonly onclick="this.select()" value="${escapeHtml(formatTotpSecret(secret))}" />
       </div>
-      <div>
+      <details style="border:1px solid #e2e8f0;border-radius:14px;padding:12px 14px;background:#f8fafc">
+        <summary style="cursor:pointer;font-weight:800;color:#334155">Opțiune avansată: URI authenticator</summary>
+        <div style="margin-top:10px">
         <label>URI authenticator</label>
         <input readonly onclick="this.select()" value="${escapeHtml(uri)}" />
-      </div>
+        </div>
+      </details>
     </div>
   ` : "";
   const formHtml = `
@@ -1080,33 +1107,38 @@ export function registerAuthRoutes(app, { db, verifyUser, verifyUserAttempt }) {
     });
   });
 
-  app.get("/login/totp/setup", (req, res) => {
+  app.get("/login/totp/setup", async (req, res) => {
     const pending = pendingTotp(req);
     if (!pending) return res.redirect("/login?err=totp_required");
     if (!pending.setup_required) return res.redirect("/login/totp");
 
     const secret = ensureTotpSecret(db, pending.user.id);
     const uri = buildTotpUri({ secret, accountName: pending.email || pending.user.email });
+    const qrDataUrl = await buildTotpQrDataUrl(uri);
     return res.type("html").send(renderTotpChallengePage({
       mode: "setup",
       email: pending.email || pending.user.email,
       secret,
       uri,
+      qrDataUrl,
       error: String(req.query?.err || "") === "invalid" ? "Codul introdus nu este valid. Încearcă din nou." : ""
     }));
   });
 
-  app.post("/login/totp/setup", (req, res) => {
+  app.post("/login/totp/setup", async (req, res) => {
     const pending = pendingTotp(req);
     if (!pending) return res.redirect("/login?err=totp_required");
     const row = getTotpState(db, pending.user.id);
     if (!row?.totp_secret) return res.redirect("/login/totp/setup?err=invalid");
     if (totpLockActive(row)) {
+      const uri = buildTotpUri({ secret: row.totp_secret, accountName: pending.email || pending.user.email });
+      const qrDataUrl = await buildTotpQrDataUrl(uri);
       return res.type("html").send(renderTotpChallengePage({
         mode: "setup",
         email: pending.email || pending.user.email,
         secret: row.totp_secret,
-        uri: buildTotpUri({ secret: row.totp_secret, accountName: pending.email || pending.user.email }),
+        uri,
+        qrDataUrl,
         error: "Prea multe coduri greșite. Încearcă din nou peste câteva minute."
       }));
     }

@@ -106,6 +106,14 @@ try {
     assert.equal(res.headers.get("location"), "/login/totp/setup");
     let cookie = cookieFrom(res);
 
+    const setupPage = await fetch(`${baseUrl}/login/totp/setup`, {
+      headers: { cookie }
+    });
+    const setupHtml = await setupPage.text();
+    assert.equal(setupPage.status, 200);
+    assert.match(setupHtml, /data:image\/png;base64,/);
+    assert.match(setupHtml, /Cod QR pentru activare TOTP/);
+
     let state = db.prepare(`
       SELECT totp_secret, totp_enabled
       FROM users

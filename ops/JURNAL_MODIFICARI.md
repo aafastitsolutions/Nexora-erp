@@ -5,6 +5,7 @@
 ### Securitate conturi Admin - TOTP
 - A fost implementata autentificarea TOTP obligatorie pentru conturile `admin` si `super admin`.
 - La primul login dupa activare, adminul este trimis in setup TOTP si primeste cheia pentru Google Authenticator, Microsoft Authenticator sau 1Password.
+- Setup-ul TOTP afiseaza acum cod QR generat local in Nexora, plus cheia manuala ca varianta de rezerva.
 - Dupa activare, loginul admin cere codul TOTP de 6 cifre inainte de accesul in workspace.
 - Backendul pastreaza secretul TOTP, statusul de activare, data confirmarii, ultimul interval folosit si contorul de incercari esuate.
 - Au fost adaugate protectii pentru:
