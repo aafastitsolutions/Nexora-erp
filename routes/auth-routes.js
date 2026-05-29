@@ -203,7 +203,8 @@ function renderAuthPage({
   description,
   formHtml,
   footerHtml = "",
-  accent = "blue"
+  accent = "blue",
+  compact = false
 }) {
   const accentGradient = accent === "emerald"
     ? "linear-gradient(145deg,#10261d 0%,#1a4737 56%,#2b6d56 100%)"
@@ -286,6 +287,13 @@ function renderAuthPage({
     gap:28px;
     align-items:start;
   }
+  .auth-shell.compact{
+    max-width:520px;
+    min-height:calc(100vh - 64px);
+    grid-template-columns:minmax(0, 480px);
+    justify-content:center;
+    align-items:center;
+  }
   .auth-shell::before{
     content:"";
     position:absolute;
@@ -315,6 +323,17 @@ function renderAuthPage({
     border:1px solid rgba(255,255,255,.92);
     backdrop-filter:blur(16px);
     -webkit-backdrop-filter:blur(16px);
+  }
+  .auth-shell.compact .auth-brand{
+    display:none;
+  }
+  .auth-shell.compact .auth-card{
+    width:100%;
+    padding:30px;
+    border-radius:22px;
+  }
+  .auth-shell.compact .auth-card::before{
+    border-radius:22px;
   }
   .auth-brand::before,
   .auth-card::before{
@@ -397,6 +416,9 @@ function renderAuthPage({
     color:var(--auth-muted);
     line-height:1.65;
     font-weight:500;
+  }
+  .auth-shell.compact .auth-description{
+    margin-bottom:20px;
   }
   label{
     display:block;
@@ -705,9 +727,9 @@ function renderAuthPage({
 </style>
 </head>
 <body>
-  <div class="bg-logo" id="bgLogo">Nexora</div>
-  <div class="auth-shell">
-    <section class="auth-brand">
+  ${compact ? "" : `<div class="bg-logo" id="bgLogo">Nexora</div>`}
+  <div class="auth-shell ${compact ? "compact" : ""}">
+    ${compact ? "" : `<section class="auth-brand">
       <div class="brand-chip">Nexora ERP Cloud</div>
       <h2 class="brand-title">ERP modular pentru companii care vor control operațional.</h2>
       <p class="brand-copy">Intri direct în workspace-ul companiei, cu utilizatori, module și documente controlate pe rol.</p>
@@ -725,7 +747,7 @@ function renderAuthPage({
           <span>Fiecare companie își controlează echipa și vizibilitatea pe module.</span>
         </div>
       </div>
-    </section>
+    </section>`}
 
     <section class="auth-card">
       <h1>${escapeHtml(heading)}</h1>
@@ -734,14 +756,14 @@ function renderAuthPage({
       ${footerHtml ? `<div class="auth-footer">${footerHtml}</div>` : ""}
     </section>
   </div>
-<script>
+${compact ? "" : `<script>
   const bgLogo = document.getElementById("bgLogo");
   document.addEventListener("mousemove", (e) => {
     const x = (e.clientX / window.innerWidth - 0.5) * 18;
     const y = (e.clientY / window.innerHeight - 0.5) * 12;
     bgLogo.style.transform = "translate(" + x + "px," + (y + 4) + "px)";
   });
-</script>
+</script>`}
 </body>
 </html>
 `;
@@ -787,7 +809,7 @@ export function registerAuthRoutes(app, { db, verifyUser, verifyUserAttempt }) {
     const errorMessage = loginErrorMessage(errorCode, companyName);
 
     const formHtml = `
-      ${errorMessage ? `<div style="margin-bottom:16px;padding:14px 16px;border-radius:16px;border:1px solid rgba(248,113,113,.45);background:rgba(127,29,29,.35);color:#fee2e2;font-size:14px;line-height:1.5">${escapeHtml(errorMessage)}${detail ? `<div style="margin-top:8px;color:#fecaca">${escapeHtml(detail)}</div>` : ""}</div>` : ""}
+      ${errorMessage ? `<div style="margin-bottom:16px;padding:14px 16px;border-radius:16px;border:1px solid #fecaca;background:#fef2f2;color:#991b1b;font-size:14px;line-height:1.5">${escapeHtml(errorMessage)}${detail ? `<div style="margin-top:8px;color:#b91c1c">${escapeHtml(detail)}</div>` : ""}</div>` : ""}
       <form method="post" action="/login" class="auth-actions">
         <label>Email</label>
         <input name="email" type="email" required />
@@ -795,24 +817,15 @@ export function registerAuthRoutes(app, { db, verifyUser, verifyUserAttempt }) {
         <input name="password" type="password" required />
         <button type="submit">Login</button>
       </form>
-      <div class="demo-cta">
-        <strong>Creeaza cont demo in 1 click</strong>
-        <p>Datele raman pe un tenant separat, demo-ul este activ 7 zile, vezi aproape toate modulele si e-Factura ramane doar simulata, fara trimitere reala in SPV.</p>
-        <div class="auth-actions">
-          <form method="post" action="/signup/demo" style="margin:0">
-            <button type="submit">Creeaza cont demo</button>
-          </form>
-          <a class="auth-secondary-btn" href="/signup/company">Vezi pachetele disponibile</a>
-        </div>
-      </div>
     `;
 
     res.type("html").send(renderAuthPage({
       title: "Login",
       heading: "Nexora Login",
-      description: "Intri in compania ta sau pornesti imediat un workspace demo, cu date separate si prezentare completa a platformei.",
+      description: "Autentifică-te în workspace-ul tău.",
       formHtml,
-      footerHtml: `Nu ai inca un workspace? <a href="/signup/company">Configureaza companie noua</a>.`
+      footerHtml: "",
+      compact: true
     }));
   });
 

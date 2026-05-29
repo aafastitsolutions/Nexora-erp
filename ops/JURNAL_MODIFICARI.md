@@ -2,6 +2,12 @@
 
 ## 2026-05-29
 
+### Ajustare login Nexora
+- Pagina de login a fost simplificata:
+  - a fost scos panoul informativ din stanga;
+  - a fost eliminata zona `Creeaza cont demo`;
+  - formularul de login este acum intr-un card mai mic, centrat pe pagina.
+
 ### Customer Portal Nexora
 - A fost implementat portalul separat pentru rolul `client`, cu intrare pe `/client-portal/dashboard`.
 - Rolul `client` este legat de `users.client_id`, iar accesul pe backend este limitat la rutele `/client-portal/*`.
