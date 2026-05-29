@@ -1,6 +1,8 @@
 import { renderNexoraClientDetailPage } from "../src/ui/nexora-client-detail-page.js";
 import { renderNexoraClientsPage, renderNexoraClientNewPage } from "../src/ui/nexora-clients-page.js";
 import { formatInvoiceDisplayNumber } from "../lib/invoice-numbering.js";
+import bcrypt from "bcrypt";
+import crypto from "crypto";
 
 export function registerClientsRoutes(app, deps) {
   const {
@@ -10,7 +12,9 @@ export function registerClientsRoutes(app, deps) {
     escapeHtml,
     fetchAnafCompany,
     normalizeCui,
-    requireAuth
+    requireAuth,
+    companySeatSummary,
+    syncCompanySeatUsage
   } = deps;
 
   function activityBadge(type) {
@@ -25,6 +29,27 @@ export function registerClientsRoutes(app, deps) {
   function localFmtMoney(v) {
     const n = Number(v || 0);
     return Number.isFinite(n) ? n.toFixed(2) : "0.00";
+  }
+
+  function canManageClientAccounts(user = {}) {
+    return Number(user.is_super_admin || 0) === 1
+      || Number(user.is_company_admin || 0) === 1
+      || String(user.role || "").trim().toLowerCase() === "admin";
+  }
+
+  function generateTemporaryPassword() {
+    return `Nexora-${crypto.randomBytes(4).toString("hex")}!`;
+  }
+
+  function setPortalAccountFlash(req, payload = {}) {
+    req.session.clientPortalAccountFlash = payload;
+  }
+
+  function popPortalAccountFlash(req, clientId) {
+    const flash = req.session.clientPortalAccountFlash || null;
+    if (!flash || Number(flash.clientId || 0) !== Number(clientId || 0)) return null;
+    req.session.clientPortalAccountFlash = null;
+    return flash;
   }
 
   app.get("/nexora/clients/new", requireAuth, (req, res) => {
@@ -622,6 +647,16 @@ ${crmShellEnd()}
       LIMIT 200
     `).all(id, companyId);
 
+    const portalUsers = db.prepare(`
+      SELECT id, email, status, created_at
+      FROM users
+      WHERE company_id=? AND client_id=? AND lower(role)='client'
+      ORDER BY id DESC
+      LIMIT 10
+    `).all(companyId, id);
+
+    const portalFlash = popPortalAccountFlash(req, id);
+
     const timeline = [];
     activities.forEach((a) => {
       timeline.push({ type: "activity", date: a.created_at, subject: a.subject, note: a.note });
@@ -645,8 +680,112 @@ ${crmShellEnd()}
       contracts,
       quotes,
       facturi,
-      timeline
+      timeline,
+      portalUsers,
+      portalFlash
     }));
+  });
+
+  app.post("/nexora/clients/:id/create-client-account", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id < 1) return res.status(400).send("Bad id");
+    if (!canManageClientAccounts(req.session.user)) return res.status(403).send("Forbidden");
+
+    const client = db.prepare(`
+      SELECT id, name, email
+      FROM clients
+      WHERE id=? AND company_id=?
+    `).get(id, companyId);
+    if (!client) return res.status(404).send("Client not found");
+
+    const contact = db.prepare(`
+      SELECT email
+      FROM contacts
+      WHERE client_id=? AND company_id=? AND TRIM(COALESCE(email,'')) <> ''
+      ORDER BY is_primary DESC, id DESC
+      LIMIT 1
+    `).get(id, companyId);
+    const email = String(req.body?.portal_email || client.email || contact?.email || "").trim().toLowerCase();
+    if (!email || !email.includes("@")) {
+      setPortalAccountFlash(req, {
+        clientId: id,
+        type: "error",
+        message: "Adaugă mai întâi un email valid pe fișa clientului sau pe contactul principal."
+      });
+      return res.redirect(`/nexora/clients/${id}`);
+    }
+
+    const existing = db.prepare("SELECT id, email, role, company_id, client_id FROM users WHERE lower(email)=lower(?)").get(email);
+    if (existing) {
+      if (Number(existing.company_id || 0) === companyId
+        && String(existing.role || "").trim().toLowerCase() === "client"
+        && Number(existing.client_id || 0) === id) {
+        setPortalAccountFlash(req, {
+          clientId: id,
+          type: "info",
+          message: `Există deja cont client pentru ${email}.`
+        });
+        return res.redirect(`/nexora/clients/${id}`);
+      }
+
+      setPortalAccountFlash(req, {
+        clientId: id,
+        type: "error",
+        message: `Emailul ${email} este deja folosit de alt utilizator.`
+      });
+      return res.redirect(`/nexora/clients/${id}`);
+    }
+
+    if (typeof companySeatSummary === "function") {
+      const seatContext = companySeatSummary(companyId);
+      if (seatContext.seatsUsed >= seatContext.seatsIncluded) {
+        setPortalAccountFlash(req, {
+          clientId: id,
+          type: "error",
+          message: `Planul curent permite maximum ${seatContext.seatsIncluded} utilizatori.`
+        });
+        return res.redirect(`/nexora/clients/${id}`);
+      }
+    }
+
+    const temporaryPassword = generateTemporaryPassword();
+    const passwordHash = bcrypt.hashSync(temporaryPassword, 12);
+    db.prepare(`
+      INSERT INTO users (email, password_hash, role, company_id, status, is_company_admin, module_permissions, client_id)
+      VALUES (?, ?, 'client', ?, 'active', 0, '[]', ?)
+    `).run(email, passwordHash, companyId, id);
+
+    if (typeof syncCompanySeatUsage === "function") syncCompanySeatUsage(companyId);
+
+    try {
+      db.prepare(`
+        INSERT INTO activity_logs (
+          company_id, client_id, user_id, actor_email, actor_role, action,
+          entity_type, entity_id, metadata_json, ip_address, user_agent
+        )
+        VALUES (?, ?, ?, ?, ?, 'admin_client_account_created', 'CLIENT', ?, ?, ?, ?)
+      `).run(
+        companyId,
+        id,
+        Number(req.session.user.id || 0) || null,
+        String(req.session.user.email || ""),
+        String(req.session.user.role || ""),
+        id,
+        JSON.stringify({ email }),
+        String(req.ip || ""),
+        String(req.headers?.["user-agent"] || "")
+      );
+    } catch {}
+
+    setPortalAccountFlash(req, {
+      clientId: id,
+      type: "created",
+      email,
+      password: temporaryPassword,
+      message: "Contul client a fost creat."
+    });
+    return res.redirect(`/nexora/clients/${id}`);
   });
 
   app.get("/client/:id", requireAuth, (req, res) => {

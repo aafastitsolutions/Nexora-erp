@@ -39,6 +39,7 @@ import { registerAnafOAuthRoutes } from "./routes/anaf-oauth-routes.js";
 import { createWorkspace, registerAuthRoutes } from "./routes/auth-routes.js";
 import { registerBillingRoutes, registerBillingWebhook } from "./routes/billing-routes.js";
 import { registerClientsRoutes } from "./routes/clients-routes.js";
+import { registerClientPortalRoutes } from "./routes/client-portal-routes.js";
 import { registerContractsRoutes } from "./routes/contracts-routes.js";
 import { registerCrmRoutes } from "./routes/crm-routes.js";
 import { registerDashboardRoutes } from "./routes/dashboard-routes.js";
@@ -139,13 +140,15 @@ registerContractsRoutes(app, {
   todayISO
 });
 registerClientsRoutes(app, {
+  companySeatSummary,
   crmShellEnd,
   crmShellStart,
   db,
   escapeHtml,
   fetchAnafCompany,
   normalizeCui,
-  requireAuth
+  requireAuth,
+  syncCompanySeatUsage
 });
 registerCrmRoutes(app, { db, requireAuth, fmtMoney });
 registerSalesRoutes(app, { db, requireAuth, fmtMoney });
@@ -3003,6 +3006,10 @@ function resolveWorkspaceHome(user = {}) {
       : [];
   const role = String(user?.role || "").trim().toLowerCase();
 
+  if (role === "client") {
+    return "/client-portal/dashboard";
+  }
+
   if (role === "accounting" && hasModuleKeyAccess(modules, "finance")) {
     return "/nexora/accounting";
   }
@@ -4572,6 +4579,7 @@ registerAccountingRoutes(app, { db, requireAuth, requireSpvAccess, canAccessSpvU
 registerInventoryRoutes(app, { db, requireAuth, escapeHtml, fmtMoney, crmShellStart, crmShellEnd, fs, path, __dirname, upload });
 registerProcurementRoutes(app, { db, requireAuth, fmtMoney, fs, path, __dirname, upload });
 registerProjectsRoutes(app, { db, requireAuth, fs, path, __dirname });
+registerClientPortalRoutes(app, { db, requireAuth, fs, path, __dirname, upload });
 
 db.prepare(`
 CREATE TABLE IF NOT EXISTS app_settings(

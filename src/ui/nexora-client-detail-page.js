@@ -27,8 +27,13 @@ function renderNexoraClientDetailPage(options = {}) {
   const quotes = options.quotes || [];
   const facturi = options.facturi || [];
   const timeline = options.timeline || [];
+  const portalUsers = options.portalUsers || [];
+  const portalFlash = options.portalFlash || null;
 
   const companyName = user.company_name || "Workspace";
+  const canManageClientAccounts = Number(user.is_super_admin || 0) === 1
+    || Number(user.is_company_admin || 0) === 1
+    || String(user.role || "").trim().toLowerCase() === "admin";
 
   const sidebar = renderErpSidebar({
     currentPath: "/nexora/clients",
@@ -111,6 +116,34 @@ function renderNexoraClientDetailPage(options = {}) {
     `).join("")
     : `<div class="nx-empty-state">Nu există timeline.</div>`;
 
+  const portalActionHtml = canManageClientAccounts
+    ? portalUsers.length
+      ? `<span class="nx-status-pill success">Cont client activ</span>`
+      : `<form method="post" action="/nexora/clients/${escapeHtml(client.id)}/create-client-account" style="margin:0"><button class="nx-btn primary" type="submit">Creează cont client</button></form>`
+    : "";
+
+  const portalFlashTone = portalFlash?.type === "created"
+    ? "border-color:#bbf7d0;background:#ecfdf5;color:#166534"
+    : portalFlash?.type === "error"
+      ? "border-color:#fecaca;background:#fef2f2;color:#991b1b"
+      : "border-color:#bfdbfe;background:#eff6ff;color:#1d4ed8";
+
+  const portalFlashHtml = portalFlash ? `
+    <section class="nx-content-card" style="${portalFlashTone}">
+      <b>${escapeHtml(portalFlash.message || "")}</b>
+      ${portalFlash.email ? `<div style="margin-top:8px">Email: <b>${escapeHtml(portalFlash.email)}</b></div>` : ""}
+      ${portalFlash.password ? `<div style="margin-top:6px">Parolă temporară: <b>${escapeHtml(portalFlash.password)}</b></div>` : ""}
+    </section>
+  ` : "";
+
+  const portalUsersRows = portalUsers.length ? portalUsers.map((portalUser) => `
+    <tr>
+      <td><b>${escapeHtml(portalUser.email || "-")}</b></td>
+      <td>${portalUser.status === "active" ? `<span class="nx-status-pill success">activ</span>` : `<span class="nx-status-pill neutral">${escapeHtml(portalUser.status || "-")}</span>`}</td>
+      <td>${escapeHtml(portalUser.created_at || "-")}</td>
+    </tr>
+  `).join("") : `<tr><td colspan="3"><div class="nx-empty-state">Nu există cont client creat pentru această fișă.</div></td></tr>`;
+
   return `<!doctype html>
 <html lang="ro">
 <head>
@@ -131,9 +164,28 @@ function renderNexoraClientDetailPage(options = {}) {
         </div>
 
         <div class="nx-actions">
+          ${portalActionHtml}
           <a class="nx-btn" href="/nexora/clients">Înapoi la clienți</a>
         </div>
       </header>
+
+      ${portalFlashHtml}
+
+      <section class="nx-content-card">
+        <div class="nx-panel-head">
+          <div>
+            <h2>Portal client</h2>
+            <span>Conturi externe legate automat prin users.client_id la acest client.</span>
+          </div>
+          <div class="nx-panel-actions">${portalActionHtml}</div>
+        </div>
+        <div class="nx-table-wrap">
+          <table class="nx-table">
+            <thead><tr><th>Email</th><th>Status</th><th>Creat</th></tr></thead>
+            <tbody>${portalUsersRows}</tbody>
+          </table>
+        </div>
+      </section>
 
       <section class="nx-client-layout">
         <div class="nx-client-main">

@@ -2,6 +2,29 @@
 
 ## 2026-05-29
 
+### Customer Portal Nexora
+- A fost implementat portalul separat pentru rolul `client`, cu intrare pe `/client-portal/dashboard`.
+- Rolul `client` este legat de `users.client_id`, iar accesul pe backend este limitat la rutele `/client-portal/*`.
+- Pentru utilizatorii cu rol `client`, datele se filtreaza exclusiv dupa `client_id` din sesiunea autentificata; portalul nu foloseste `client_id` primit din frontend.
+- Au fost adaugate meniurile dedicate portalului:
+  - `Dashboard`;
+  - `Proiecte`;
+  - `Task-uri`;
+  - `Oferte`;
+  - `Contracte`;
+  - `Facturi`;
+  - `Documente`;
+  - `Suport`;
+  - `Mesaje`.
+- Au fost create rute backend pentru dashboard, proiecte, task-uri, oferte, contracte, facturi, documente, ticketuri, comentarii si uploaduri.
+- Pagina interna de client are acum buton `Creeaza cont client`, care creeaza utilizator cu rol `client` si `client_id` setat pe clientul curent.
+- Au fost adaugate tabele pentru `activity_logs`, `client_portal_tickets`, `client_portal_comments` si `client_portal_uploads`.
+- Se logheaza actiunile clientului pentru acceptare oferta, creare ticket, comentariu, upload document si descarcare factura.
+- Validare:
+  - au fost rulate verificarile `node --check` pentru rutele/UI-urile modificate si pentru `server.js`;
+  - a fost adaugat si rulat testul `tests/client-portal-isolation.test.mjs`;
+  - testul confirma izolarea datelor intre clienti si faptul ca `client_id` trimis fortat din formular nu este folosit.
+
 ### Modul Achizitii Nexora
 - A fost adaugat modulul dedicat Achizitii pe `/nexora/procurement`.
 - Au fost facute functionale meniurile:

@@ -168,7 +168,7 @@ function resolvePostLoginPath(user) {
   }
 
   if (String(user?.role || "").trim().toLowerCase() === "client") {
-    return "/nexora/client-portal";
+    return "/client-portal/dashboard";
   }
 
   const modules = Array.isArray(user?.effective_module_permissions)

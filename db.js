@@ -1124,6 +1124,93 @@ export function migrate() {
       FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS activity_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      client_id INTEGER,
+      user_id INTEGER,
+      actor_email TEXT,
+      actor_role TEXT,
+      action TEXT NOT NULL,
+      entity_type TEXT,
+      entity_id INTEGER,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      ip_address TEXT,
+      user_agent TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id),
+      FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS client_portal_tickets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      client_id INTEGER NOT NULL,
+      year INTEGER NOT NULL,
+      seq INTEGER NOT NULL,
+      ticket_number TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'GENERAL',
+      priority TEXT NOT NULL DEFAULT 'MEDIE',
+      status TEXT NOT NULL DEFAULT 'DESCHIS',
+      created_by_user_id INTEGER,
+      created_by_email TEXT,
+      assigned_to_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      closed_at TEXT,
+      FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+      FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+      UNIQUE(company_id, ticket_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS client_portal_comments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      client_id INTEGER NOT NULL,
+      ticket_id INTEGER,
+      project_id INTEGER,
+      task_id INTEGER,
+      entity_type TEXT NOT NULL DEFAULT 'MESSAGE',
+      entity_id INTEGER,
+      body TEXT NOT NULL,
+      visibility TEXT NOT NULL DEFAULT 'CLIENT',
+      author_user_id INTEGER,
+      author_email TEXT,
+      author_role TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+      FOREIGN KEY (ticket_id) REFERENCES client_portal_tickets(id) ON DELETE CASCADE,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
+      FOREIGN KEY (task_id) REFERENCES project_tasks(id) ON DELETE SET NULL,
+      FOREIGN KEY (author_user_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS client_portal_uploads (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      client_id INTEGER NOT NULL,
+      ticket_id INTEGER,
+      project_id INTEGER,
+      task_id INTEGER,
+      title TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'DOCUMENT',
+      original_file_name TEXT NOT NULL,
+      stored_file_name TEXT NOT NULL,
+      stored_path TEXT NOT NULL,
+      mime_type TEXT,
+      file_size INTEGER NOT NULL DEFAULT 0,
+      uploaded_by_user_id INTEGER,
+      uploaded_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+      FOREIGN KEY (ticket_id) REFERENCES client_portal_tickets(id) ON DELETE CASCADE,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
+      FOREIGN KEY (task_id) REFERENCES project_tasks(id) ON DELETE SET NULL,
+      FOREIGN KEY (uploaded_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+
     CREATE TABLE IF NOT EXISTS anaf_messages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       account_id INTEGER,
@@ -1725,6 +1812,15 @@ export function migrate() {
     CREATE INDEX IF NOT EXISTS idx_project_files_project ON project_files(company_id, project_id);
     CREATE INDEX IF NOT EXISTS idx_project_milestones_project ON project_milestones(company_id, project_id);
     CREATE INDEX IF NOT EXISTS idx_project_activity_project ON project_activity(company_id, project_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_activity_logs_company_created ON activity_logs(company_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_activity_logs_client_created ON activity_logs(company_id, client_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_activity_logs_entity ON activity_logs(company_id, entity_type, entity_id);
+    CREATE INDEX IF NOT EXISTS idx_client_portal_tickets_client_status ON client_portal_tickets(company_id, client_id, status);
+    CREATE INDEX IF NOT EXISTS idx_client_portal_tickets_created ON client_portal_tickets(company_id, client_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_client_portal_comments_client_created ON client_portal_comments(company_id, client_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_client_portal_comments_ticket ON client_portal_comments(company_id, ticket_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_client_portal_uploads_client_created ON client_portal_uploads(company_id, client_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_client_portal_uploads_ticket ON client_portal_uploads(company_id, ticket_id, created_at DESC);
   `);
 
   ensureColumn("users", "module_permissions", "TEXT");

@@ -75,6 +75,7 @@ function resolveCompanyAccess(companyId) {
 
 function resolveRequestModule(req) {
   const path = String(req.path || "");
+  if (path.startsWith("/client-portal") || path.startsWith("/nexora/client-portal")) return null;
   if (path.startsWith("/nexora-dashboard")) return "dashboard";
   if (path.startsWith("/nexora/clients")) return "clients";
   if (path.startsWith("/nexora/quotes")) return "quotes";
@@ -205,6 +206,19 @@ export function requireAuth(req, res, next) {
     return res.redirect("/login");
   }
   req.session.user = refreshedUser;
+
+  if (String(req.session.user?.role || "").trim().toLowerCase() === "client") {
+    const path = String(req.path || "");
+    const allowedClientPath = path.startsWith("/client-portal")
+      || path.startsWith("/nexora/client-portal")
+      || path === "/logout";
+    if (!allowedClientPath) {
+      if (String(req.method || "GET").toUpperCase() === "GET") {
+        return res.redirect("/client-portal/dashboard");
+      }
+      return res.status(403).send("Forbidden");
+    }
+  }
 
   const requiredModule = resolveRequestModule(req);
   if (requiredModule && !userHasModule(req.session.user, requiredModule)) {
