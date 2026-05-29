@@ -2123,6 +2123,12 @@ export function migrate() {
   ensureColumn("users", "status", "TEXT DEFAULT 'active'");
   ensureColumn("users", "is_company_admin", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn("users", "client_id", "INTEGER");
+  ensureColumn("users", "totp_secret", "TEXT");
+  ensureColumn("users", "totp_enabled", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("users", "totp_confirmed_at", "TEXT");
+  ensureColumn("users", "totp_last_used_step", "INTEGER");
+  ensureColumn("users", "totp_failed_attempts", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("users", "totp_locked_until", "TEXT");
   ensureColumn("companies", "stripe_customer_id", "TEXT");
   ensureColumn("companies", "is_demo", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn("companies", "demo_expires_at", "TEXT");

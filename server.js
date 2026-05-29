@@ -8626,7 +8626,8 @@ app.get("/nexora/users", requireAuth, requireRole("admin"), (req, res) => {
   const clients = loadCompanyClients(companyId);
   const users = db.prepare(`
     SELECT u.id, u.email, u.role, u.status, u.is_company_admin, u.client_id,
-           u.module_permissions, u.created_at, cl.name AS client_name, cl.cui AS client_cui
+           u.module_permissions, u.totp_enabled, u.totp_confirmed_at, u.created_at,
+           cl.name AS client_name, cl.cui AS client_cui
     FROM users u
     LEFT JOIN clients cl ON cl.id=u.client_id AND cl.company_id=u.company_id
     WHERE u.company_id=?
@@ -8659,6 +8660,37 @@ app.get("/nexora/users", requireAuth, requireRole("admin"), (req, res) => {
     isSuperAdmin: Number(req.session.user.is_super_admin || 0),
     ok: String(req.query?.ok || "")
   }));
+});
+
+app.post("/nexora/users/:id/totp/reset", requireAuth, requireRole("admin"), (req, res) => {
+  const id = Number(req.params.id);
+  const companyId = Number(req.session?.user?.company_id || 0);
+  if (!Number.isFinite(id) || !id || !companyId) {
+    return res.status(400).send("Bad request");
+  }
+
+  const user = db.prepare(`
+    SELECT id, email, role
+    FROM users
+    WHERE id=? AND company_id=?
+  `).get(id, companyId);
+
+  if (!user) {
+    return res.status(404).send("User not found");
+  }
+
+  db.prepare(`
+    UPDATE users
+    SET totp_secret=NULL,
+        totp_enabled=0,
+        totp_confirmed_at=NULL,
+        totp_last_used_step=NULL,
+        totp_failed_attempts=0,
+        totp_locked_until=NULL
+    WHERE id=? AND company_id=?
+  `).run(id, companyId);
+
+  return res.redirect("/nexora/users?ok=totp_reset");
 });
 
 app.get("/nexora/users/:id/edit", requireAuth, requireRole("admin"), (req, res) => {

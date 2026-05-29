@@ -1,6 +1,7 @@
 import bcrypt from "bcrypt";
 import { DEMO_PLAN_CODE, ROLE_MODULES, hasModuleKeyAccess, normalizeCompanyModules, normalizeUserModules, parseModuleList } from "../lib/app-config.js";
 import { renderPlanCards } from "../lib/plan-cards.js";
+import { buildTotpUri, formatTotpSecret, generateTotpSecret, verifyTotpCode } from "../lib/totp.js";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -73,6 +74,154 @@ function buildSessionUser(u) {
     effective_module_permissions: u.effective_module_permissions,
     subscription: u.subscription
   };
+}
+
+function isTotpRequiredUser(user = {}) {
+  return Number(user?.is_super_admin || 0) === 1
+    || String(user?.role || "").trim().toLowerCase() === "admin";
+}
+
+function getTotpState(db, userId) {
+  return db.prepare(`
+    SELECT id, email, role, totp_secret, totp_enabled, totp_confirmed_at,
+           totp_last_used_step, totp_failed_attempts, totp_locked_until
+    FROM users
+    WHERE id=?
+  `).get(Number(userId || 0)) || null;
+}
+
+function ensureTotpSecret(db, userId) {
+  const row = getTotpState(db, userId);
+  if (!row) return null;
+  if (row.totp_secret) return row.totp_secret;
+  const secret = generateTotpSecret();
+  db.prepare(`
+    UPDATE users
+    SET totp_secret=?,
+        totp_enabled=0,
+        totp_confirmed_at=NULL,
+        totp_last_used_step=NULL,
+        totp_failed_attempts=0,
+        totp_locked_until=NULL
+    WHERE id=?
+  `).run(secret, userId);
+  return secret;
+}
+
+function totpLockActive(row) {
+  const lockedUntil = Date.parse(String(row?.totp_locked_until || ""));
+  return Number.isFinite(lockedUntil) && lockedUntil > Date.now();
+}
+
+function recordTotpFailure(db, userId, row) {
+  const attempts = Number(row?.totp_failed_attempts || 0) + 1;
+  const lockedUntil = attempts >= 5
+    ? new Date(Date.now() + 5 * 60 * 1000).toISOString()
+    : null;
+  db.prepare(`
+    UPDATE users
+    SET totp_failed_attempts=?,
+        totp_locked_until=?
+    WHERE id=?
+  `).run(attempts >= 5 ? 0 : attempts, lockedUntil, userId);
+}
+
+function clearTotpFailures(db, userId, counter) {
+  db.prepare(`
+    UPDATE users
+    SET totp_failed_attempts=0,
+        totp_locked_until=NULL,
+        totp_last_used_step=?
+    WHERE id=?
+  `).run(counter, userId);
+}
+
+function pendingTotp(req) {
+  const pending = req.session?.pending_totp;
+  if (!pending?.user?.id || !pending?.expires_at) return null;
+  if (Number(pending.expires_at || 0) < Date.now()) {
+    delete req.session.pending_totp;
+    return null;
+  }
+  return pending;
+}
+
+function beginTotpFlow(db, req, res, user, extraSession = {}) {
+  const state = getTotpState(db, user.id);
+  const enabled = Number(state?.totp_enabled || 0) === 1 && Boolean(state?.totp_secret);
+  if (!enabled) ensureTotpSecret(db, user.id);
+
+  req.session.regenerate((err) => {
+    if (err) {
+      console.error("Session regenerate for TOTP failed:", err);
+      return res.redirect("/login?err=session_error");
+    }
+
+    req.session.pending_totp = {
+      user: buildSessionUser(user),
+      email: user.email,
+      setup_required: !enabled,
+      expires_at: Date.now() + 10 * 60 * 1000,
+      ...extraSession
+    };
+    return res.redirect(enabled ? "/login/totp" : "/login/totp/setup");
+  });
+}
+
+function completeTotpLogin(req, res, pending) {
+  const sessionUser = pending.user;
+  const demoCredentials = pending.demo_credentials || null;
+  req.session.regenerate((err) => {
+    if (err) {
+      console.error("Session regenerate after TOTP failed:", err);
+      return res.redirect("/login?err=session_error");
+    }
+    req.session.user = sessionUser;
+    if (demoCredentials) req.session.demo_credentials = demoCredentials;
+    return res.redirect(resolvePostLoginPath(sessionUser));
+  });
+}
+
+function renderTotpChallengePage({ mode = "verify", email = "", secret = "", uri = "", error = "" } = {}) {
+  const isSetup = mode === "setup";
+  const errorHtml = error
+    ? `<div style="margin-bottom:16px;padding:14px 16px;border-radius:16px;border:1px solid #fecaca;background:#fef2f2;color:#991b1b;font-size:14px;line-height:1.5">${escapeHtml(error)}</div>`
+    : "";
+  const setupHtml = isSetup ? `
+    <div style="display:grid;gap:12px;margin-bottom:16px">
+      <div style="padding:14px 16px;border:1px solid #dbeafe;background:#eff6ff;border-radius:16px;color:#1e3a8a;line-height:1.45">
+        Deschide Google Authenticator, Microsoft Authenticator sau 1Password și adaugă un cont nou folosind cheia de mai jos.
+      </div>
+      <div>
+        <label>Cheie manuală</label>
+        <input readonly onclick="this.select()" value="${escapeHtml(formatTotpSecret(secret))}" />
+      </div>
+      <div>
+        <label>URI authenticator</label>
+        <input readonly onclick="this.select()" value="${escapeHtml(uri)}" />
+      </div>
+    </div>
+  ` : "";
+  const formHtml = `
+    ${errorHtml}
+    ${setupHtml}
+    <form method="post" action="${isSetup ? "/login/totp/setup" : "/login/totp"}" class="auth-actions">
+      <label>Cod TOTP</label>
+      <input name="token" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required />
+      <button type="submit">${isSetup ? "Activează TOTP" : "Verifică și intră"}</button>
+    </form>
+  `;
+
+  return renderAuthPage({
+    title: isSetup ? "Activează TOTP" : "Verificare TOTP",
+    heading: isSetup ? "Activează verificarea în doi pași" : "Cod de autentificare",
+    description: isSetup
+      ? `Cont admin: ${email}. TOTP este obligatoriu pentru admin și super admin.`
+      : `Introdu codul de 6 cifre pentru ${email}.`,
+    formHtml,
+    footerHtml: `<form method="post" action="/logout" style="margin:0"><button type="submit" style="border:0;background:transparent;color:#2563eb;font-weight:800;cursor:pointer;padding:0">Anulează autentificarea</button></form>`,
+    compact: true
+  });
 }
 
 function generateDemoCredentials(db) {
@@ -797,6 +946,9 @@ function loginErrorMessage(code, companyName) {
   if (code === "invalid_credentials") {
     return "Email sau parolă incorecte.";
   }
+  if (code === "totp_required") {
+    return "Verificarea TOTP este obligatorie pentru acest cont.";
+  }
   return "";
 }
 
@@ -913,6 +1065,10 @@ export function registerAuthRoutes(app, { db, verifyUser, verifyUserAttempt }) {
     }
     const u = attempt.user;
 
+    if (isTotpRequiredUser(u)) {
+      return beginTotpFlow(db, req, res, u);
+    }
+
     req.session.regenerate((err) => {
       if (err) {
         console.error("Session regenerate failed:", err);
@@ -922,6 +1078,99 @@ export function registerAuthRoutes(app, { db, verifyUser, verifyUserAttempt }) {
       req.session.user = buildSessionUser(u);
       return res.redirect(resolvePostLoginPath(u));
     });
+  });
+
+  app.get("/login/totp/setup", (req, res) => {
+    const pending = pendingTotp(req);
+    if (!pending) return res.redirect("/login?err=totp_required");
+    if (!pending.setup_required) return res.redirect("/login/totp");
+
+    const secret = ensureTotpSecret(db, pending.user.id);
+    const uri = buildTotpUri({ secret, accountName: pending.email || pending.user.email });
+    return res.type("html").send(renderTotpChallengePage({
+      mode: "setup",
+      email: pending.email || pending.user.email,
+      secret,
+      uri,
+      error: String(req.query?.err || "") === "invalid" ? "Codul introdus nu este valid. Încearcă din nou." : ""
+    }));
+  });
+
+  app.post("/login/totp/setup", (req, res) => {
+    const pending = pendingTotp(req);
+    if (!pending) return res.redirect("/login?err=totp_required");
+    const row = getTotpState(db, pending.user.id);
+    if (!row?.totp_secret) return res.redirect("/login/totp/setup?err=invalid");
+    if (totpLockActive(row)) {
+      return res.type("html").send(renderTotpChallengePage({
+        mode: "setup",
+        email: pending.email || pending.user.email,
+        secret: row.totp_secret,
+        uri: buildTotpUri({ secret: row.totp_secret, accountName: pending.email || pending.user.email }),
+        error: "Prea multe coduri greșite. Încearcă din nou peste câteva minute."
+      }));
+    }
+
+    const result = verifyTotpCode(row.totp_secret, req.body?.token, {
+      lastUsedCounter: row.totp_last_used_step
+    });
+    if (!result.ok) {
+      recordTotpFailure(db, pending.user.id, row);
+      return res.redirect("/login/totp/setup?err=invalid");
+    }
+
+    db.prepare(`
+      UPDATE users
+      SET totp_enabled=1,
+          totp_confirmed_at=datetime('now'),
+          totp_failed_attempts=0,
+          totp_locked_until=NULL,
+          totp_last_used_step=?
+      WHERE id=?
+    `).run(result.counter, pending.user.id);
+
+    return completeTotpLogin(req, res, pending);
+  });
+
+  app.get("/login/totp", (req, res) => {
+    const pending = pendingTotp(req);
+    if (!pending) return res.redirect("/login?err=totp_required");
+    if (pending.setup_required) return res.redirect("/login/totp/setup");
+    return res.type("html").send(renderTotpChallengePage({
+      mode: "verify",
+      email: pending.email || pending.user.email,
+      error: String(req.query?.err || "") === "invalid" ? "Codul TOTP nu este valid." : ""
+    }));
+  });
+
+  app.post("/login/totp", (req, res) => {
+    const pending = pendingTotp(req);
+    if (!pending) return res.redirect("/login?err=totp_required");
+    if (pending.setup_required) return res.redirect("/login/totp/setup");
+
+    const row = getTotpState(db, pending.user.id);
+    if (!row?.totp_secret || Number(row.totp_enabled || 0) !== 1) {
+      pending.setup_required = true;
+      return res.redirect("/login/totp/setup");
+    }
+    if (totpLockActive(row)) {
+      return res.type("html").send(renderTotpChallengePage({
+        mode: "verify",
+        email: pending.email || pending.user.email,
+        error: "Prea multe coduri greșite. Încearcă din nou peste câteva minute."
+      }));
+    }
+
+    const result = verifyTotpCode(row.totp_secret, req.body?.token, {
+      lastUsedCounter: row.totp_last_used_step
+    });
+    if (!result.ok) {
+      recordTotpFailure(db, pending.user.id, row);
+      return res.redirect("/login/totp?err=invalid");
+    }
+
+    clearTotpFailures(db, pending.user.id, result.counter);
+    return completeTotpLogin(req, res, pending);
   });
 
   app.post("/signup/company", (req, res) => {
@@ -980,6 +1229,10 @@ export function registerAuthRoutes(app, { db, verifyUser, verifyUserAttempt }) {
       return res.redirect("/login");
     }
 
+    if (isTotpRequiredUser(user)) {
+      return beginTotpFlow(db, req, res, user);
+    }
+
     req.session.regenerate((err) => {
       if (err) {
         console.error("Session regenerate after signup failed:", err);
@@ -1029,6 +1282,16 @@ export function registerAuthRoutes(app, { db, verifyUser, verifyUserAttempt }) {
     const user = verifyUser(credentials.email, credentials.password);
     if (!user) {
       return res.redirect("/login");
+    }
+
+    if (isTotpRequiredUser(user)) {
+      return beginTotpFlow(db, req, res, user, {
+        demo_credentials: {
+          email: credentials.email,
+          password: credentials.password,
+          expires_at: demoExpiresAt
+        }
+      });
     }
 
     req.session.regenerate((err) => {

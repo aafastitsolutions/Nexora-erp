@@ -36,6 +36,28 @@ function statusBadge(status) {
     : `<span class="nx-status-pill danger">${escapeHtml(normalized || "-")}</span>`;
 }
 
+function totpBadge(user = {}) {
+  const role = String(user.role || "").trim().toLowerCase();
+  const totpEnabled = Number(user.totp_enabled || 0) === 1;
+  const requiresTotp = role === "admin";
+
+  if (totpEnabled) {
+    return `
+      <span class="nx-status-pill success">TOTP activ</span>
+      <div class="nx-table-sub">${escapeHtml(user.totp_confirmed_at || "")}</div>
+    `;
+  }
+
+  if (requiresTotp) {
+    return `
+      <span class="nx-status-pill warn">setup la login</span>
+      <div class="nx-table-sub">obligatoriu pentru admin</div>
+    `;
+  }
+
+  return `<span class="nx-status-pill neutral">necerut</span>`;
+}
+
 function roleOptions(selectedRole = "operator") {
   return Object.keys(ROLE_LABELS).map((role) => `
     <option value="${escapeHtml(role)}" ${String(selectedRole || "").toLowerCase() === role ? "selected" : ""}>${escapeHtml(roleLabel(role))}</option>
@@ -98,7 +120,8 @@ function renderNexoraUsersPage(options = {}) {
   const okMessages = {
     created: "Utilizatorul a fost creat.",
     saved: "Utilizatorul a fost actualizat.",
-    deleted: "Utilizatorul a fost șters."
+    deleted: "Utilizatorul a fost șters.",
+    totp_reset: "TOTP a fost resetat. La următorul login, utilizatorul își va activa din nou codul."
   };
 
   const rowsHtml = users.length
@@ -113,11 +136,17 @@ function renderNexoraUsersPage(options = {}) {
           <td>${roleBadge(user.role)}</td>
           <td>${statusBadge(user.status)}</td>
           <td>${Number(user.is_company_admin) ? `<span class="nx-status-pill success">admin companie</span>` : `<span class="nx-status-pill neutral">standard</span>`}</td>
+          <td>${totpBadge(user)}</td>
           <td>${escapeHtml(user.client_name || "-")}<div class="nx-table-sub">${user.client_cui ? escapeHtml(user.client_cui) : ""}</div></td>
           <td>${escapeHtml(moduleLabels.length)}<div class="nx-table-sub">${escapeHtml(moduleLabels.slice(0, 4).join(", ") || "-")}</div></td>
           <td>${escapeHtml(user.created_at || "-")}</td>
           <td class="nx-table-actions">
             <a class="nx-btn" href="/nexora/users/${escapeHtml(user.id)}/edit">Editează</a>
+            ${String(user.role || "").trim().toLowerCase() === "admin" || Number(user.totp_enabled || 0) === 1 ? `
+              <form method="post" action="/nexora/users/${escapeHtml(user.id)}/totp/reset" onsubmit="return confirm('Resetezi TOTP pentru acest utilizator?');">
+                <button class="nx-btn" type="submit">Reset 2FA</button>
+              </form>
+            ` : ""}
             <form method="post" action="/accounts/${escapeHtml(user.id)}/delete" onsubmit="return confirm('Ștergi acest utilizator?');">
               <input type="hidden" name="return_to" value="nexora">
               <button class="nx-btn danger" type="submit" ${Number(user.id) === currentUserId ? "disabled" : ""}>Șterge</button>
@@ -126,7 +155,7 @@ function renderNexoraUsersPage(options = {}) {
         </tr>
       `;
     }).join("")
-    : `<tr><td colspan="8"><div class="nx-empty-state">Nu există utilizatori în această companie.</div></td></tr>`;
+    : `<tr><td colspan="9"><div class="nx-empty-state">Nu există utilizatori în această companie.</div></td></tr>`;
 
   const body = `
     ${ok ? `<div class="nx-alert success">${escapeHtml(okMessages[ok] || "Operațiunea a fost finalizată.")}</div>` : ""}
@@ -182,7 +211,7 @@ function renderNexoraUsersPage(options = {}) {
       </div>
       <div class="nx-table-wrap">
         <table class="nx-table">
-          <thead><tr><th>Utilizator</th><th>Rol</th><th>Status</th><th>Admin</th><th>Client</th><th>Module</th><th>Creat</th><th></th></tr></thead>
+          <thead><tr><th>Utilizator</th><th>Rol</th><th>Status</th><th>Admin</th><th>2FA</th><th>Client</th><th>Module</th><th>Creat</th><th></th></tr></thead>
           <tbody>${rowsHtml}</tbody>
         </table>
       </div>

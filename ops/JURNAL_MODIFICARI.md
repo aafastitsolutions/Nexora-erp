@@ -2,6 +2,22 @@
 
 ## 2026-05-29
 
+### Securitate conturi Admin - TOTP
+- A fost implementata autentificarea TOTP obligatorie pentru conturile `admin` si `super admin`.
+- La primul login dupa activare, adminul este trimis in setup TOTP si primeste cheia pentru Google Authenticator, Microsoft Authenticator sau 1Password.
+- Dupa activare, loginul admin cere codul TOTP de 6 cifre inainte de accesul in workspace.
+- Backendul pastreaza secretul TOTP, statusul de activare, data confirmarii, ultimul interval folosit si contorul de incercari esuate.
+- Au fost adaugate protectii pentru:
+  - replay de cod TOTP deja folosit;
+  - sesiune intermediara TOTP expirata dupa 10 minute;
+  - blocare temporara 5 minute dupa 5 coduri gresite.
+- In `Utilizatori & roluri` se afiseaza starea 2FA pentru fiecare user si exista buton `Reset 2FA` pentru conturile admin.
+- Resetarea 2FA sterge cheia TOTP si forteaza un setup nou la urmatorul login admin.
+- Validare:
+  - au fost rulate verificarile `node --check` pentru `db.js`, `server.js`, `routes/auth-routes.js`, `lib/totp.js`, `src/ui/nexora-users-page.js` si testul nou;
+  - a fost adaugat si rulat testul `tests/totp-auth.test.mjs`;
+  - a fost rulat si testul existent `tests/client-portal-isolation.test.mjs`.
+
 ### Modul Workflow & Automatizari / RPA Nexora
 - A fost implementat modulul `Workflow & Automatizari` ca zona RPA in Nexora.
 - Meniul modulului a fost extins cu:
