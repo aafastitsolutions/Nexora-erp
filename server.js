@@ -44,6 +44,7 @@ import { registerCrmRoutes } from "./routes/crm-routes.js";
 import { registerDashboardRoutes } from "./routes/dashboard-routes.js";
 import { registerFacturiRoutes } from "./routes/facturi-routes.js";
 import { registerInventoryRoutes } from "./routes/inventory-routes.js";
+import { registerProcurementRoutes } from "./routes/procurement-routes.js";
 import { registerProjectsRoutes } from "./routes/projects-routes.js";
 import { registerQuotesRoutes } from "./routes/quotes-routes.js";
 import { registerSalesRoutes } from "./routes/sales-routes.js";
@@ -4569,6 +4570,7 @@ const dmsClientUpload = multer({ dest: "uploads/", limits: { fileSize: 30 * 1024
 
 registerAccountingRoutes(app, { db, requireAuth, requireSpvAccess, canAccessSpvUser, escapeHtml, fmtMoney, crmShellStart, crmShellEnd, fs, path, __dirname, upload });
 registerInventoryRoutes(app, { db, requireAuth, escapeHtml, fmtMoney, crmShellStart, crmShellEnd, fs, path, __dirname, upload });
+registerProcurementRoutes(app, { db, requireAuth, fmtMoney, fs, path, __dirname, upload });
 registerProjectsRoutes(app, { db, requireAuth, fs, path, __dirname });
 
 db.prepare(`

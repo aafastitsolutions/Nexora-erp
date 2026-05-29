@@ -744,6 +744,187 @@ export function migrate() {
       FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL
     );
 
+    CREATE TABLE IF NOT EXISTS procurement_suppliers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      supplier_code TEXT NOT NULL,
+      name TEXT NOT NULL,
+      cui TEXT,
+      registration_number TEXT,
+      category TEXT,
+      contact_name TEXT,
+      email TEXT,
+      phone TEXT,
+      address TEXT,
+      payment_terms_days INTEGER NOT NULL DEFAULT 30,
+      status TEXT NOT NULL DEFAULT 'ACTIV',
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(company_id, supplier_code)
+    );
+
+    CREATE TABLE IF NOT EXISTS procurement_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      order_number TEXT NOT NULL,
+      supplier_id INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'DRAFT',
+      approval_status TEXT NOT NULL DEFAULT 'NECESITA_APROBARE',
+      order_date TEXT NOT NULL DEFAULT (date('now')),
+      expected_date TEXT,
+      currency TEXT NOT NULL DEFAULT 'RON',
+      subtotal REAL NOT NULL DEFAULT 0,
+      vat_amount REAL NOT NULL DEFAULT 0,
+      total REAL NOT NULL DEFAULT 0,
+      requested_by_email TEXT,
+      approved_by_email TEXT,
+      approved_at TEXT,
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (supplier_id) REFERENCES procurement_suppliers(id) ON DELETE CASCADE,
+      UNIQUE(company_id, order_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS procurement_order_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      order_id INTEGER NOT NULL,
+      product_id INTEGER,
+      item_code TEXT,
+      item_name TEXT NOT NULL,
+      unit TEXT NOT NULL DEFAULT 'buc',
+      quantity REAL NOT NULL DEFAULT 1,
+      unit_cost REAL NOT NULL DEFAULT 0,
+      vat_percent REAL NOT NULL DEFAULT 19,
+      line_subtotal REAL NOT NULL DEFAULT 0,
+      line_vat REAL NOT NULL DEFAULT 0,
+      line_total REAL NOT NULL DEFAULT 0,
+      received_quantity REAL NOT NULL DEFAULT 0,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (order_id) REFERENCES procurement_orders(id) ON DELETE CASCADE,
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS procurement_receipts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      receipt_number TEXT NOT NULL,
+      order_id INTEGER,
+      supplier_id INTEGER,
+      warehouse_id INTEGER,
+      status TEXT NOT NULL DEFAULT 'DRAFT',
+      receipt_date TEXT NOT NULL DEFAULT (date('now')),
+      document_number TEXT,
+      inventory_receipt_id INTEGER,
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (order_id) REFERENCES procurement_orders(id) ON DELETE SET NULL,
+      FOREIGN KEY (supplier_id) REFERENCES procurement_suppliers(id) ON DELETE SET NULL,
+      FOREIGN KEY (warehouse_id) REFERENCES inventory_warehouses(id) ON DELETE SET NULL,
+      FOREIGN KEY (inventory_receipt_id) REFERENCES inventory_receipts(id) ON DELETE SET NULL,
+      UNIQUE(company_id, receipt_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS procurement_receipt_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      receipt_id INTEGER NOT NULL,
+      order_item_id INTEGER,
+      product_id INTEGER,
+      item_code TEXT,
+      item_name TEXT NOT NULL,
+      unit TEXT NOT NULL DEFAULT 'buc',
+      quantity REAL NOT NULL DEFAULT 1,
+      unit_cost REAL NOT NULL DEFAULT 0,
+      lot_number TEXT,
+      serial_number TEXT,
+      expiry_date TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (receipt_id) REFERENCES procurement_receipts(id) ON DELETE CASCADE,
+      FOREIGN KEY (order_item_id) REFERENCES procurement_order_items(id) ON DELETE SET NULL,
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS procurement_approvals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      approval_number TEXT NOT NULL,
+      order_id INTEGER,
+      subject TEXT NOT NULL,
+      amount REAL NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'PENDING',
+      requested_by_email TEXT,
+      approver_email TEXT,
+      due_date TEXT,
+      decided_at TEXT,
+      decision_notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (order_id) REFERENCES procurement_orders(id) ON DELETE SET NULL,
+      UNIQUE(company_id, approval_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS procurement_costs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      supplier_id INTEGER,
+      order_id INTEGER,
+      receipt_id INTEGER,
+      bill_id INTEGER,
+      cost_type TEXT NOT NULL DEFAULT 'TRANSPORT',
+      cost_date TEXT NOT NULL DEFAULT (date('now')),
+      description TEXT NOT NULL,
+      amount REAL NOT NULL DEFAULT 0,
+      currency TEXT NOT NULL DEFAULT 'RON',
+      allocation_method TEXT NOT NULL DEFAULT 'MANUAL',
+      status TEXT NOT NULL DEFAULT 'PLANIFICAT',
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (supplier_id) REFERENCES procurement_suppliers(id) ON DELETE SET NULL,
+      FOREIGN KEY (order_id) REFERENCES procurement_orders(id) ON DELETE SET NULL,
+      FOREIGN KEY (receipt_id) REFERENCES procurement_receipts(id) ON DELETE SET NULL,
+      FOREIGN KEY (bill_id) REFERENCES procurement_bills(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS procurement_bills (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      bill_number TEXT NOT NULL,
+      supplier_id INTEGER NOT NULL,
+      order_id INTEGER,
+      receipt_id INTEGER,
+      expense_id INTEGER,
+      doc_number TEXT,
+      issue_date TEXT NOT NULL DEFAULT (date('now')),
+      due_date TEXT,
+      status TEXT NOT NULL DEFAULT 'DRAFT',
+      payment_status TEXT NOT NULL DEFAULT 'NEPLATITA',
+      currency TEXT NOT NULL DEFAULT 'RON',
+      subtotal REAL NOT NULL DEFAULT 0,
+      vat_amount REAL NOT NULL DEFAULT 0,
+      total REAL NOT NULL DEFAULT 0,
+      attachment_path TEXT,
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (supplier_id) REFERENCES procurement_suppliers(id) ON DELETE CASCADE,
+      FOREIGN KEY (order_id) REFERENCES procurement_orders(id) ON DELETE SET NULL,
+      FOREIGN KEY (receipt_id) REFERENCES procurement_receipts(id) ON DELETE SET NULL,
+      FOREIGN KEY (expense_id) REFERENCES accounting_expenses(id) ON DELETE SET NULL,
+      UNIQUE(company_id, bill_number)
+    );
+
     CREATE TABLE IF NOT EXISTS facturi (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       factura_nr TEXT NOT NULL UNIQUE,
@@ -1517,6 +1698,17 @@ export function migrate() {
     CREATE INDEX IF NOT EXISTS idx_sales_deliveries_order_id ON sales_deliveries(order_id);
     CREATE INDEX IF NOT EXISTS idx_sales_deliveries_status ON sales_deliveries(status);
     CREATE INDEX IF NOT EXISTS idx_sales_delivery_items_delivery_id ON sales_delivery_items(delivery_id);
+    CREATE INDEX IF NOT EXISTS idx_procurement_suppliers_company_status ON procurement_suppliers(company_id, status);
+    CREATE INDEX IF NOT EXISTS idx_procurement_orders_company_status ON procurement_orders(company_id, status);
+    CREATE INDEX IF NOT EXISTS idx_procurement_orders_supplier_id ON procurement_orders(company_id, supplier_id);
+    CREATE INDEX IF NOT EXISTS idx_procurement_order_items_order_id ON procurement_order_items(company_id, order_id);
+    CREATE INDEX IF NOT EXISTS idx_procurement_receipts_company_status ON procurement_receipts(company_id, status);
+    CREATE INDEX IF NOT EXISTS idx_procurement_receipts_order_id ON procurement_receipts(company_id, order_id);
+    CREATE INDEX IF NOT EXISTS idx_procurement_receipt_items_receipt_id ON procurement_receipt_items(company_id, receipt_id);
+    CREATE INDEX IF NOT EXISTS idx_procurement_approvals_company_status ON procurement_approvals(company_id, status);
+    CREATE INDEX IF NOT EXISTS idx_procurement_costs_company_date ON procurement_costs(company_id, cost_date DESC);
+    CREATE INDEX IF NOT EXISTS idx_procurement_bills_company_status ON procurement_bills(company_id, status);
+    CREATE INDEX IF NOT EXISTS idx_procurement_bills_supplier_id ON procurement_bills(company_id, supplier_id);
     CREATE INDEX IF NOT EXISTS idx_facturi_client_id ON facturi(client_id);
     CREATE INDEX IF NOT EXISTS idx_facturi_an_seq ON facturi(an, seq);
     CREATE INDEX IF NOT EXISTS idx_facturi_status ON facturi(status);
@@ -1804,6 +1996,123 @@ export function migrate() {
   ensureColumn("sales_delivery_items", "qty", "REAL NOT NULL DEFAULT 1");
   ensureColumn("sales_delivery_items", "unit", "TEXT");
   ensureColumn("sales_delivery_items", "notes", "TEXT");
+  ensureColumn("procurement_suppliers", "company_id", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("procurement_suppliers", "supplier_code", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("procurement_suppliers", "name", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("procurement_suppliers", "cui", "TEXT");
+  ensureColumn("procurement_suppliers", "registration_number", "TEXT");
+  ensureColumn("procurement_suppliers", "category", "TEXT");
+  ensureColumn("procurement_suppliers", "contact_name", "TEXT");
+  ensureColumn("procurement_suppliers", "email", "TEXT");
+  ensureColumn("procurement_suppliers", "phone", "TEXT");
+  ensureColumn("procurement_suppliers", "address", "TEXT");
+  ensureColumn("procurement_suppliers", "payment_terms_days", "INTEGER NOT NULL DEFAULT 30");
+  ensureColumn("procurement_suppliers", "status", "TEXT NOT NULL DEFAULT 'ACTIV'");
+  ensureColumn("procurement_suppliers", "notes", "TEXT");
+  ensureColumn("procurement_suppliers", "created_by_email", "TEXT");
+  ensureColumn("procurement_suppliers", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
+  ensureColumn("procurement_orders", "company_id", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("procurement_orders", "order_number", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("procurement_orders", "supplier_id", "INTEGER");
+  ensureColumn("procurement_orders", "status", "TEXT NOT NULL DEFAULT 'DRAFT'");
+  ensureColumn("procurement_orders", "approval_status", "TEXT NOT NULL DEFAULT 'NECESITA_APROBARE'");
+  ensureColumn("procurement_orders", "order_date", "TEXT");
+  ensureColumn("procurement_orders", "expected_date", "TEXT");
+  ensureColumn("procurement_orders", "currency", "TEXT NOT NULL DEFAULT 'RON'");
+  ensureColumn("procurement_orders", "subtotal", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("procurement_orders", "vat_amount", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("procurement_orders", "total", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("procurement_orders", "requested_by_email", "TEXT");
+  ensureColumn("procurement_orders", "approved_by_email", "TEXT");
+  ensureColumn("procurement_orders", "approved_at", "TEXT");
+  ensureColumn("procurement_orders", "notes", "TEXT");
+  ensureColumn("procurement_orders", "created_by_email", "TEXT");
+  ensureColumn("procurement_orders", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
+  ensureColumn("procurement_order_items", "company_id", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("procurement_order_items", "order_id", "INTEGER");
+  ensureColumn("procurement_order_items", "product_id", "INTEGER");
+  ensureColumn("procurement_order_items", "item_code", "TEXT");
+  ensureColumn("procurement_order_items", "item_name", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("procurement_order_items", "unit", "TEXT NOT NULL DEFAULT 'buc'");
+  ensureColumn("procurement_order_items", "quantity", "REAL NOT NULL DEFAULT 1");
+  ensureColumn("procurement_order_items", "unit_cost", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("procurement_order_items", "vat_percent", "REAL NOT NULL DEFAULT 19");
+  ensureColumn("procurement_order_items", "line_subtotal", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("procurement_order_items", "line_vat", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("procurement_order_items", "line_total", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("procurement_order_items", "received_quantity", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("procurement_order_items", "notes", "TEXT");
+  ensureColumn("procurement_receipts", "company_id", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("procurement_receipts", "receipt_number", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("procurement_receipts", "order_id", "INTEGER");
+  ensureColumn("procurement_receipts", "supplier_id", "INTEGER");
+  ensureColumn("procurement_receipts", "warehouse_id", "INTEGER");
+  ensureColumn("procurement_receipts", "status", "TEXT NOT NULL DEFAULT 'DRAFT'");
+  ensureColumn("procurement_receipts", "receipt_date", "TEXT");
+  ensureColumn("procurement_receipts", "document_number", "TEXT");
+  ensureColumn("procurement_receipts", "inventory_receipt_id", "INTEGER");
+  ensureColumn("procurement_receipts", "notes", "TEXT");
+  ensureColumn("procurement_receipts", "created_by_email", "TEXT");
+  ensureColumn("procurement_receipts", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
+  ensureColumn("procurement_receipt_items", "company_id", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("procurement_receipt_items", "receipt_id", "INTEGER");
+  ensureColumn("procurement_receipt_items", "order_item_id", "INTEGER");
+  ensureColumn("procurement_receipt_items", "product_id", "INTEGER");
+  ensureColumn("procurement_receipt_items", "item_code", "TEXT");
+  ensureColumn("procurement_receipt_items", "item_name", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("procurement_receipt_items", "unit", "TEXT NOT NULL DEFAULT 'buc'");
+  ensureColumn("procurement_receipt_items", "quantity", "REAL NOT NULL DEFAULT 1");
+  ensureColumn("procurement_receipt_items", "unit_cost", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("procurement_receipt_items", "lot_number", "TEXT");
+  ensureColumn("procurement_receipt_items", "serial_number", "TEXT");
+  ensureColumn("procurement_receipt_items", "expiry_date", "TEXT");
+  ensureColumn("procurement_receipt_items", "notes", "TEXT");
+  ensureColumn("procurement_approvals", "company_id", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("procurement_approvals", "approval_number", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("procurement_approvals", "order_id", "INTEGER");
+  ensureColumn("procurement_approvals", "subject", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("procurement_approvals", "amount", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("procurement_approvals", "status", "TEXT NOT NULL DEFAULT 'PENDING'");
+  ensureColumn("procurement_approvals", "requested_by_email", "TEXT");
+  ensureColumn("procurement_approvals", "approver_email", "TEXT");
+  ensureColumn("procurement_approvals", "due_date", "TEXT");
+  ensureColumn("procurement_approvals", "decided_at", "TEXT");
+  ensureColumn("procurement_approvals", "decision_notes", "TEXT");
+  ensureColumn("procurement_approvals", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
+  ensureColumn("procurement_costs", "company_id", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("procurement_costs", "supplier_id", "INTEGER");
+  ensureColumn("procurement_costs", "order_id", "INTEGER");
+  ensureColumn("procurement_costs", "receipt_id", "INTEGER");
+  ensureColumn("procurement_costs", "bill_id", "INTEGER");
+  ensureColumn("procurement_costs", "cost_type", "TEXT NOT NULL DEFAULT 'TRANSPORT'");
+  ensureColumn("procurement_costs", "cost_date", "TEXT");
+  ensureColumn("procurement_costs", "description", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("procurement_costs", "amount", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("procurement_costs", "currency", "TEXT NOT NULL DEFAULT 'RON'");
+  ensureColumn("procurement_costs", "allocation_method", "TEXT NOT NULL DEFAULT 'MANUAL'");
+  ensureColumn("procurement_costs", "status", "TEXT NOT NULL DEFAULT 'PLANIFICAT'");
+  ensureColumn("procurement_costs", "notes", "TEXT");
+  ensureColumn("procurement_costs", "created_by_email", "TEXT");
+  ensureColumn("procurement_costs", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
+  ensureColumn("procurement_bills", "company_id", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("procurement_bills", "bill_number", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("procurement_bills", "supplier_id", "INTEGER");
+  ensureColumn("procurement_bills", "order_id", "INTEGER");
+  ensureColumn("procurement_bills", "receipt_id", "INTEGER");
+  ensureColumn("procurement_bills", "expense_id", "INTEGER");
+  ensureColumn("procurement_bills", "doc_number", "TEXT");
+  ensureColumn("procurement_bills", "issue_date", "TEXT");
+  ensureColumn("procurement_bills", "due_date", "TEXT");
+  ensureColumn("procurement_bills", "status", "TEXT NOT NULL DEFAULT 'DRAFT'");
+  ensureColumn("procurement_bills", "payment_status", "TEXT NOT NULL DEFAULT 'NEPLATITA'");
+  ensureColumn("procurement_bills", "currency", "TEXT NOT NULL DEFAULT 'RON'");
+  ensureColumn("procurement_bills", "subtotal", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("procurement_bills", "vat_amount", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("procurement_bills", "total", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("procurement_bills", "attachment_path", "TEXT");
+  ensureColumn("procurement_bills", "notes", "TEXT");
+  ensureColumn("procurement_bills", "created_by_email", "TEXT");
+  ensureColumn("procurement_bills", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
   ensureColumn("facturi", "employee_id", "INTEGER");
   ensureColumn("facturi", "company_id", "INTEGER");
   ensureColumn("facturi_linii", "descriere", "TEXT");
@@ -2216,6 +2525,24 @@ export function migrate() {
     CREATE INDEX IF NOT EXISTS idx_sales_discounts_company_status ON sales_discounts(company_id, status);
     CREATE INDEX IF NOT EXISTS idx_sales_deliveries_company_status ON sales_deliveries(company_id, status);
     CREATE INDEX IF NOT EXISTS idx_sales_delivery_items_company_delivery ON sales_delivery_items(company_id, delivery_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_procurement_suppliers_company_code_unique ON procurement_suppliers(company_id, supplier_code);
+    CREATE INDEX IF NOT EXISTS idx_procurement_suppliers_company_status ON procurement_suppliers(company_id, status);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_procurement_orders_company_number_unique ON procurement_orders(company_id, order_number);
+    CREATE INDEX IF NOT EXISTS idx_procurement_orders_company_date ON procurement_orders(company_id, order_date DESC);
+    CREATE INDEX IF NOT EXISTS idx_procurement_orders_company_status ON procurement_orders(company_id, status);
+    CREATE INDEX IF NOT EXISTS idx_procurement_orders_supplier ON procurement_orders(company_id, supplier_id);
+    CREATE INDEX IF NOT EXISTS idx_procurement_order_items_company_order ON procurement_order_items(company_id, order_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_procurement_receipts_company_number_unique ON procurement_receipts(company_id, receipt_number);
+    CREATE INDEX IF NOT EXISTS idx_procurement_receipts_company_date ON procurement_receipts(company_id, receipt_date DESC);
+    CREATE INDEX IF NOT EXISTS idx_procurement_receipts_company_status ON procurement_receipts(company_id, status);
+    CREATE INDEX IF NOT EXISTS idx_procurement_receipts_order ON procurement_receipts(company_id, order_id);
+    CREATE INDEX IF NOT EXISTS idx_procurement_receipt_items_company_receipt ON procurement_receipt_items(company_id, receipt_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_procurement_approvals_company_number_unique ON procurement_approvals(company_id, approval_number);
+    CREATE INDEX IF NOT EXISTS idx_procurement_approvals_company_status ON procurement_approvals(company_id, status);
+    CREATE INDEX IF NOT EXISTS idx_procurement_costs_company_date ON procurement_costs(company_id, cost_date DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_procurement_bills_company_number_unique ON procurement_bills(company_id, bill_number);
+    CREATE INDEX IF NOT EXISTS idx_procurement_bills_company_status ON procurement_bills(company_id, status);
+    CREATE INDEX IF NOT EXISTS idx_procurement_bills_supplier ON procurement_bills(company_id, supplier_id);
     CREATE INDEX IF NOT EXISTS idx_consumption_vouchers_company_id ON consumption_vouchers(company_id);
     CREATE INDEX IF NOT EXISTS idx_consumption_vouchers_issue_date ON consumption_vouchers(issue_date DESC);
     CREATE INDEX IF NOT EXISTS idx_consumption_voucher_items_voucher_id ON consumption_voucher_items(voucher_id);

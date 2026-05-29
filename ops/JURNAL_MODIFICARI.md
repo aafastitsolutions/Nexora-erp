@@ -2,6 +2,29 @@
 
 ## 2026-05-29
 
+### Modul Achizitii Nexora
+- A fost adaugat modulul dedicat Achizitii pe `/nexora/procurement`.
+- Au fost facute functionale meniurile:
+  - `Furnizori`;
+  - `Comenzi achizitie`;
+  - `Receptii`;
+  - `Aprobari achizitii`;
+  - `Costuri`;
+  - `Facturi furnizori`.
+- Au fost adaugate tabele dedicate pentru furnizori, comenzi de achizitie, linii de comanda, receptii, linii de receptie, aprobari, costuri si facturi furnizori.
+- `Furnizori` permite inregistrare furnizori, date fiscale/contact, termene de plata si filtrare.
+- `Comenzi achizitie` permite creare comenzi catre furnizori, adaugare linii de produse/servicii, totalizare cu TVA si schimbare status.
+- `Aprobari achizitii` permite creare cereri de aprobare, aprobare/respingere si actualizarea statusului de aprobare pe comanda.
+- `Receptii` permite creare receptii pe furnizor/comanda/depozit, adaugare linii, loturi/serii si finalizare cu intrare efectiva in gestiune.
+- `Costuri` permite inregistrarea costurilor aditionale de achizitie, legate de furnizor, comanda, receptie sau factura.
+- `Facturi furnizori` permite inregistrarea documentelor furnizor cu atasament, status de plata si oglindire automata in `Cheltuieli`.
+- Fluxul de facturi furnizori este intern, fara integrare ANAF/e-Factura.
+- Validare:
+  - au fost rulate verificarile `node --check` pentru `db.js`, `routes/procurement-routes.js`, `src/ui/nexora-procurement-pages.js` si `server.js`;
+  - migratia SQLite a fost rulata local si tabelele `procurement_*` au fost create;
+  - toate paginile Nexora ale modulului au fost randate local cu raspuns `200`;
+  - fluxul furnizor + comanda + aprobare + receptie in stoc + factura furnizor oglindita in cheltuieli a fost testat in tranzactie cu `ROLLBACK`.
+
 ### Modul Inventar & Gestiune Nexora
 - Punctul principal al modulului Inventar & Gestiune afiseaza acum pagina functionala `Stocuri`, nu un hub static.
 - Au fost facute functionale meniurile:
