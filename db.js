@@ -925,6 +925,195 @@ export function migrate() {
       UNIQUE(company_id, bill_number)
     );
 
+    CREATE TABLE IF NOT EXISTS manufacturing_boms (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      bom_number TEXT NOT NULL,
+      product_id INTEGER,
+      product_code TEXT,
+      product_name TEXT NOT NULL,
+      revision TEXT NOT NULL DEFAULT 'A',
+      batch_size REAL NOT NULL DEFAULT 1,
+      unit TEXT NOT NULL DEFAULT 'buc',
+      status TEXT NOT NULL DEFAULT 'DRAFT',
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL,
+      UNIQUE(company_id, bom_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS manufacturing_bom_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      bom_id INTEGER NOT NULL,
+      component_product_id INTEGER,
+      stock_item_id INTEGER,
+      component_code TEXT,
+      component_name TEXT NOT NULL,
+      unit TEXT NOT NULL DEFAULT 'buc',
+      quantity_per_batch REAL NOT NULL DEFAULT 1,
+      scrap_percent REAL NOT NULL DEFAULT 0,
+      unit_cost REAL NOT NULL DEFAULT 0,
+      operation_step TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (bom_id) REFERENCES manufacturing_boms(id) ON DELETE CASCADE,
+      FOREIGN KEY (component_product_id) REFERENCES products(id) ON DELETE SET NULL,
+      FOREIGN KEY (stock_item_id) REFERENCES inventory_stock_items(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS manufacturing_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      order_number TEXT NOT NULL,
+      bom_id INTEGER,
+      product_id INTEGER,
+      product_name TEXT NOT NULL,
+      quantity_planned REAL NOT NULL DEFAULT 1,
+      quantity_completed REAL NOT NULL DEFAULT 0,
+      unit TEXT NOT NULL DEFAULT 'buc',
+      warehouse_id INTEGER,
+      planned_start TEXT,
+      planned_end TEXT,
+      due_date TEXT,
+      status TEXT NOT NULL DEFAULT 'PLANIFICAT',
+      priority TEXT NOT NULL DEFAULT 'MEDIE',
+      client_name TEXT,
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (bom_id) REFERENCES manufacturing_boms(id) ON DELETE SET NULL,
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL,
+      FOREIGN KEY (warehouse_id) REFERENCES inventory_warehouses(id) ON DELETE SET NULL,
+      UNIQUE(company_id, order_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS manufacturing_order_materials (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      order_id INTEGER NOT NULL,
+      bom_item_id INTEGER,
+      product_id INTEGER,
+      stock_item_id INTEGER,
+      item_code TEXT,
+      item_name TEXT NOT NULL,
+      unit TEXT NOT NULL DEFAULT 'buc',
+      required_qty REAL NOT NULL DEFAULT 0,
+      issued_qty REAL NOT NULL DEFAULT 0,
+      consumed_qty REAL NOT NULL DEFAULT 0,
+      unit_cost REAL NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'NEEMIS',
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (order_id) REFERENCES manufacturing_orders(id) ON DELETE CASCADE,
+      FOREIGN KEY (bom_item_id) REFERENCES manufacturing_bom_items(id) ON DELETE SET NULL,
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL,
+      FOREIGN KEY (stock_item_id) REFERENCES inventory_stock_items(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS manufacturing_plans (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      plan_number TEXT NOT NULL,
+      product_id INTEGER,
+      product_name TEXT NOT NULL,
+      demand_source TEXT NOT NULL DEFAULT 'FORECAST',
+      period_start TEXT,
+      period_end TEXT,
+      required_date TEXT,
+      demand_qty REAL NOT NULL DEFAULT 0,
+      available_qty REAL NOT NULL DEFAULT 0,
+      planned_qty REAL NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'PLANIFICAT',
+      generated_order_id INTEGER,
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL,
+      FOREIGN KEY (generated_order_id) REFERENCES manufacturing_orders(id) ON DELETE SET NULL,
+      UNIQUE(company_id, plan_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS manufacturing_material_issues (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      issue_number TEXT NOT NULL,
+      order_id INTEGER,
+      order_material_id INTEGER,
+      warehouse_id INTEGER,
+      stock_item_id INTEGER,
+      product_id INTEGER,
+      item_code TEXT,
+      item_name TEXT NOT NULL,
+      unit TEXT NOT NULL DEFAULT 'buc',
+      planned_qty REAL NOT NULL DEFAULT 0,
+      issued_qty REAL NOT NULL DEFAULT 0,
+      consumed_qty REAL NOT NULL DEFAULT 0,
+      issue_date TEXT NOT NULL DEFAULT (date('now')),
+      status TEXT NOT NULL DEFAULT 'DRAFT',
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (order_id) REFERENCES manufacturing_orders(id) ON DELETE SET NULL,
+      FOREIGN KEY (order_material_id) REFERENCES manufacturing_order_materials(id) ON DELETE SET NULL,
+      FOREIGN KEY (warehouse_id) REFERENCES inventory_warehouses(id) ON DELETE SET NULL,
+      FOREIGN KEY (stock_item_id) REFERENCES inventory_stock_items(id) ON DELETE SET NULL,
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL,
+      UNIQUE(company_id, issue_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS manufacturing_costs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      cost_number TEXT NOT NULL,
+      order_id INTEGER,
+      cost_date TEXT NOT NULL DEFAULT (date('now')),
+      cost_type TEXT NOT NULL DEFAULT 'ESTIMAT',
+      description TEXT,
+      material_cost REAL NOT NULL DEFAULT 0,
+      labor_cost REAL NOT NULL DEFAULT 0,
+      overhead_cost REAL NOT NULL DEFAULT 0,
+      subcontract_cost REAL NOT NULL DEFAULT 0,
+      total_cost REAL NOT NULL DEFAULT 0,
+      quantity_basis REAL NOT NULL DEFAULT 0,
+      unit_cost REAL NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'DRAFT',
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (order_id) REFERENCES manufacturing_orders(id) ON DELETE SET NULL,
+      UNIQUE(company_id, cost_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS manufacturing_quality_checks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      qc_number TEXT NOT NULL,
+      order_id INTEGER,
+      product_id INTEGER,
+      check_date TEXT NOT NULL DEFAULT (date('now')),
+      inspection_type TEXT NOT NULL DEFAULT 'FINAL',
+      sample_size REAL NOT NULL DEFAULT 0,
+      accepted_qty REAL NOT NULL DEFAULT 0,
+      rejected_qty REAL NOT NULL DEFAULT 0,
+      defect_type TEXT,
+      result TEXT NOT NULL DEFAULT 'PENDING',
+      inspector_email TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (order_id) REFERENCES manufacturing_orders(id) ON DELETE SET NULL,
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL,
+      UNIQUE(company_id, qc_number)
+    );
+
     CREATE TABLE IF NOT EXISTS facturi (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       factura_nr TEXT NOT NULL UNIQUE,
@@ -2074,6 +2263,16 @@ export function migrate() {
     CREATE INDEX IF NOT EXISTS idx_procurement_costs_company_date ON procurement_costs(company_id, cost_date DESC);
     CREATE INDEX IF NOT EXISTS idx_procurement_bills_company_status ON procurement_bills(company_id, status);
     CREATE INDEX IF NOT EXISTS idx_procurement_bills_supplier_id ON procurement_bills(company_id, supplier_id);
+    CREATE INDEX IF NOT EXISTS idx_manufacturing_boms_company_status ON manufacturing_boms(company_id, status);
+    CREATE INDEX IF NOT EXISTS idx_manufacturing_boms_product ON manufacturing_boms(company_id, product_id);
+    CREATE INDEX IF NOT EXISTS idx_manufacturing_bom_items_bom ON manufacturing_bom_items(company_id, bom_id);
+    CREATE INDEX IF NOT EXISTS idx_manufacturing_orders_company_status ON manufacturing_orders(company_id, status);
+    CREATE INDEX IF NOT EXISTS idx_manufacturing_orders_product ON manufacturing_orders(company_id, product_id);
+    CREATE INDEX IF NOT EXISTS idx_manufacturing_order_materials_order ON manufacturing_order_materials(company_id, order_id);
+    CREATE INDEX IF NOT EXISTS idx_manufacturing_plans_status ON manufacturing_plans(company_id, status, required_date);
+    CREATE INDEX IF NOT EXISTS idx_manufacturing_issues_order ON manufacturing_material_issues(company_id, order_id, status);
+    CREATE INDEX IF NOT EXISTS idx_manufacturing_costs_order ON manufacturing_costs(company_id, order_id, cost_date DESC);
+    CREATE INDEX IF NOT EXISTS idx_manufacturing_quality_order ON manufacturing_quality_checks(company_id, order_id, check_date DESC);
     CREATE INDEX IF NOT EXISTS idx_facturi_client_id ON facturi(client_id);
     CREATE INDEX IF NOT EXISTS idx_facturi_an_seq ON facturi(an, seq);
     CREATE INDEX IF NOT EXISTS idx_facturi_status ON facturi(status);

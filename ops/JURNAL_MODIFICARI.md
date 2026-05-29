@@ -2,6 +2,37 @@
 
 ## 2026-05-29
 
+### Modul Productie / MRP Nexora
+- A fost implementat modulul `Productie / MRP` in interfata Nexora.
+- Au fost facute functionale meniurile:
+  - `Dashboard`;
+  - `BOM`;
+  - `Ordine productie`;
+  - `Planificare`;
+  - `Consum materiale`;
+  - `Cost productie`;
+  - `Quality control`.
+- Au fost adaugate tabele dedicate pentru:
+  - BOM-uri si componente BOM;
+  - ordine de productie;
+  - materiale necesare pe ordin;
+  - planuri MRP;
+  - bonuri de consum materiale;
+  - costuri productie;
+  - verificari quality control.
+- `BOM` permite creare reteta pentru produs finit, revizie, lot standard si componente din catalog sau din stoc.
+- `Ordine productie` permite creare ordin din BOM sau produs manual, generare automata necesar materiale si finalizare cu intrare produs finit in stoc.
+- `Planificare` calculeaza necesarul MRP din cerere, stoc disponibil si cantitate planificata, apoi poate genera ordin de productie.
+- `Consum materiale` permite emiterea materialelor pe ordin si confirmarea consumului cu scadere din stoc.
+- `Cost productie` permite calcul estimat/realizat pe ordin, cu preluare automata a costului materialelor din BOM/consum.
+- `Quality control` permite inregistrarea inspectiilor pe ordin, eșantion, cantitati acceptate/respinse si rezultat.
+- Toate datele sunt filtrate pe compania autentificata.
+- Validare:
+  - au fost rulate verificarile `node --check` pentru `db.js`, `server.js`, `routes/manufacturing-routes.js`, `src/ui/nexora-manufacturing-pages.js` si testul nou;
+  - a fost adaugat si rulat testul `tests/manufacturing-smoke.test.mjs`;
+  - smoke testul creeaza produs finit, materie prima, stoc, BOM, ordin productie, consum cu scadere din stoc, cost, QC si plan MRP cu generare ordin;
+  - testul ruleaza in tranzactie si se finalizeaza cu `ROLLBACK`.
+
 ### Securitate conturi Admin - TOTP
 - A fost implementata autentificarea TOTP obligatorie pentru conturile `admin` si `super admin`.
 - La primul login dupa activare, adminul este trimis in setup TOTP si primeste cheia pentru Google Authenticator, Microsoft Authenticator sau 1Password.
