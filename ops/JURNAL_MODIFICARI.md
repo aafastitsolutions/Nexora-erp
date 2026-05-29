@@ -2,6 +2,18 @@
 
 ## 2026-05-29
 
+### Compactare UI si Dashboard Nexora
+- UI-ul Nexora a fost compactat global:
+  - sidebar mai ingust, cu `height: 100vh` si scroll propriu;
+  - topbar, butoane, carduri, KPI-uri si meniuri cu padding/inaltimi reduse;
+  - radius si umbre mai discrete pentru un aspect mai dens si mai utilitar.
+- Dashboardul a fost refacut intr-un layout mai compact:
+  - KPI-urile sunt mai joase si pastreaza cele 5 metrici pe desktop;
+  - graficul business este mai mic;
+  - activitatile recente sunt limitate vizual la primele 3;
+  - e-Factura si scurtaturile rapide au fost combinate intr-un panou compact;
+  - lista de facturi recente ramane limitata la ultimele 3 facturi.
+
 ### Ajustare login Nexora
 - Pagina de login a fost simplificata:
   - a fost scos panoul informativ din stanga;

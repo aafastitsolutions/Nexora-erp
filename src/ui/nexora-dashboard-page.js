@@ -24,6 +24,7 @@ function renderNexoraDashboardPage(options = {}) {
   };
 
   const activities = Array.isArray(options.activities) ? options.activities : [];
+  const visibleActivities = activities.slice(0, 3);
   const recentInvoices = Array.isArray(options.recentInvoices) ? options.recentInvoices : [];
   const efacturaSummary = options.efacturaSummary || {
     total: 0,
@@ -39,8 +40,8 @@ function renderNexoraDashboardPage(options = {}) {
     isCompanyAdmin: Number(user.is_company_admin || 0) === 1
   });
 
-  const activitiesHtml = activities.length
-    ? activities.map((item) => `
+  const activitiesHtml = visibleActivities.length
+    ? visibleActivities.map((item) => `
         <div class="nx-activity">
           <b>${escapeHtml(item.title)}</b>
           <span>${escapeHtml(item.subtitle || "")}</span>
@@ -82,15 +83,15 @@ function renderNexoraDashboardPage(options = {}) {
   <div class="nx-app-shell">
     ${sidebar}
 
-    <main class="nx-main">
+    <main class="nx-main nx-dashboard-main">
       <header class="nx-topbar">
         <div>
           <div class="nx-page-eyebrow">Dashboard</div>
-          <div class="nx-page-title">Bună ziua, ${escapeHtml(userName)} 👋</div>
+          <div class="nx-page-title">Bună ziua, ${escapeHtml(userName)}</div>
         </div>
 
         <form class="nx-search" method="get" action="/nexora/search">
-          <input name="q" aria-label="Caută în ERP" placeholder="Caută în ERP: clienți, facturi, produse, documente..." />
+          <input name="q" aria-label="Caută în ERP" placeholder="Caută în ERP..." />
         </form>
 
         <div class="nx-actions">
@@ -150,7 +151,7 @@ function renderNexoraDashboardPage(options = {}) {
       </section>
 
       <section class="nx-dashboard-grid">
-        <div class="nx-panel large">
+        <div class="nx-panel large nx-dashboard-chart-panel">
           <div class="nx-panel-head">
             <h2>Privire generală business</h2>
             <span>Date live</span>
@@ -169,7 +170,7 @@ function renderNexoraDashboardPage(options = {}) {
           </div>
         </div>
 
-        <div class="nx-panel">
+        <div class="nx-panel nx-dashboard-activity-panel">
           <div class="nx-panel-head">
             <h2>Activități recente</h2>
             <span>Live</span>
@@ -180,7 +181,7 @@ function renderNexoraDashboardPage(options = {}) {
           </div>
         </div>
 
-        <div class="nx-panel">
+        <div class="nx-panel nx-dashboard-invoices-panel">
           <div class="nx-panel-head">
             <h2>Facturi recente</h2>
             <span>Ultimele 3</span>
@@ -191,33 +192,16 @@ function renderNexoraDashboardPage(options = {}) {
           </div>
         </div>
 
-        <div class="nx-panel">
+        <div class="nx-panel nx-dashboard-tools-panel">
           <div class="nx-panel-head">
-            <h2>ANAF e-Factura</h2>
-            <span>Status</span>
+            <h2>Acțiuni rapide</h2>
+            <span>Status + comenzi</span>
           </div>
 
-          <div class="nx-anaf-box">
-            <div class="nx-anaf-row">
-              <span>Total facturi</span>
-              <strong>${escapeHtml(efacturaSummary.total)}</strong>
-            </div>
-            <div class="nx-anaf-row success">
-              <span>Răspuns disponibil</span>
-              <strong>${escapeHtml(efacturaSummary.responseAvailable)}</strong>
-            </div>
-            <div class="nx-anaf-row warn">
-              <span>Fără status e-Factura</span>
-              <strong>${escapeHtml(efacturaSummary.missingStatus)}</strong>
-            </div>
-            <a class="nx-btn primary nx-anaf-link" href="/nexora/anaf/outbox">Deschide e-Factura</a>
-          </div>
-        </div>
-
-        <div class="nx-panel">
-          <div class="nx-panel-head">
-            <h2>Scurtături rapide</h2>
-            <span>Acțiuni</span>
+          <div class="nx-anaf-compact">
+            <a class="nx-anaf-mini" href="/nexora/anaf/outbox"><span>Total</span><strong>${escapeHtml(efacturaSummary.total)}</strong></a>
+            <a class="nx-anaf-mini success" href="/nexora/anaf/outbox"><span>Răspuns</span><strong>${escapeHtml(efacturaSummary.responseAvailable)}</strong></a>
+            <a class="nx-anaf-mini warn" href="/nexora/anaf/outbox"><span>Fără status</span><strong>${escapeHtml(efacturaSummary.missingStatus)}</strong></a>
           </div>
 
           <div class="nx-shortcuts">
