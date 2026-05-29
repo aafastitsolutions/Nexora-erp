@@ -19,6 +19,24 @@
   - a fost adaugat si rulat testul `tests/totp-auth.test.mjs`;
   - a fost rulat si testul existent `tests/client-portal-isolation.test.mjs`.
 
+### Hardening securitate autentificare si sesiuni
+- A fost adaugat rate limit pentru `/login`: maximum 10 incercari gresite pe IP + email in 15 minute.
+- Mesajul de eroare pentru blocare temporara este afisat in pagina de login.
+- Au fost adaugate headere HTTP de protectie:
+  - `X-Content-Type-Options: nosniff`;
+  - `X-Frame-Options: SAMEORIGIN`;
+  - `Referrer-Policy: strict-origin-when-cross-origin`;
+  - `Permissions-Policy` pentru dezactivare camera, microfon si geolocatie;
+  - `Strict-Transport-Security` pe HTTPS / productie.
+- A fost dezactivat headerul `X-Powered-By`.
+- Store-ul de sesiuni a fost mutat de pe `connect-sqlite3/sqlite3` pe un store intern cu `better-sqlite3`, folosind tabela `nexora_sessions`.
+- Au fost aplicate update-uri automate de securitate npm si eliminata dependenta vulnerabila `connect-sqlite3`.
+- Validare:
+  - `npm audit --omit=dev` raporteaza `found 0 vulnerabilities`;
+  - au fost rulate verificarile `node --check` pentru fisierele modificate;
+  - a fost adaugat si rulat testul `tests/security-hardening.test.mjs`;
+  - au fost rulate din nou `tests/totp-auth.test.mjs` si `tests/client-portal-isolation.test.mjs`.
+
 ### Modul Workflow & Automatizari / RPA Nexora
 - A fost implementat modulul `Workflow & Automatizari` ca zona RPA in Nexora.
 - Meniul modulului a fost extins cu:

@@ -73,7 +73,7 @@ const transporter = createTransporter();
 registerRoleModules();
 initApplication({ app, isProduction, sessionSecret, migrate, seedAdminFromEnv });
 registerBillingWebhook(app, { db });
-setupAppMiddleware({ app, dirname: __dirname, sessionSecret });
+setupAppMiddleware({ app, dirname: __dirname, sessionSecret, isProduction });
 app.use((req, res, next) => requestContext.run({ req }, next));
 registerAnafRoutes(app, { fetchAnafCompany, normalizeCui });
 registerAnafOAuthRoutes(app, { canAccessSpvUser, db, getSetting, requireAuth, requireSpvAccess, setSetting, transporter });

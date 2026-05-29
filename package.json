@@ -9,7 +9,6 @@
   "dependencies": {
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^12.6.2",
-    "connect-sqlite3": "^0.9.16",
     "dotenv": "^17.3.1",
     "express": "^4.19.2",
     "express-session": "^1.19.0",

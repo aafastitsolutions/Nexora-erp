@@ -166,6 +166,26 @@ try {
     assert.equal(res.status, 302);
     assert.equal(res.headers.get("location"), "/nexora-dashboard");
 
+    const blockedEmail = `blocked-${marker}@test.local`;
+    for (let index = 0; index < 10; index += 1) {
+      res = await fetch(`${baseUrl}/login`, {
+        method: "POST",
+        redirect: "manual",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: form({ email: blockedEmail, password: "wrong-password" })
+      });
+      assert.equal(res.status, 302);
+      assert.equal(res.headers.get("location"), "/login?err=invalid_credentials");
+    }
+    res = await fetch(`${baseUrl}/login`, {
+      method: "POST",
+      redirect: "manual",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: form({ email: blockedEmail, password: "wrong-password" })
+    });
+    assert.equal(res.status, 302);
+    assert.equal(res.headers.get("location"), "/login?err=too_many_attempts");
+
     res = await fetch(`${baseUrl}/login`, {
       method: "POST",
       redirect: "manual",

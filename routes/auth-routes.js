@@ -976,10 +976,58 @@ function loginErrorMessage(code, companyName) {
   if (code === "totp_required") {
     return "Verificarea TOTP este obligatorie pentru acest cont.";
   }
+  if (code === "too_many_attempts") {
+    return "Prea multe încercări de autentificare. Așteaptă câteva minute și încearcă din nou.";
+  }
   return "";
 }
 
+function createAuthRateLimiter({ maxAttempts = 10, windowMs = 15 * 60 * 1000 } = {}) {
+  const buckets = new Map();
+
+  function normalizeKey(value = "") {
+    return String(value || "").trim().toLowerCase() || "unknown";
+  }
+
+  function prune(now) {
+    if (buckets.size < 1000) return;
+    for (const [key, bucket] of buckets.entries()) {
+      if (!bucket?.resetAt || bucket.resetAt <= now) buckets.delete(key);
+    }
+  }
+
+  return {
+    check(keyParts = []) {
+      const now = Date.now();
+      prune(now);
+      const key = keyParts.map(normalizeKey).join("|");
+      const bucket = buckets.get(key);
+      if (!bucket || bucket.resetAt <= now) return { limited: false, key };
+      const limited = Number(bucket.count || 0) >= maxAttempts;
+      return { limited, key, retryAfterMs: Math.max(bucket.resetAt - now, 0) };
+    },
+    fail(key) {
+      if (!key) return;
+      const now = Date.now();
+      const existing = buckets.get(key);
+      if (!existing || existing.resetAt <= now) {
+        buckets.set(key, { count: 1, resetAt: now + windowMs });
+        return;
+      }
+      existing.count = Number(existing.count || 0) + 1;
+    },
+    clear(key) {
+      if (key) buckets.delete(key);
+    }
+  };
+}
+
 export function registerAuthRoutes(app, { db, verifyUser, verifyUserAttempt }) {
+  const loginLimiter = createAuthRateLimiter({
+    maxAttempts: 10,
+    windowMs: 15 * 60 * 1000
+  });
+
   app.get("/login", (req, res) => {
     if (req.session?.user) return res.redirect(resolvePostLoginPath(req.session.user));
     const errorCode = String(req.query?.err || "").trim();
@@ -1078,18 +1126,26 @@ export function registerAuthRoutes(app, { db, verifyUser, verifyUserAttempt }) {
   app.post("/login", (req, res) => {
     const email = String(req.body?.email || "").trim().toLowerCase();
     const password = String(req.body?.password || "");
+    const limiter = loginLimiter.check([req.ip, email || "missing"]);
+    if (limiter.limited) {
+      return res.redirect("/login?err=too_many_attempts");
+    }
+
     if (!email || !password) {
+      loginLimiter.fail(limiter.key);
       return res.redirect("/login?err=missing_credentials");
     }
 
     const attempt = verifyUserAttempt(email, password);
     if (!attempt?.ok) {
+      loginLimiter.fail(limiter.key);
       const params = new URLSearchParams();
       params.set("err", attempt?.reason || "invalid_credentials");
       if (attempt?.company_name) params.set("company", attempt.company_name);
       if (attempt?.detail) params.set("detail", attempt.detail);
       return res.redirect(`/login?${params.toString()}`);
     }
+    loginLimiter.clear(limiter.key);
     const u = attempt.user;
 
     if (isTotpRequiredUser(u)) {
