@@ -1250,6 +1250,8 @@ export function migrate() {
       company_id INTEGER NOT NULL,
       count_id INTEGER NOT NULL,
       asset_id INTEGER,
+      stock_item_id INTEGER,
+      warehouse_id INTEGER,
       asset_code TEXT NOT NULL,
       asset_name TEXT NOT NULL,
       quantity_scriptic REAL NOT NULL DEFAULT 0,
@@ -1259,7 +1261,9 @@ export function migrate() {
       applied INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (count_id) REFERENCES inventory_counts(id) ON DELETE CASCADE,
-      FOREIGN KEY (asset_id) REFERENCES inventory_assets(id) ON DELETE SET NULL
+      FOREIGN KEY (asset_id) REFERENCES inventory_assets(id) ON DELETE SET NULL,
+      FOREIGN KEY (stock_item_id) REFERENCES inventory_stock_items(id) ON DELETE SET NULL,
+      FOREIGN KEY (warehouse_id) REFERENCES inventory_warehouses(id) ON DELETE SET NULL
     );
 
     CREATE TABLE IF NOT EXISTS inventory_adjustments (
@@ -1276,6 +1280,200 @@ export function migrate() {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (asset_id) REFERENCES inventory_assets(id) ON DELETE CASCADE,
       FOREIGN KEY (count_id) REFERENCES inventory_counts(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS inventory_warehouses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      warehouse_code TEXT NOT NULL,
+      name TEXT NOT NULL,
+      warehouse_type TEXT NOT NULL DEFAULT 'DEPOZIT',
+      address TEXT,
+      manager_name TEXT,
+      status TEXT NOT NULL DEFAULT 'ACTIV',
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(company_id, warehouse_code)
+    );
+
+    CREATE TABLE IF NOT EXISTS inventory_stock_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      warehouse_id INTEGER,
+      product_id INTEGER,
+      asset_id INTEGER,
+      item_code TEXT NOT NULL,
+      item_name TEXT NOT NULL,
+      item_type TEXT NOT NULL DEFAULT 'PRODUS',
+      unit TEXT NOT NULL DEFAULT 'buc',
+      quantity REAL NOT NULL DEFAULT 0,
+      reserved_quantity REAL NOT NULL DEFAULT 0,
+      minimum_quantity REAL NOT NULL DEFAULT 0,
+      bin_location TEXT,
+      status TEXT NOT NULL DEFAULT 'ACTIV',
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (warehouse_id) REFERENCES inventory_warehouses(id) ON DELETE SET NULL,
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL,
+      FOREIGN KEY (asset_id) REFERENCES inventory_assets(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS inventory_lots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      warehouse_id INTEGER,
+      product_id INTEGER,
+      stock_item_id INTEGER,
+      lot_number TEXT NOT NULL,
+      serial_number TEXT,
+      item_name TEXT NOT NULL,
+      quantity_initial REAL NOT NULL DEFAULT 0,
+      quantity_available REAL NOT NULL DEFAULT 0,
+      unit TEXT NOT NULL DEFAULT 'buc',
+      received_at TEXT,
+      expiry_date TEXT,
+      supplier_name TEXT,
+      status TEXT NOT NULL DEFAULT 'ACTIV',
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (warehouse_id) REFERENCES inventory_warehouses(id) ON DELETE SET NULL,
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL,
+      FOREIGN KEY (stock_item_id) REFERENCES inventory_stock_items(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS inventory_transfers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      transfer_number TEXT NOT NULL,
+      from_warehouse_id INTEGER,
+      to_warehouse_id INTEGER,
+      transfer_date TEXT NOT NULL DEFAULT (date('now')),
+      status TEXT NOT NULL DEFAULT 'DRAFT',
+      requested_by TEXT,
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (from_warehouse_id) REFERENCES inventory_warehouses(id) ON DELETE SET NULL,
+      FOREIGN KEY (to_warehouse_id) REFERENCES inventory_warehouses(id) ON DELETE SET NULL,
+      UNIQUE(company_id, transfer_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS inventory_transfer_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      transfer_id INTEGER NOT NULL,
+      stock_item_id INTEGER,
+      product_id INTEGER,
+      item_code TEXT,
+      item_name TEXT NOT NULL,
+      unit TEXT NOT NULL DEFAULT 'buc',
+      quantity REAL NOT NULL DEFAULT 1,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (transfer_id) REFERENCES inventory_transfers(id) ON DELETE CASCADE,
+      FOREIGN KEY (stock_item_id) REFERENCES inventory_stock_items(id) ON DELETE SET NULL,
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS inventory_receipts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      receipt_number TEXT NOT NULL,
+      warehouse_id INTEGER,
+      supplier_name TEXT,
+      receipt_date TEXT NOT NULL DEFAULT (date('now')),
+      document_number TEXT,
+      status TEXT NOT NULL DEFAULT 'DRAFT',
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (warehouse_id) REFERENCES inventory_warehouses(id) ON DELETE SET NULL,
+      UNIQUE(company_id, receipt_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS inventory_receipt_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      receipt_id INTEGER NOT NULL,
+      product_id INTEGER,
+      stock_item_id INTEGER,
+      item_code TEXT,
+      item_name TEXT NOT NULL,
+      unit TEXT NOT NULL DEFAULT 'buc',
+      quantity REAL NOT NULL DEFAULT 1,
+      unit_cost REAL NOT NULL DEFAULT 0,
+      lot_number TEXT,
+      serial_number TEXT,
+      expiry_date TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (receipt_id) REFERENCES inventory_receipts(id) ON DELETE CASCADE,
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL,
+      FOREIGN KEY (stock_item_id) REFERENCES inventory_stock_items(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS inventory_pickings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      picking_number TEXT NOT NULL,
+      warehouse_id INTEGER,
+      client_name TEXT,
+      project_name TEXT,
+      scheduled_date TEXT,
+      status TEXT NOT NULL DEFAULT 'DRAFT',
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (warehouse_id) REFERENCES inventory_warehouses(id) ON DELETE SET NULL,
+      UNIQUE(company_id, picking_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS inventory_picking_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      picking_id INTEGER NOT NULL,
+      stock_item_id INTEGER,
+      product_id INTEGER,
+      item_code TEXT,
+      item_name TEXT NOT NULL,
+      unit TEXT NOT NULL DEFAULT 'buc',
+      quantity_requested REAL NOT NULL DEFAULT 1,
+      quantity_picked REAL NOT NULL DEFAULT 0,
+      quantity_packed REAL NOT NULL DEFAULT 0,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (picking_id) REFERENCES inventory_pickings(id) ON DELETE CASCADE,
+      FOREIGN KEY (stock_item_id) REFERENCES inventory_stock_items(id) ON DELETE SET NULL,
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS inventory_barcodes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      product_id INTEGER,
+      asset_id INTEGER,
+      lot_id INTEGER,
+      barcode_value TEXT NOT NULL,
+      barcode_type TEXT NOT NULL DEFAULT 'CODE128',
+      label TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'ACTIV',
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL,
+      FOREIGN KEY (asset_id) REFERENCES inventory_assets(id) ON DELETE SET NULL,
+      FOREIGN KEY (lot_id) REFERENCES inventory_lots(id) ON DELETE SET NULL,
+      UNIQUE(company_id, barcode_value)
     );
 
     CREATE INDEX IF NOT EXISTS idx_clients_cui ON clients(cui);
@@ -1794,6 +1992,8 @@ export function migrate() {
   ensureColumn("inventory_count_items", "company_id", "INTEGER");
   ensureColumn("inventory_count_items", "count_id", "INTEGER");
   ensureColumn("inventory_count_items", "asset_id", "INTEGER");
+  ensureColumn("inventory_count_items", "stock_item_id", "INTEGER");
+  ensureColumn("inventory_count_items", "warehouse_id", "INTEGER");
   ensureColumn("inventory_count_items", "asset_code", "TEXT NOT NULL DEFAULT ''");
   ensureColumn("inventory_count_items", "asset_name", "TEXT NOT NULL DEFAULT ''");
   ensureColumn("inventory_count_items", "quantity_scriptic", "REAL NOT NULL DEFAULT 0");
@@ -1810,6 +2010,123 @@ export function migrate() {
   ensureColumn("inventory_adjustments", "variance", "REAL NOT NULL DEFAULT 0");
   ensureColumn("inventory_adjustments", "reason", "TEXT");
   ensureColumn("inventory_adjustments", "created_by_email", "TEXT");
+  ensureColumn("inventory_warehouses", "company_id", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("inventory_warehouses", "warehouse_code", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("inventory_warehouses", "name", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("inventory_warehouses", "warehouse_type", "TEXT NOT NULL DEFAULT 'DEPOZIT'");
+  ensureColumn("inventory_warehouses", "address", "TEXT");
+  ensureColumn("inventory_warehouses", "manager_name", "TEXT");
+  ensureColumn("inventory_warehouses", "status", "TEXT NOT NULL DEFAULT 'ACTIV'");
+  ensureColumn("inventory_warehouses", "notes", "TEXT");
+  ensureColumn("inventory_warehouses", "created_by_email", "TEXT");
+  ensureColumn("inventory_warehouses", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
+  ensureColumn("inventory_stock_items", "company_id", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("inventory_stock_items", "warehouse_id", "INTEGER");
+  ensureColumn("inventory_stock_items", "product_id", "INTEGER");
+  ensureColumn("inventory_stock_items", "asset_id", "INTEGER");
+  ensureColumn("inventory_stock_items", "item_code", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("inventory_stock_items", "item_name", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("inventory_stock_items", "item_type", "TEXT NOT NULL DEFAULT 'PRODUS'");
+  ensureColumn("inventory_stock_items", "unit", "TEXT NOT NULL DEFAULT 'buc'");
+  ensureColumn("inventory_stock_items", "quantity", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("inventory_stock_items", "reserved_quantity", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("inventory_stock_items", "minimum_quantity", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("inventory_stock_items", "bin_location", "TEXT");
+  ensureColumn("inventory_stock_items", "status", "TEXT NOT NULL DEFAULT 'ACTIV'");
+  ensureColumn("inventory_stock_items", "notes", "TEXT");
+  ensureColumn("inventory_stock_items", "created_by_email", "TEXT");
+  ensureColumn("inventory_stock_items", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
+  ensureColumn("inventory_lots", "company_id", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("inventory_lots", "warehouse_id", "INTEGER");
+  ensureColumn("inventory_lots", "product_id", "INTEGER");
+  ensureColumn("inventory_lots", "stock_item_id", "INTEGER");
+  ensureColumn("inventory_lots", "lot_number", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("inventory_lots", "serial_number", "TEXT");
+  ensureColumn("inventory_lots", "item_name", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("inventory_lots", "quantity_initial", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("inventory_lots", "quantity_available", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("inventory_lots", "unit", "TEXT NOT NULL DEFAULT 'buc'");
+  ensureColumn("inventory_lots", "received_at", "TEXT");
+  ensureColumn("inventory_lots", "expiry_date", "TEXT");
+  ensureColumn("inventory_lots", "supplier_name", "TEXT");
+  ensureColumn("inventory_lots", "status", "TEXT NOT NULL DEFAULT 'ACTIV'");
+  ensureColumn("inventory_lots", "notes", "TEXT");
+  ensureColumn("inventory_lots", "created_by_email", "TEXT");
+  ensureColumn("inventory_lots", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
+  ensureColumn("inventory_transfers", "company_id", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("inventory_transfers", "transfer_number", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("inventory_transfers", "from_warehouse_id", "INTEGER");
+  ensureColumn("inventory_transfers", "to_warehouse_id", "INTEGER");
+  ensureColumn("inventory_transfers", "transfer_date", "TEXT");
+  ensureColumn("inventory_transfers", "status", "TEXT NOT NULL DEFAULT 'DRAFT'");
+  ensureColumn("inventory_transfers", "requested_by", "TEXT");
+  ensureColumn("inventory_transfers", "notes", "TEXT");
+  ensureColumn("inventory_transfers", "created_by_email", "TEXT");
+  ensureColumn("inventory_transfers", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
+  ensureColumn("inventory_transfer_items", "company_id", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("inventory_transfer_items", "transfer_id", "INTEGER");
+  ensureColumn("inventory_transfer_items", "stock_item_id", "INTEGER");
+  ensureColumn("inventory_transfer_items", "product_id", "INTEGER");
+  ensureColumn("inventory_transfer_items", "item_code", "TEXT");
+  ensureColumn("inventory_transfer_items", "item_name", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("inventory_transfer_items", "unit", "TEXT NOT NULL DEFAULT 'buc'");
+  ensureColumn("inventory_transfer_items", "quantity", "REAL NOT NULL DEFAULT 1");
+  ensureColumn("inventory_transfer_items", "notes", "TEXT");
+  ensureColumn("inventory_receipts", "company_id", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("inventory_receipts", "receipt_number", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("inventory_receipts", "warehouse_id", "INTEGER");
+  ensureColumn("inventory_receipts", "supplier_name", "TEXT");
+  ensureColumn("inventory_receipts", "receipt_date", "TEXT");
+  ensureColumn("inventory_receipts", "document_number", "TEXT");
+  ensureColumn("inventory_receipts", "status", "TEXT NOT NULL DEFAULT 'DRAFT'");
+  ensureColumn("inventory_receipts", "notes", "TEXT");
+  ensureColumn("inventory_receipts", "created_by_email", "TEXT");
+  ensureColumn("inventory_receipts", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
+  ensureColumn("inventory_receipt_items", "company_id", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("inventory_receipt_items", "receipt_id", "INTEGER");
+  ensureColumn("inventory_receipt_items", "product_id", "INTEGER");
+  ensureColumn("inventory_receipt_items", "stock_item_id", "INTEGER");
+  ensureColumn("inventory_receipt_items", "item_code", "TEXT");
+  ensureColumn("inventory_receipt_items", "item_name", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("inventory_receipt_items", "unit", "TEXT NOT NULL DEFAULT 'buc'");
+  ensureColumn("inventory_receipt_items", "quantity", "REAL NOT NULL DEFAULT 1");
+  ensureColumn("inventory_receipt_items", "unit_cost", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("inventory_receipt_items", "lot_number", "TEXT");
+  ensureColumn("inventory_receipt_items", "serial_number", "TEXT");
+  ensureColumn("inventory_receipt_items", "expiry_date", "TEXT");
+  ensureColumn("inventory_receipt_items", "notes", "TEXT");
+  ensureColumn("inventory_pickings", "company_id", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("inventory_pickings", "picking_number", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("inventory_pickings", "warehouse_id", "INTEGER");
+  ensureColumn("inventory_pickings", "client_name", "TEXT");
+  ensureColumn("inventory_pickings", "project_name", "TEXT");
+  ensureColumn("inventory_pickings", "scheduled_date", "TEXT");
+  ensureColumn("inventory_pickings", "status", "TEXT NOT NULL DEFAULT 'DRAFT'");
+  ensureColumn("inventory_pickings", "notes", "TEXT");
+  ensureColumn("inventory_pickings", "created_by_email", "TEXT");
+  ensureColumn("inventory_pickings", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
+  ensureColumn("inventory_picking_items", "company_id", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("inventory_picking_items", "picking_id", "INTEGER");
+  ensureColumn("inventory_picking_items", "stock_item_id", "INTEGER");
+  ensureColumn("inventory_picking_items", "product_id", "INTEGER");
+  ensureColumn("inventory_picking_items", "item_code", "TEXT");
+  ensureColumn("inventory_picking_items", "item_name", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("inventory_picking_items", "unit", "TEXT NOT NULL DEFAULT 'buc'");
+  ensureColumn("inventory_picking_items", "quantity_requested", "REAL NOT NULL DEFAULT 1");
+  ensureColumn("inventory_picking_items", "quantity_picked", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("inventory_picking_items", "quantity_packed", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("inventory_picking_items", "notes", "TEXT");
+  ensureColumn("inventory_barcodes", "company_id", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("inventory_barcodes", "product_id", "INTEGER");
+  ensureColumn("inventory_barcodes", "asset_id", "INTEGER");
+  ensureColumn("inventory_barcodes", "lot_id", "INTEGER");
+  ensureColumn("inventory_barcodes", "barcode_value", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("inventory_barcodes", "barcode_type", "TEXT NOT NULL DEFAULT 'CODE128'");
+  ensureColumn("inventory_barcodes", "label", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("inventory_barcodes", "status", "TEXT NOT NULL DEFAULT 'ACTIV'");
+  ensureColumn("inventory_barcodes", "notes", "TEXT");
+  ensureColumn("inventory_barcodes", "created_by_email", "TEXT");
+  ensureColumn("inventory_barcodes", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
   ensureColumn("facturi", "efactura_upload_index", "TEXT");
   ensureColumn("facturi", "efactura_download_id", "TEXT");
   ensureColumn("facturi", "efactura_response_zip_path", "TEXT");
@@ -1910,9 +2227,29 @@ export function migrate() {
     CREATE INDEX IF NOT EXISTS idx_inventory_project_items_project_id ON inventory_project_items(project_id);
     CREATE INDEX IF NOT EXISTS idx_inventory_counts_company_id ON inventory_counts(company_id);
     CREATE INDEX IF NOT EXISTS idx_inventory_count_items_count_id ON inventory_count_items(count_id);
+    CREATE INDEX IF NOT EXISTS idx_inventory_count_items_stock_item_id ON inventory_count_items(stock_item_id);
     CREATE INDEX IF NOT EXISTS idx_inventory_adjustments_asset_id ON inventory_adjustments(asset_id);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_assets_company_code_unique ON inventory_assets(company_id, asset_code);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_projects_company_code_unique ON inventory_projects(company_id, project_code);
+    CREATE INDEX IF NOT EXISTS idx_inventory_warehouses_company_status ON inventory_warehouses(company_id, status);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_warehouses_company_code_unique ON inventory_warehouses(company_id, warehouse_code);
+    CREATE INDEX IF NOT EXISTS idx_inventory_stock_company_warehouse ON inventory_stock_items(company_id, warehouse_id);
+    CREATE INDEX IF NOT EXISTS idx_inventory_stock_product ON inventory_stock_items(company_id, product_id);
+    CREATE INDEX IF NOT EXISTS idx_inventory_stock_status ON inventory_stock_items(company_id, status);
+    CREATE INDEX IF NOT EXISTS idx_inventory_lots_company_warehouse ON inventory_lots(company_id, warehouse_id);
+    CREATE INDEX IF NOT EXISTS idx_inventory_lots_product ON inventory_lots(company_id, product_id);
+    CREATE INDEX IF NOT EXISTS idx_inventory_lots_number ON inventory_lots(company_id, lot_number);
+    CREATE INDEX IF NOT EXISTS idx_inventory_transfers_company_date ON inventory_transfers(company_id, transfer_date DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_transfers_company_number_unique ON inventory_transfers(company_id, transfer_number);
+    CREATE INDEX IF NOT EXISTS idx_inventory_transfer_items_transfer ON inventory_transfer_items(company_id, transfer_id);
+    CREATE INDEX IF NOT EXISTS idx_inventory_receipts_company_date ON inventory_receipts(company_id, receipt_date DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_receipts_company_number_unique ON inventory_receipts(company_id, receipt_number);
+    CREATE INDEX IF NOT EXISTS idx_inventory_receipt_items_receipt ON inventory_receipt_items(company_id, receipt_id);
+    CREATE INDEX IF NOT EXISTS idx_inventory_pickings_company_date ON inventory_pickings(company_id, scheduled_date DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_pickings_company_number_unique ON inventory_pickings(company_id, picking_number);
+    CREATE INDEX IF NOT EXISTS idx_inventory_picking_items_picking ON inventory_picking_items(company_id, picking_id);
+    CREATE INDEX IF NOT EXISTS idx_inventory_barcodes_company_status ON inventory_barcodes(company_id, status);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_barcodes_company_value_unique ON inventory_barcodes(company_id, barcode_value);
   `);
 
   const legacyStarterPlan = db.prepare(`SELECT id FROM plans WHERE code='crm-starter'`).get();

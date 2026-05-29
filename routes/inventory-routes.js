@@ -1,11 +1,20 @@
 import {
   renderNexoraInventoryAssetDetailPage,
   renderNexoraInventoryAssetsPage,
+  renderNexoraInventoryBarcodesPage,
+  renderNexoraInventoryCountDetailPage,
+  renderNexoraInventoryCountsPage,
+  renderNexoraInventoryLotsPage,
+  renderNexoraInventoryPickingPage,
   renderNexoraInventoryProjectDetailPage,
   renderNexoraInventoryProjectEditPage,
-  renderNexoraInventoryProjectsPage
+  renderNexoraInventoryProjectsPage,
+  renderNexoraInventoryReceiptsPage,
+  renderNexoraInventoryReportsPage,
+  renderNexoraInventoryStockPage,
+  renderNexoraInventoryTransfersPage,
+  renderNexoraInventoryWarehousesPage
 } from "../src/ui/nexora-inventory-pages.js";
-import { renderNexoraHubPage } from "../src/ui/nexora-hub-page.js";
 
 function parseDate(value) {
   const normalized = String(value || "").trim();
@@ -261,53 +270,300 @@ function updateProjectRecord(db, companyId, projectId, payload = {}) {
   );
 }
 
+function nextInventoryNumber(db, companyId, tableName, columnName, prefix) {
+  const allowed = {
+    inventory_transfers: "transfer_number",
+    inventory_receipts: "receipt_number",
+    inventory_pickings: "picking_number"
+  };
+  if (allowed[tableName] !== columnName) throw new Error("Unsupported inventory sequence");
+  const year = new Date().getFullYear();
+  const stem = `${prefix}-${year}-`;
+  const latest = db.prepare(`
+    SELECT ${columnName} AS number
+    FROM ${tableName}
+    WHERE company_id=? AND ${columnName} LIKE ?
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(companyId, `${stem}%`);
+  const last = Number(String(latest?.number || "").split("-").pop() || 0);
+  return `${stem}${String(last + 1).padStart(4, "0")}`;
+}
+
+function generateBarcodeValue(companyId) {
+  return `NXR-${companyId}-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+}
+
+function loadWarehouses(db, companyId) {
+  return db.prepare(`
+    SELECT
+      w.*,
+      COUNT(s.id) AS stock_lines,
+      COALESCE(SUM(s.quantity), 0) AS stock_qty
+    FROM inventory_warehouses w
+    LEFT JOIN inventory_stock_items s ON s.warehouse_id = w.id AND s.company_id = w.company_id
+    WHERE w.company_id=?
+    GROUP BY w.id
+    ORDER BY w.status='ACTIV' DESC, w.name COLLATE NOCASE ASC
+    LIMIT 500
+  `).all(companyId);
+}
+
+function loadProducts(db, companyId) {
+  return db.prepare(`
+    SELECT id, code, name, unit, price, tva_percent, lot, kind, active
+    FROM products
+    WHERE company_id=? AND COALESCE(active,1)=1
+    ORDER BY name COLLATE NOCASE ASC
+    LIMIT 500
+  `).all(companyId);
+}
+
+function loadAssets(db, companyId) {
+  return db.prepare(`
+    SELECT id, asset_code, asset_name
+    FROM inventory_assets
+    WHERE company_id=?
+    ORDER BY asset_name COLLATE NOCASE ASC
+    LIMIT 500
+  `).all(companyId);
+}
+
+function loadLots(db, companyId) {
+  return db.prepare(`
+    SELECT l.*, w.name AS warehouse_name
+    FROM inventory_lots l
+    LEFT JOIN inventory_warehouses w ON w.id = l.warehouse_id AND w.company_id = l.company_id
+    WHERE l.company_id=?
+    ORDER BY l.updated_at DESC, l.id DESC
+    LIMIT 500
+  `).all(companyId);
+}
+
+function loadStockItems(db, companyId, options = {}) {
+  const onlyActive = options.onlyActive === false ? "" : "AND UPPER(COALESCE(s.status,'')) <> 'INACTIV'";
+  return db.prepare(`
+    SELECT
+      s.*,
+      w.name AS warehouse_name,
+      w.warehouse_code,
+      p.name AS product_name,
+      p.code AS product_code
+    FROM inventory_stock_items s
+    LEFT JOIN inventory_warehouses w ON w.id = s.warehouse_id AND w.company_id = s.company_id
+    LEFT JOIN products p ON p.id = s.product_id AND p.company_id = s.company_id
+    WHERE s.company_id=? ${onlyActive}
+    ORDER BY w.name COLLATE NOCASE ASC, s.item_name COLLATE NOCASE ASC, s.id DESC
+    LIMIT 800
+  `).all(companyId);
+}
+
+function getProduct(db, companyId, productId) {
+  if (!Number(productId)) return null;
+  return db.prepare(`
+    SELECT id, code, name, unit, price, lot, kind
+    FROM products
+    WHERE id=? AND company_id=?
+  `).get(Number(productId), companyId) || null;
+}
+
+function getStockItem(db, companyId, stockItemId) {
+  if (!Number(stockItemId)) return null;
+  return db.prepare(`SELECT * FROM inventory_stock_items WHERE id=? AND company_id=?`).get(Number(stockItemId), companyId) || null;
+}
+
+function createStockItemRecord(db, req, companyId, payload = {}) {
+  const product = getProduct(db, companyId, Number(payload.product_id || 0));
+  const name = safeText(payload.item_name) || safeText(product?.name);
+  const code = safeText(payload.item_code) || safeText(product?.code) || `SKU-${Date.now()}`;
+  const unit = safeText(payload.unit) || safeText(product?.unit) || "buc";
+  return db.prepare(`
+    INSERT INTO inventory_stock_items (
+      company_id, warehouse_id, product_id, asset_id, item_code, item_name, item_type, unit,
+      quantity, reserved_quantity, minimum_quantity, bin_location, status, notes, created_by_email, updated_at
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
+  `).run(
+    companyId,
+    Number(payload.warehouse_id || 0) || null,
+    product?.id || null,
+    Number(payload.asset_id || 0) || null,
+    code,
+    name || code,
+    safeText(payload.item_type) || safeText(product?.kind) || "PRODUS",
+    unit,
+    parseNumber(payload.quantity, 0),
+    parseNumber(payload.reserved_quantity, 0),
+    parseNumber(payload.minimum_quantity, 0),
+    safeText(payload.bin_location),
+    safeText(payload.status) || "ACTIV",
+    safeText(payload.notes),
+    req.session.user.email
+  );
+}
+
+function findMatchingStockItem(db, companyId, warehouseId, productId, itemCode) {
+  if (Number(productId)) {
+    const byProduct = Number(warehouseId)
+      ? db.prepare(`SELECT * FROM inventory_stock_items WHERE company_id=? AND warehouse_id=? AND product_id=? ORDER BY id DESC LIMIT 1`).get(companyId, Number(warehouseId), Number(productId))
+      : db.prepare(`SELECT * FROM inventory_stock_items WHERE company_id=? AND warehouse_id IS NULL AND product_id=? ORDER BY id DESC LIMIT 1`).get(companyId, Number(productId));
+    if (byProduct) return byProduct;
+  }
+  const code = safeText(itemCode);
+  if (!code) return null;
+  return Number(warehouseId)
+    ? db.prepare(`SELECT * FROM inventory_stock_items WHERE company_id=? AND warehouse_id=? AND item_code=? ORDER BY id DESC LIMIT 1`).get(companyId, Number(warehouseId), code)
+    : db.prepare(`SELECT * FROM inventory_stock_items WHERE company_id=? AND warehouse_id IS NULL AND item_code=? ORDER BY id DESC LIMIT 1`).get(companyId, code);
+}
+
+function ensureStockItemForWarehouse(db, req, companyId, warehouseId, payload = {}) {
+  const selected = getStockItem(db, companyId, Number(payload.stock_item_id || 0));
+  if (selected && (!Number(warehouseId) || Number(selected.warehouse_id || 0) === Number(warehouseId))) return selected;
+  const product = getProduct(db, companyId, Number(payload.product_id || selected?.product_id || 0));
+  const itemCode = safeText(payload.item_code) || safeText(selected?.item_code) || safeText(product?.code);
+  const existing = findMatchingStockItem(db, companyId, warehouseId, product?.id || payload.product_id, itemCode);
+  if (existing) return existing;
+  const insert = createStockItemRecord(db, req, companyId, {
+    warehouse_id: warehouseId,
+    product_id: product?.id || Number(payload.product_id || selected?.product_id || 0) || null,
+    item_code: itemCode,
+    item_name: safeText(payload.item_name) || safeText(selected?.item_name) || safeText(product?.name) || itemCode,
+    item_type: safeText(selected?.item_type) || safeText(product?.kind) || "PRODUS",
+    unit: safeText(payload.unit) || safeText(selected?.unit) || safeText(product?.unit) || "buc",
+    quantity: 0,
+    reserved_quantity: 0,
+    minimum_quantity: parseNumber(selected?.minimum_quantity, 0),
+    bin_location: safeText(selected?.bin_location),
+    notes: safeText(payload.notes)
+  });
+  return getStockItem(db, companyId, Number(insert.lastInsertRowid || 0));
+}
+
+function incrementStock(db, companyId, stockItemId, quantityDelta, reservedDelta = 0) {
+  db.prepare(`
+    UPDATE inventory_stock_items
+    SET
+      quantity = quantity + ?,
+      reserved_quantity = MAX(0, reserved_quantity + ?),
+      status = CASE WHEN quantity + ? > 0 THEN 'ACTIV' ELSE status END,
+      updated_at = datetime('now')
+    WHERE id=? AND company_id=?
+  `).run(quantityDelta, reservedDelta, quantityDelta, stockItemId, companyId);
+}
+
+function finalizeTransfer(db, req, companyId, transfer) {
+  const lines = db.prepare(`
+    SELECT *
+    FROM inventory_transfer_items
+    WHERE transfer_id=? AND company_id=?
+    ORDER BY id ASC
+  `).all(transfer.id, companyId);
+  for (const line of lines) {
+    const source = getStockItem(db, companyId, line.stock_item_id);
+    if (!source) continue;
+    const qty = parseNumber(line.quantity, 0);
+    incrementStock(db, companyId, source.id, -qty, 0);
+    const destination = ensureStockItemForWarehouse(db, req, companyId, transfer.to_warehouse_id, {
+      stock_item_id: source.id,
+      product_id: line.product_id || source.product_id,
+      item_code: line.item_code || source.item_code,
+      item_name: line.item_name || source.item_name,
+      unit: line.unit || source.unit
+    });
+    incrementStock(db, companyId, destination.id, qty, 0);
+  }
+}
+
+function finalizeReceipt(db, req, companyId, receipt) {
+  const lines = db.prepare(`
+    SELECT *
+    FROM inventory_receipt_items
+    WHERE receipt_id=? AND company_id=?
+    ORDER BY id ASC
+  `).all(receipt.id, companyId);
+  for (const line of lines) {
+    const stockItem = ensureStockItemForWarehouse(db, req, companyId, receipt.warehouse_id, line);
+    const qty = parseNumber(line.quantity, 0);
+    incrementStock(db, companyId, stockItem.id, qty, 0);
+    db.prepare(`UPDATE inventory_receipt_items SET stock_item_id=? WHERE id=? AND company_id=?`).run(stockItem.id, line.id, companyId);
+    if (safeText(line.lot_number) || safeText(line.serial_number)) {
+      db.prepare(`
+        INSERT INTO inventory_lots (
+          company_id, warehouse_id, product_id, stock_item_id, lot_number, serial_number, item_name,
+          quantity_initial, quantity_available, unit, received_at, expiry_date, supplier_name, status,
+          notes, created_by_email, updated_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
+      `).run(
+        companyId,
+        receipt.warehouse_id || null,
+        line.product_id || null,
+        stockItem.id,
+        safeText(line.lot_number) || `LOT-${receipt.receipt_number}-${line.id}`,
+        safeText(line.serial_number),
+        safeText(line.item_name) || stockItem.item_name,
+        qty,
+        qty,
+        safeText(line.unit) || stockItem.unit || "buc",
+        parseDate(receipt.receipt_date) || new Date().toISOString().slice(0, 10),
+        parseDate(line.expiry_date),
+        safeText(receipt.supplier_name),
+        "ACTIV",
+        safeText(line.notes),
+        req.session.user.email
+      );
+    }
+  }
+}
+
+function deliverPicking(db, companyId, picking) {
+  const lines = db.prepare(`
+    SELECT *
+    FROM inventory_picking_items
+    WHERE picking_id=? AND company_id=?
+    ORDER BY id ASC
+  `).all(picking.id, companyId);
+  for (const line of lines) {
+    if (!line.stock_item_id) continue;
+    const requested = parseNumber(line.quantity_requested, 0);
+    const shipped = parseNumber(line.quantity_packed, 0) || parseNumber(line.quantity_picked, 0) || requested;
+    incrementStock(db, companyId, line.stock_item_id, -shipped, -requested);
+    if (!parseNumber(line.quantity_packed, 0)) {
+      db.prepare(`UPDATE inventory_picking_items SET quantity_packed=? WHERE id=? AND company_id=?`).run(shipped, line.id, companyId);
+    }
+  }
+}
+
 export function registerInventoryRoutes(app, { db, requireAuth, escapeHtml, fmtMoney, crmShellStart, crmShellEnd, fs, path, __dirname, upload }) {
   app.get("/nexora/inventory", requireAuth, (req, res) => {
     const companyId = Number(req.session.user.company_id || 0);
+    const rows = loadStockItems(db, companyId);
+    const warehouses = loadWarehouses(db, companyId);
+    const products = loadProducts(db, companyId);
     const stats = db.prepare(`
       SELECT
-        COUNT(*) AS total_assets,
-        SUM(CASE WHEN UPPER(COALESCE(asset_type,''))='MIJLOC_FIX' THEN 1 ELSE 0 END) AS fixed_assets,
-        SUM(CASE WHEN quantity_scriptic <= minimum_quantity THEN 1 ELSE 0 END) AS low_stock_assets,
-        IFNULL(SUM(quantity_scriptic * purchase_value), 0) AS total_value
-      FROM inventory_assets
-      WHERE company_id=?
-    `).get(companyId) || {};
-    const projects = db.prepare(`
-      SELECT COUNT(*) AS total_projects,
-             SUM(CASE WHEN UPPER(COALESCE(status,''))='ACTIV' THEN 1 ELSE 0 END) AS active_projects
-      FROM inventory_projects
-      WHERE company_id=?
-    `).get(companyId) || {};
-    const counts = db.prepare(`
-      SELECT COUNT(*) AS total_counts,
-             SUM(CASE WHEN UPPER(COALESCE(status,''))='DRAFT' THEN 1 ELSE 0 END) AS draft_counts
-      FROM inventory_counts
+        COUNT(*) AS total_items,
+        COALESCE(SUM(quantity), 0) AS total_qty,
+        COALESCE(SUM(reserved_quantity), 0) AS reserved_qty,
+        SUM(CASE WHEN quantity <= minimum_quantity THEN 1 ELSE 0 END) AS low_stock
+      FROM inventory_stock_items
       WHERE company_id=?
     `).get(companyId) || {};
 
-    return res.type("html").send(renderNexoraHubPage({
+    return res.type("html").send(renderNexoraInventoryStockPage({
       companyName: req.session.user.company_name || "",
       user: req.session.user,
-      currentPath: "/nexora/inventory",
-      eyebrow: "Inventar & Gestiune",
-      title: "Inventar & Gestiune",
-      description: "Hub Nexora pentru active, proiecte, numărări, rapoarte și catalog produse.",
-      stats: [
-        { icon: "A", label: "Active", value: stats.total_assets || 0, hint: `${fmtMoney(stats.total_value || 0)} valoare` },
-        { icon: "MF", label: "Mijloace fixe", value: stats.fixed_assets || 0 },
-        { icon: "!", label: "Stoc minim", value: stats.low_stock_assets || 0 },
-        { icon: "P", label: "Proiecte active", value: projects.active_projects || 0 },
-        { icon: "N", label: "Numărări draft", value: counts.draft_counts || 0 }
-      ],
-      links: [
-        { label: "Registru active", href: "/nexora/inventory/assets" },
-        { label: "Produse Nexora", href: "/nexora/products" },
-        { label: "Proiecte inventar", href: "/nexora/inventory/projects" },
-        { label: "Numărări", href: "/nexora/inventory/counts" },
-        { label: "Rapoarte inventar", href: "/nexora/inventory/reports" }
-      ]
+      rows,
+      warehouses,
+      products,
+      stats,
+      fmtMoney,
+      ok: String(req.query?.ok || "")
     }));
+  });
+
+  app.post("/nexora/inventory/stock/create", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    createStockItemRecord(db, req, companyId, req.body);
+    res.redirect("/nexora/inventory?ok=created");
   });
 
   app.get("/nexora/inventory/assets", requireAuth, (req, res) => {
@@ -445,6 +701,745 @@ export function registerInventoryRoutes(app, { db, requireAuth, escapeHtml, fmtM
       project,
       allocationStats,
       ok: String(req.query?.ok || "")
+    }));
+  });
+
+  app.get("/nexora/inventory/warehouses", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const rows = loadWarehouses(db, companyId);
+    const stats = db.prepare(`
+      SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN UPPER(COALESCE(status,''))='ACTIV' THEN 1 ELSE 0 END) AS active,
+        (SELECT COUNT(*) FROM inventory_stock_items WHERE company_id=?) AS stock_lines,
+        (SELECT COALESCE(SUM(quantity),0) FROM inventory_stock_items WHERE company_id=?) AS stock_qty
+      FROM inventory_warehouses
+      WHERE company_id=?
+    `).get(companyId, companyId, companyId) || {};
+    return res.type("html").send(renderNexoraInventoryWarehousesPage({
+      companyName: req.session.user.company_name || "",
+      user: req.session.user,
+      rows,
+      stats,
+      ok: String(req.query?.ok || "")
+    }));
+  });
+
+  app.post("/nexora/inventory/warehouses/create", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const code = safeText(req.body.warehouse_code) || `DEP-${Date.now()}`;
+    db.prepare(`
+      INSERT INTO inventory_warehouses (
+        company_id, warehouse_code, name, warehouse_type, address, manager_name,
+        status, notes, created_by_email, updated_at
+      ) VALUES (?,?,?,?,?,?,?,?,?,datetime('now'))
+      ON CONFLICT(company_id, warehouse_code) DO UPDATE SET
+        name=excluded.name,
+        warehouse_type=excluded.warehouse_type,
+        address=excluded.address,
+        manager_name=excluded.manager_name,
+        status=excluded.status,
+        notes=excluded.notes,
+        updated_at=datetime('now')
+    `).run(
+      companyId,
+      code,
+      safeText(req.body.name) || code,
+      safeText(req.body.warehouse_type) || "DEPOZIT",
+      safeText(req.body.address),
+      safeText(req.body.manager_name),
+      safeText(req.body.status) || "ACTIV",
+      safeText(req.body.notes),
+      req.session.user.email
+    );
+    res.redirect("/nexora/inventory/warehouses?ok=created");
+  });
+
+  app.get("/nexora/inventory/lots", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    return res.type("html").send(renderNexoraInventoryLotsPage({
+      companyName: req.session.user.company_name || "",
+      user: req.session.user,
+      rows: loadLots(db, companyId),
+      products: loadProducts(db, companyId),
+      warehouses: loadWarehouses(db, companyId),
+      stockItems: loadStockItems(db, companyId),
+      ok: String(req.query?.ok || "")
+    }));
+  });
+
+  app.post("/nexora/inventory/lots/create", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const stockItem = ensureStockItemForWarehouse(db, req, companyId, Number(req.body.warehouse_id || 0) || null, req.body);
+    db.prepare(`
+      INSERT INTO inventory_lots (
+        company_id, warehouse_id, product_id, stock_item_id, lot_number, serial_number,
+        item_name, quantity_initial, quantity_available, unit, received_at, expiry_date,
+        supplier_name, status, notes, created_by_email, updated_at
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
+    `).run(
+      companyId,
+      Number(req.body.warehouse_id || 0) || stockItem?.warehouse_id || null,
+      Number(req.body.product_id || 0) || stockItem?.product_id || null,
+      stockItem?.id || null,
+      safeText(req.body.lot_number),
+      safeText(req.body.serial_number),
+      safeText(req.body.item_name) || stockItem?.item_name || safeText(req.body.lot_number),
+      parseNumber(req.body.quantity_initial, 0),
+      parseNumber(req.body.quantity_available, 0),
+      safeText(req.body.unit) || stockItem?.unit || "buc",
+      new Date().toISOString().slice(0, 10),
+      parseDate(req.body.expiry_date),
+      safeText(req.body.supplier_name),
+      safeText(req.body.status) || "ACTIV",
+      safeText(req.body.notes),
+      req.session.user.email
+    );
+    res.redirect("/nexora/inventory/lots?ok=created");
+  });
+
+  app.get("/nexora/inventory/transfers", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const rows = db.prepare(`
+      SELECT
+        t.*,
+        fw.name AS from_warehouse_name,
+        tw.name AS to_warehouse_name,
+        COUNT(i.id) AS line_count,
+        COALESCE(SUM(i.quantity), 0) AS total_qty
+      FROM inventory_transfers t
+      LEFT JOIN inventory_warehouses fw ON fw.id = t.from_warehouse_id AND fw.company_id = t.company_id
+      LEFT JOIN inventory_warehouses tw ON tw.id = t.to_warehouse_id AND tw.company_id = t.company_id
+      LEFT JOIN inventory_transfer_items i ON i.transfer_id = t.id AND i.company_id = t.company_id
+      WHERE t.company_id=?
+      GROUP BY t.id
+      ORDER BY t.transfer_date DESC, t.id DESC
+      LIMIT 300
+    `).all(companyId);
+    const stats = db.prepare(`
+      SELECT
+        COUNT(DISTINCT t.id) AS total,
+        COUNT(DISTINCT CASE WHEN UPPER(COALESCE(t.status,'')) NOT IN ('FINALIZAT','ANULAT') THEN t.id END) AS open,
+        COUNT(DISTINCT CASE WHEN UPPER(COALESCE(t.status,''))='FINALIZAT' THEN t.id END) AS done,
+        COALESCE(SUM(CASE WHEN UPPER(COALESCE(t.status,''))='FINALIZAT' THEN i.quantity ELSE 0 END),0) AS qty
+      FROM inventory_transfers t
+      LEFT JOIN inventory_transfer_items i ON i.transfer_id = t.id AND i.company_id = t.company_id
+      WHERE t.company_id=?
+    `).get(companyId) || {};
+    return res.type("html").send(renderNexoraInventoryTransfersPage({
+      companyName: req.session.user.company_name || "",
+      user: req.session.user,
+      rows,
+      openTransfers: rows.filter((row) => !["FINALIZAT", "ANULAT"].includes(String(row.status || "").toUpperCase())),
+      warehouses: loadWarehouses(db, companyId),
+      stockItems: loadStockItems(db, companyId),
+      stats,
+      ok: String(req.query?.ok || "")
+    }));
+  });
+
+  app.post("/nexora/inventory/transfers/create", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const transferNumber = nextInventoryNumber(db, companyId, "inventory_transfers", "transfer_number", "TRF");
+    db.prepare(`
+      INSERT INTO inventory_transfers (
+        company_id, transfer_number, from_warehouse_id, to_warehouse_id, transfer_date,
+        status, requested_by, notes, created_by_email, updated_at
+      ) VALUES (?,?,?,?,?,?,?,?,?,datetime('now'))
+    `).run(
+      companyId,
+      transferNumber,
+      Number(req.body.from_warehouse_id || 0) || null,
+      Number(req.body.to_warehouse_id || 0) || null,
+      parseDate(req.body.transfer_date) || new Date().toISOString().slice(0, 10),
+      "DRAFT",
+      safeText(req.body.requested_by),
+      safeText(req.body.notes),
+      req.session.user.email
+    );
+    res.redirect("/nexora/inventory/transfers?ok=created");
+  });
+
+  app.post("/nexora/inventory/transfers/items", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const transferId = Number(req.body.transfer_id || 0);
+    const transfer = db.prepare(`SELECT * FROM inventory_transfers WHERE id=? AND company_id=?`).get(transferId, companyId);
+    if (!transfer) return res.status(404).send("Transferul nu a fost găsit.");
+    const stockItem = getStockItem(db, companyId, Number(req.body.stock_item_id || 0));
+    if (!stockItem) return res.status(404).send("Poziția de stoc nu a fost găsită.");
+    db.prepare(`
+      INSERT INTO inventory_transfer_items (
+        company_id, transfer_id, stock_item_id, product_id, item_code, item_name, unit, quantity, notes
+      ) VALUES (?,?,?,?,?,?,?,?,?)
+    `).run(
+      companyId,
+      transfer.id,
+      stockItem.id,
+      stockItem.product_id || null,
+      stockItem.item_code,
+      stockItem.item_name,
+      stockItem.unit || "buc",
+      parseNumber(req.body.quantity, 1),
+      safeText(req.body.notes)
+    );
+    db.prepare(`UPDATE inventory_transfers SET updated_at=datetime('now') WHERE id=? AND company_id=?`).run(transfer.id, companyId);
+    res.redirect("/nexora/inventory/transfers?ok=item_added");
+  });
+
+  app.post("/nexora/inventory/transfers/:id/status", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const transferId = Number(req.params.id || 0);
+    const transfer = db.prepare(`SELECT * FROM inventory_transfers WHERE id=? AND company_id=?`).get(transferId, companyId);
+    if (!transfer) return res.status(404).send("Transferul nu a fost găsit.");
+    const nextStatus = safeText(req.body.status).toUpperCase() || "DRAFT";
+    if (nextStatus === "FINALIZAT" && String(transfer.status || "").toUpperCase() !== "FINALIZAT") {
+      finalizeTransfer(db, req, companyId, transfer);
+    }
+    db.prepare(`UPDATE inventory_transfers SET status=?, updated_at=datetime('now') WHERE id=? AND company_id=?`).run(nextStatus, transferId, companyId);
+    res.redirect("/nexora/inventory/transfers?ok=status");
+  });
+
+  app.get("/nexora/inventory/receipts", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const rows = db.prepare(`
+      SELECT
+        r.*,
+        w.name AS warehouse_name,
+        COUNT(i.id) AS line_count,
+        COALESCE(SUM(i.quantity), 0) AS total_qty,
+        COALESCE(SUM(i.quantity * i.unit_cost), 0) AS total_value
+      FROM inventory_receipts r
+      LEFT JOIN inventory_warehouses w ON w.id = r.warehouse_id AND w.company_id = r.company_id
+      LEFT JOIN inventory_receipt_items i ON i.receipt_id = r.id AND i.company_id = r.company_id
+      WHERE r.company_id=?
+      GROUP BY r.id
+      ORDER BY r.receipt_date DESC, r.id DESC
+      LIMIT 300
+    `).all(companyId);
+    const stats = db.prepare(`
+      SELECT
+        COUNT(DISTINCT r.id) AS total,
+        COUNT(DISTINCT CASE WHEN UPPER(COALESCE(r.status,'')) NOT IN ('RECEPTIONAT','ANULAT') THEN r.id END) AS open,
+        COUNT(DISTINCT CASE WHEN UPPER(COALESCE(r.status,''))='RECEPTIONAT' THEN r.id END) AS done,
+        COALESCE(SUM(CASE WHEN UPPER(COALESCE(r.status,''))='RECEPTIONAT' THEN i.quantity * i.unit_cost ELSE 0 END),0) AS value
+      FROM inventory_receipts r
+      LEFT JOIN inventory_receipt_items i ON i.receipt_id = r.id AND i.company_id = r.company_id
+      WHERE r.company_id=?
+    `).get(companyId) || {};
+    return res.type("html").send(renderNexoraInventoryReceiptsPage({
+      companyName: req.session.user.company_name || "",
+      user: req.session.user,
+      rows,
+      openReceipts: rows.filter((row) => !["RECEPTIONAT", "ANULAT"].includes(String(row.status || "").toUpperCase())),
+      warehouses: loadWarehouses(db, companyId),
+      products: loadProducts(db, companyId),
+      stockItems: loadStockItems(db, companyId),
+      stats,
+      fmtMoney,
+      ok: String(req.query?.ok || "")
+    }));
+  });
+
+  app.post("/nexora/inventory/receipts/create", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const receiptNumber = nextInventoryNumber(db, companyId, "inventory_receipts", "receipt_number", "REC");
+    db.prepare(`
+      INSERT INTO inventory_receipts (
+        company_id, receipt_number, warehouse_id, supplier_name, receipt_date,
+        document_number, status, notes, created_by_email, updated_at
+      ) VALUES (?,?,?,?,?,?,?,?,?,datetime('now'))
+    `).run(
+      companyId,
+      receiptNumber,
+      Number(req.body.warehouse_id || 0) || null,
+      safeText(req.body.supplier_name),
+      parseDate(req.body.receipt_date) || new Date().toISOString().slice(0, 10),
+      safeText(req.body.document_number),
+      "DRAFT",
+      safeText(req.body.notes),
+      req.session.user.email
+    );
+    res.redirect("/nexora/inventory/receipts?ok=created");
+  });
+
+  app.post("/nexora/inventory/receipts/items", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const receiptId = Number(req.body.receipt_id || 0);
+    const receipt = db.prepare(`SELECT * FROM inventory_receipts WHERE id=? AND company_id=?`).get(receiptId, companyId);
+    if (!receipt) return res.status(404).send("Recepția nu a fost găsită.");
+    const stockItem = getStockItem(db, companyId, Number(req.body.stock_item_id || 0));
+    const product = getProduct(db, companyId, Number(req.body.product_id || stockItem?.product_id || 0));
+    const itemName = safeText(req.body.item_name) || safeText(stockItem?.item_name) || safeText(product?.name);
+    const itemCode = safeText(req.body.item_code) || safeText(stockItem?.item_code) || safeText(product?.code);
+    db.prepare(`
+      INSERT INTO inventory_receipt_items (
+        company_id, receipt_id, product_id, stock_item_id, item_code, item_name, unit,
+        quantity, unit_cost, lot_number, serial_number, expiry_date, notes
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+    `).run(
+      companyId,
+      receipt.id,
+      product?.id || null,
+      stockItem?.id || null,
+      itemCode,
+      itemName || itemCode || "Articol recepționat",
+      safeText(req.body.unit) || stockItem?.unit || product?.unit || "buc",
+      parseNumber(req.body.quantity, 1),
+      parseNumber(req.body.unit_cost, 0),
+      safeText(req.body.lot_number),
+      safeText(req.body.serial_number),
+      parseDate(req.body.expiry_date),
+      safeText(req.body.notes)
+    );
+    db.prepare(`UPDATE inventory_receipts SET updated_at=datetime('now') WHERE id=? AND company_id=?`).run(receipt.id, companyId);
+    res.redirect("/nexora/inventory/receipts?ok=item_added");
+  });
+
+  app.post("/nexora/inventory/receipts/:id/status", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const receiptId = Number(req.params.id || 0);
+    const receipt = db.prepare(`SELECT * FROM inventory_receipts WHERE id=? AND company_id=?`).get(receiptId, companyId);
+    if (!receipt) return res.status(404).send("Recepția nu a fost găsită.");
+    const nextStatus = safeText(req.body.status).toUpperCase() || "DRAFT";
+    if (nextStatus === "RECEPTIONAT" && String(receipt.status || "").toUpperCase() !== "RECEPTIONAT") {
+      finalizeReceipt(db, req, companyId, receipt);
+    }
+    db.prepare(`UPDATE inventory_receipts SET status=?, updated_at=datetime('now') WHERE id=? AND company_id=?`).run(nextStatus, receiptId, companyId);
+    res.redirect("/nexora/inventory/receipts?ok=status");
+  });
+
+  app.get("/nexora/inventory/picking", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const rows = db.prepare(`
+      SELECT
+        p.*,
+        w.name AS warehouse_name,
+        COUNT(i.id) AS line_count,
+        COALESCE(SUM(i.quantity_requested), 0) AS requested_qty,
+        COALESCE(SUM(i.quantity_packed), 0) AS packed_qty
+      FROM inventory_pickings p
+      LEFT JOIN inventory_warehouses w ON w.id = p.warehouse_id AND w.company_id = p.company_id
+      LEFT JOIN inventory_picking_items i ON i.picking_id = p.id AND i.company_id = p.company_id
+      WHERE p.company_id=?
+      GROUP BY p.id
+      ORDER BY p.scheduled_date DESC, p.id DESC
+      LIMIT 300
+    `).all(companyId);
+    const stats = db.prepare(`
+      SELECT
+        COUNT(DISTINCT p.id) AS total,
+        COUNT(DISTINCT CASE WHEN UPPER(COALESCE(p.status,''))='LIVRAT' THEN p.id END) AS done,
+        COALESCE(SUM(i.quantity_requested), 0) AS qty,
+        (SELECT COALESCE(SUM(reserved_quantity),0) FROM inventory_stock_items WHERE company_id=?) AS reserved
+      FROM inventory_pickings p
+      LEFT JOIN inventory_picking_items i ON i.picking_id = p.id AND i.company_id = p.company_id
+      WHERE p.company_id=?
+    `).get(companyId, companyId) || {};
+    return res.type("html").send(renderNexoraInventoryPickingPage({
+      companyName: req.session.user.company_name || "",
+      user: req.session.user,
+      rows,
+      openPickings: rows.filter((row) => !["LIVRAT", "ANULAT"].includes(String(row.status || "").toUpperCase())),
+      warehouses: loadWarehouses(db, companyId),
+      stockItems: loadStockItems(db, companyId),
+      stats,
+      ok: String(req.query?.ok || "")
+    }));
+  });
+
+  app.post("/nexora/inventory/picking/create", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const pickingNumber = nextInventoryNumber(db, companyId, "inventory_pickings", "picking_number", "PCK");
+    db.prepare(`
+      INSERT INTO inventory_pickings (
+        company_id, picking_number, warehouse_id, client_name, project_name,
+        scheduled_date, status, notes, created_by_email, updated_at
+      ) VALUES (?,?,?,?,?,?,?,?,?,datetime('now'))
+    `).run(
+      companyId,
+      pickingNumber,
+      Number(req.body.warehouse_id || 0) || null,
+      safeText(req.body.client_name),
+      safeText(req.body.project_name),
+      parseDate(req.body.scheduled_date) || new Date().toISOString().slice(0, 10),
+      "DRAFT",
+      safeText(req.body.notes),
+      req.session.user.email
+    );
+    res.redirect("/nexora/inventory/picking?ok=created");
+  });
+
+  app.post("/nexora/inventory/picking/items", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const pickingId = Number(req.body.picking_id || 0);
+    const picking = db.prepare(`SELECT * FROM inventory_pickings WHERE id=? AND company_id=?`).get(pickingId, companyId);
+    if (!picking) return res.status(404).send("Picking-ul nu a fost găsit.");
+    const stockItem = getStockItem(db, companyId, Number(req.body.stock_item_id || 0));
+    if (!stockItem) return res.status(404).send("Poziția de stoc nu a fost găsită.");
+    const requested = parseNumber(req.body.quantity_requested, 1);
+    db.prepare(`
+      INSERT INTO inventory_picking_items (
+        company_id, picking_id, stock_item_id, product_id, item_code, item_name, unit,
+        quantity_requested, quantity_picked, quantity_packed, notes
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+    `).run(
+      companyId,
+      picking.id,
+      stockItem.id,
+      stockItem.product_id || null,
+      stockItem.item_code,
+      stockItem.item_name,
+      stockItem.unit || "buc",
+      requested,
+      parseNumber(req.body.quantity_picked, requested),
+      parseNumber(req.body.quantity_packed, 0),
+      safeText(req.body.notes)
+    );
+    incrementStock(db, companyId, stockItem.id, 0, requested);
+    db.prepare(`UPDATE inventory_pickings SET updated_at=datetime('now') WHERE id=? AND company_id=?`).run(picking.id, companyId);
+    res.redirect("/nexora/inventory/picking?ok=item_added");
+  });
+
+  app.post("/nexora/inventory/picking/:id/status", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const pickingId = Number(req.params.id || 0);
+    const picking = db.prepare(`SELECT * FROM inventory_pickings WHERE id=? AND company_id=?`).get(pickingId, companyId);
+    if (!picking) return res.status(404).send("Picking-ul nu a fost găsit.");
+    const nextStatus = safeText(req.body.status).toUpperCase() || "DRAFT";
+    if (nextStatus === "AMBALAT") {
+      db.prepare(`
+        UPDATE inventory_picking_items
+        SET quantity_packed = CASE WHEN quantity_packed > 0 THEN quantity_packed ELSE quantity_picked END
+        WHERE picking_id=? AND company_id=?
+      `).run(pickingId, companyId);
+    }
+    if (nextStatus === "LIVRAT" && String(picking.status || "").toUpperCase() !== "LIVRAT") {
+      deliverPicking(db, companyId, picking);
+    }
+    db.prepare(`UPDATE inventory_pickings SET status=?, updated_at=datetime('now') WHERE id=? AND company_id=?`).run(nextStatus, pickingId, companyId);
+    res.redirect("/nexora/inventory/picking?ok=status");
+  });
+
+  app.get("/nexora/inventory/barcodes", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const rows = db.prepare(`
+      SELECT
+        b.*,
+        p.name AS product_name,
+        a.asset_name,
+        l.lot_number
+      FROM inventory_barcodes b
+      LEFT JOIN products p ON p.id = b.product_id AND p.company_id = b.company_id
+      LEFT JOIN inventory_assets a ON a.id = b.asset_id AND a.company_id = b.company_id
+      LEFT JOIN inventory_lots l ON l.id = b.lot_id AND l.company_id = b.company_id
+      WHERE b.company_id=?
+      ORDER BY b.created_at DESC, b.id DESC
+      LIMIT 500
+    `).all(companyId);
+    return res.type("html").send(renderNexoraInventoryBarcodesPage({
+      companyName: req.session.user.company_name || "",
+      user: req.session.user,
+      rows,
+      products: loadProducts(db, companyId),
+      assets: loadAssets(db, companyId),
+      lots: loadLots(db, companyId),
+      ok: String(req.query?.ok || "")
+    }));
+  });
+
+  app.post("/nexora/inventory/barcodes/create", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    let value = safeText(req.body.barcode_value) || generateBarcodeValue(companyId);
+    for (let i = 0; i < 5; i += 1) {
+      const exists = db.prepare(`SELECT id FROM inventory_barcodes WHERE company_id=? AND barcode_value=?`).get(companyId, value);
+      if (!exists) break;
+      value = generateBarcodeValue(companyId);
+    }
+    db.prepare(`
+      INSERT INTO inventory_barcodes (
+        company_id, product_id, asset_id, lot_id, barcode_value, barcode_type,
+        label, status, notes, created_by_email, updated_at
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,datetime('now'))
+    `).run(
+      companyId,
+      Number(req.body.product_id || 0) || null,
+      Number(req.body.asset_id || 0) || null,
+      Number(req.body.lot_id || 0) || null,
+      value,
+      safeText(req.body.barcode_type) || "CODE128",
+      safeText(req.body.label) || value,
+      "ACTIV",
+      safeText(req.body.notes),
+      req.session.user.email
+    );
+    res.redirect("/nexora/inventory/barcodes?ok=created");
+  });
+
+  app.get("/nexora/inventory/counts", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const rows = db.prepare(`
+      SELECT
+        c.*,
+        COUNT(i.id) AS line_count,
+        SUM(CASE WHEN ABS(COALESCE(i.variance,0)) > 0.0001 THEN 1 ELSE 0 END) AS variance_lines
+      FROM inventory_counts c
+      LEFT JOIN inventory_count_items i ON i.count_id = c.id AND i.company_id = c.company_id
+      WHERE c.company_id=?
+      GROUP BY c.id
+      ORDER BY c.count_date DESC, c.id DESC
+      LIMIT 300
+    `).all(companyId);
+    const stats = db.prepare(`
+      SELECT
+        COUNT(DISTINCT c.id) AS total,
+        COUNT(DISTINCT CASE WHEN UPPER(COALESCE(c.status,''))='DRAFT' THEN c.id END) AS draft,
+        COUNT(DISTINCT CASE WHEN UPPER(COALESCE(c.status,''))='APPLIED' THEN c.id END) AS applied,
+        SUM(CASE WHEN ABS(COALESCE(i.variance,0)) > 0.0001 THEN 1 ELSE 0 END) AS variance_lines
+      FROM inventory_counts c
+      LEFT JOIN inventory_count_items i ON i.count_id = c.id AND i.company_id = c.company_id
+      WHERE c.company_id=?
+    `).get(companyId) || {};
+    return res.type("html").send(renderNexoraInventoryCountsPage({
+      companyName: req.session.user.company_name || "",
+      user: req.session.user,
+      rows,
+      stats,
+      ok: String(req.query?.ok || "")
+    }));
+  });
+
+  app.post("/nexora/inventory/counts/create", requireAuth, upload.single("count_file"), (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const scope = safeText(req.body.scope).toUpperCase() === "ACTIVE" ? "ACTIVE" : "STOCURI";
+    let fileInfo = null;
+    let parsedRows = [];
+    if (req.file) {
+      fileInfo = saveUploadedFile({ fs, path, __dirname, file: req.file });
+      parsedRows = parseCountFile(fs.readFileSync(fileInfo.fullPath, "utf8"));
+    }
+    const insertCount = db.prepare(`
+      INSERT INTO inventory_counts (
+        company_id, title, count_date, status, source_file_name, notes, created_by_email, updated_at
+      ) VALUES (?,?,?,?,?,?,?,datetime('now'))
+    `).run(
+      companyId,
+      safeText(req.body.title) || "Inventar",
+      parseDate(req.body.count_date) || new Date().toISOString().slice(0, 10),
+      "DRAFT",
+      fileInfo?.fileName || `Generat din ${scope === "ACTIVE" ? "registru active" : "stocuri"}`,
+      safeText(req.body.notes),
+      req.session.user.email
+    );
+    const countId = Number(insertCount.lastInsertRowid || 0);
+    const insertItem = db.prepare(`
+      INSERT INTO inventory_count_items (
+        company_id, count_id, asset_id, stock_item_id, warehouse_id, asset_code,
+        asset_name, quantity_scriptic, quantity_counted, variance, notes
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+    `);
+    const seedRows = scope === "ACTIVE"
+      ? db.prepare(`
+          SELECT id AS asset_id, NULL AS stock_item_id, NULL AS warehouse_id, asset_code, asset_name,
+                 quantity_scriptic, location AS notes
+          FROM inventory_assets
+          WHERE company_id=?
+          ORDER BY asset_name COLLATE NOCASE ASC
+        `).all(companyId)
+      : db.prepare(`
+          SELECT s.asset_id, s.id AS stock_item_id, s.warehouse_id, s.item_code AS asset_code,
+                 s.item_name AS asset_name, s.quantity AS quantity_scriptic,
+                 COALESCE(w.name, 'Fără depozit') AS notes
+          FROM inventory_stock_items s
+          LEFT JOIN inventory_warehouses w ON w.id = s.warehouse_id AND w.company_id = s.company_id
+          WHERE s.company_id=?
+          ORDER BY w.name COLLATE NOCASE ASC, s.item_name COLLATE NOCASE ASC
+        `).all(companyId);
+    const seedMap = new Map(seedRows.map((row) => [String(row.asset_code || "").trim().toLowerCase(), row]));
+    const rowsToInsert = parsedRows.length
+      ? parsedRows.map((row) => {
+          const seed = seedMap.get(String(row.asset_code || "").trim().toLowerCase()) || {};
+          const scriptic = parseNumber(seed.quantity_scriptic, 0);
+          const counted = parseNumber(row.quantity_counted, 0);
+          return {
+            ...seed,
+            asset_code: safeText(row.asset_code),
+            asset_name: safeText(row.asset_name) || safeText(seed.asset_name),
+            quantity_scriptic: scriptic,
+            quantity_counted: counted,
+            variance: counted - scriptic,
+            notes: safeText(row.notes) || safeText(seed.notes)
+          };
+        })
+      : seedRows.map((row) => ({
+          ...row,
+          quantity_counted: parseNumber(row.quantity_scriptic, 0),
+          variance: 0
+        }));
+    for (const row of rowsToInsert) {
+      insertItem.run(
+        companyId,
+        countId,
+        row.asset_id || null,
+        row.stock_item_id || null,
+        row.warehouse_id || null,
+        safeText(row.asset_code),
+        safeText(row.asset_name) || safeText(row.asset_code),
+        parseNumber(row.quantity_scriptic, 0),
+        parseNumber(row.quantity_counted, 0),
+        parseNumber(row.variance, 0),
+        safeText(row.notes)
+      );
+    }
+    res.redirect(`/nexora/inventory/counts/${countId}?ok=created`);
+  });
+
+  app.get("/nexora/inventory/counts/export/:id.csv", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const countId = Number(req.params.id || 0);
+    const rows = db.prepare(`
+      SELECT asset_code, asset_name, quantity_scriptic, quantity_counted, variance, applied, notes
+      FROM inventory_count_items
+      WHERE count_id=? AND company_id=?
+      ORDER BY asset_name COLLATE NOCASE ASC
+    `).all(countId, companyId);
+    const csv = [
+      ["asset_code", "asset_name", "quantity_scriptic", "quantity_counted", "variance", "applied", "notes"].join(","),
+      ...rows.map((row) => [
+        row.asset_code,
+        row.asset_name,
+        row.quantity_scriptic,
+        row.quantity_counted,
+        row.variance,
+        row.applied,
+        row.notes
+      ].map(csvEscape).join(","))
+    ].join("\n");
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="nexora-inventory-count-${countId}.csv"`);
+    res.send(csv);
+  });
+
+  app.get("/nexora/inventory/counts/:id", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const countId = Number(req.params.id || 0);
+    const count = db.prepare(`SELECT * FROM inventory_counts WHERE id=? AND company_id=?`).get(countId, companyId);
+    if (!count) return res.status(404).send("Sesiunea de inventar nu a fost găsită.");
+    const items = db.prepare(`
+      SELECT i.*, w.name AS warehouse_name
+      FROM inventory_count_items i
+      LEFT JOIN inventory_warehouses w ON w.id = i.warehouse_id AND w.company_id = i.company_id
+      WHERE i.count_id=? AND i.company_id=?
+      ORDER BY ABS(COALESCE(i.variance,0)) DESC, i.asset_name COLLATE NOCASE ASC
+      LIMIT 1200
+    `).all(countId, companyId);
+    const stats = {
+      lines: items.length,
+      variance: items.filter((row) => Math.abs(Number(row.variance || 0)) > 0.0001).length,
+      unapplied: items.filter((row) => Number(row.applied || 0) === 0 && Math.abs(Number(row.variance || 0)) > 0.0001).length,
+      ok: items.filter((row) => Math.abs(Number(row.variance || 0)) <= 0.0001).length
+    };
+    return res.type("html").send(renderNexoraInventoryCountDetailPage({
+      companyName: req.session.user.company_name || "",
+      user: req.session.user,
+      count,
+      items,
+      stats,
+      ok: String(req.query?.ok || "")
+    }));
+  });
+
+  app.post("/nexora/inventory/counts/:id/apply", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const countId = Number(req.params.id || 0);
+    const count = db.prepare(`SELECT * FROM inventory_counts WHERE id=? AND company_id=?`).get(countId, companyId);
+    if (!count) return res.status(404).send("Sesiunea de inventar nu a fost găsită.");
+    const rows = db.prepare(`
+      SELECT *
+      FROM inventory_count_items
+      WHERE count_id=? AND company_id=? AND applied=0 AND ABS(COALESCE(variance,0)) > 0.0001
+      ORDER BY id ASC
+    `).all(countId, companyId);
+    const insertAdjustment = db.prepare(`
+      INSERT INTO inventory_adjustments (
+        company_id, asset_id, count_id, asset_code, quantity_before, quantity_after, variance, reason, created_by_email
+      ) VALUES (?,?,?,?,?,?,?,?,?)
+    `);
+    for (const row of rows) {
+      const quantityAfter = parseNumber(row.quantity_counted, 0);
+      if (row.stock_item_id) {
+        db.prepare(`
+          UPDATE inventory_stock_items
+          SET quantity=?, updated_at=datetime('now')
+          WHERE id=? AND company_id=?
+        `).run(quantityAfter, row.stock_item_id, companyId);
+      }
+      if (row.asset_id) {
+        insertAdjustment.run(
+          companyId,
+          row.asset_id,
+          countId,
+          row.asset_code,
+          parseNumber(row.quantity_scriptic, 0),
+          quantityAfter,
+          parseNumber(row.variance, 0),
+          `Corecție inventar ${count.title || "Inventar"}`,
+          req.session.user.email
+        );
+        db.prepare(`
+          UPDATE inventory_assets
+          SET quantity_scriptic=?, status=?, updated_at=datetime('now')
+          WHERE id=? AND company_id=?
+        `).run(quantityAfter, quantityAfter > 0 ? "IN_STOC" : "CASAT", row.asset_id, companyId);
+      }
+      db.prepare(`UPDATE inventory_count_items SET applied=1 WHERE id=? AND company_id=?`).run(row.id, companyId);
+    }
+    db.prepare(`UPDATE inventory_counts SET status='APPLIED', updated_at=datetime('now') WHERE id=? AND company_id=?`).run(countId, companyId);
+    res.redirect(`/nexora/inventory/counts/${countId}?ok=applied`);
+  });
+
+  app.get("/nexora/inventory/reports", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const byWarehouse = db.prepare(`
+      SELECT
+        COALESCE(w.name, 'Fără depozit') AS warehouse_name,
+        COUNT(s.id) AS lines,
+        COALESCE(SUM(s.quantity), 0) AS qty,
+        COALESCE(SUM(s.reserved_quantity), 0) AS reserved
+      FROM inventory_stock_items s
+      LEFT JOIN inventory_warehouses w ON w.id = s.warehouse_id AND w.company_id = s.company_id
+      WHERE s.company_id=?
+      GROUP BY COALESCE(w.name, 'Fără depozit')
+      ORDER BY qty DESC, warehouse_name ASC
+    `).all(companyId);
+    const lowStock = db.prepare(`
+      SELECT s.*, w.name AS warehouse_name
+      FROM inventory_stock_items s
+      LEFT JOIN inventory_warehouses w ON w.id = s.warehouse_id AND w.company_id = s.company_id
+      WHERE s.company_id=? AND s.quantity <= s.minimum_quantity
+      ORDER BY s.quantity ASC, s.item_name COLLATE NOCASE ASC
+      LIMIT 50
+    `).all(companyId);
+    const expiringLots = db.prepare(`
+      SELECT l.*, w.name AS warehouse_name
+      FROM inventory_lots l
+      LEFT JOIN inventory_warehouses w ON w.id = l.warehouse_id AND w.company_id = l.company_id
+      WHERE l.company_id=? AND COALESCE(l.expiry_date,'') <> '' AND UPPER(COALESCE(l.status,'')) <> 'EXPIRAT'
+      ORDER BY l.expiry_date ASC, l.item_name COLLATE NOCASE ASC
+      LIMIT 50
+    `).all(companyId);
+    const movements = db.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM inventory_transfers WHERE company_id=? AND UPPER(COALESCE(status,'')) NOT IN ('FINALIZAT','ANULAT')) AS open_transfers,
+        (SELECT COUNT(*) FROM inventory_receipts WHERE company_id=? AND UPPER(COALESCE(status,'')) NOT IN ('RECEPTIONAT','ANULAT')) AS open_receipts,
+        (SELECT COUNT(*) FROM inventory_pickings WHERE company_id=? AND UPPER(COALESCE(status,'')) NOT IN ('LIVRAT','ANULAT')) AS open_pickings
+    `).get(companyId, companyId, companyId) || {};
+    return res.type("html").send(renderNexoraInventoryReportsPage({
+      companyName: req.session.user.company_name || "",
+      user: req.session.user,
+      byWarehouse,
+      lowStock,
+      expiringLots,
+      movements
     }));
   });
 

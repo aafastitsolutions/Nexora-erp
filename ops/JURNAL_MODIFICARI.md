@@ -2,6 +2,36 @@
 
 ## 2026-05-29
 
+### Modul Inventar & Gestiune Nexora
+- Punctul principal al modulului Inventar & Gestiune afiseaza acum pagina functionala `Stocuri`, nu un hub static.
+- Au fost facute functionale meniurile:
+  - `Stocuri`;
+  - `Registru active`;
+  - `Proiecte inventar`;
+  - `Produse`;
+  - `Depozite`;
+  - `Loturi / Serii`;
+  - `Transferuri`;
+  - `Inventar`;
+  - `Receptii`;
+  - `Picking / Packing`;
+  - `Coduri de bare`.
+- Au fost adaugate tabele operationale pentru depozite, pozitii de stoc, loturi/serii, transferuri, receptii, picking/packing si coduri de bare.
+- `Stocuri` permite creare de pozitii pe depozit, produs sau linie manuala, cu cantitate, rezervare si prag minim.
+- `Depozite` permite creare/actualizare locatii de stoc si afiseaza cantitati agregate pe depozit.
+- `Loturi / Serii` permite urmarirea trasabilitatii pe lot, serie, depozit, produs si expirare.
+- `Transferuri` permite creare document de transfer, adaugare linii si finalizare cu mutarea cantitatilor intre depozite.
+- `Receptii` permite creare receptie, adaugare linii, costuri, loturi si finalizare cu intrare efectiva in stoc.
+- `Picking / Packing` permite creare picking, rezervare cantitati, ambalare si livrare cu scadere din stoc.
+- `Inventar` permite creare sesiuni de numarare din stocuri sau active, import CSV optional, export CSV si aplicarea diferentelor.
+- `Coduri de bare` permite generarea de coduri pentru produse, active sau loturi si pregatirea etichetelor pentru tiparire.
+- `Rapoarte inventar` afiseaza stoc pe depozite, pozitii sub minim, loturi cu expirare si documente operationale deschise.
+- Validare:
+  - au fost rulate verificarile `node --check` pentru `routes/inventory-routes.js`, `src/ui/nexora-inventory-pages.js`, `db.js` si `server.js`;
+  - migratia SQLite a fost rulata local si noile tabele/coloane au fost create;
+  - toate paginile Nexora ale modulului au fost randate local cu raspuns `200`;
+  - fluxurile depozit + transfer, receptie + picking si inventar + aplicare diferente au fost testate in tranzactii cu `ROLLBACK`.
+
 ### Modul CRM Nexora
 - A fost mutat punctul principal al modulului CRM pe `/nexora/crm`.
 - Au fost facute functionale meniurile:
