@@ -223,6 +223,7 @@ function renderNexoraAccountingDeclarationsPage(options = {}) {
   const stats = options.stats || {};
   const filters = options.filters || {};
   const ok = options.ok || "";
+  const declarationCatalog = Array.isArray(options.declarationCatalog) ? options.declarationCatalog : [];
 
   const okMessages = {
     created: "Declarația a fost înregistrată."
