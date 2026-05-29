@@ -10,14 +10,184 @@ function escapeHtml(value = "") {
 }
 
 const TEMPLATE_LINKS = [
-  ["/tipizate/proces-verbal", "Proces verbal"],
-  ["/tipizate/adeverinta", "Adeverință salariat"],
-  ["/tipizate/decizie-interna", "Decizie internă"],
-  ["/tipizate/notificare-client", "Notificare client"],
-  ["/tipizate/cerere-concediu", "Cerere concediu"],
-  ["/tipizate/ordin-deplasare", "Ordin de deplasare"],
-  ["/tipizate/fisa-hr", "Fișă HR"]
+  {
+    key: "proces-verbal",
+    href: "/nexora/documents/templates/proces-verbal",
+    label: "Proces verbal",
+    description: "Recepție, predare-primire sau constatare internă.",
+    accent: "PV"
+  },
+  {
+    key: "adeverinta",
+    href: "/nexora/documents/templates/adeverinta",
+    label: "Adeverință salariat",
+    description: "Document HR pentru confirmarea funcției și calității de salariat.",
+    accent: "HR"
+  },
+  {
+    key: "decizie-interna",
+    href: "/nexora/documents/templates/decizie-interna",
+    label: "Decizie internă",
+    description: "Decizii operaționale, administrative sau de management.",
+    accent: "DEC"
+  },
+  {
+    key: "notificare-client",
+    href: "/nexora/documents/templates/notificare-client",
+    label: "Notificare client",
+    description: "Adresă oficială către un client din portofoliu.",
+    accent: "CLI"
+  },
+  {
+    key: "cerere-concediu",
+    href: "/nexora/documents/templates/cerere-concediu",
+    label: "Cerere concediu",
+    description: "Cerere de concediu pregătită pentru registrul DMS.",
+    accent: "CON"
+  },
+  {
+    key: "ordin-deplasare",
+    href: "/nexora/documents/templates/ordin-deplasare",
+    label: "Ordin de deplasare",
+    description: "Delegare, avans și decont pentru deplasări.",
+    accent: "OD"
+  },
+  {
+    key: "fisa-hr",
+    href: "/nexora/documents/templates/fisa-hr",
+    label: "Fișă HR",
+    description: "Fișă internă pentru date de personal.",
+    accent: "FHR"
+  }
 ];
+
+const TEMPLATE_DEFINITIONS = {
+  "proces-verbal": {
+    title: "Proces verbal",
+    description: "Completează datele procesului verbal și generează PDF înregistrat în DMS.",
+    action: "/nexora/documents/templates/proces-verbal/generate",
+    fields: [
+      { name: "title", label: "Titlu document", required: true, placeholder: "Ex: Proces verbal recepție lucrări" },
+      { name: "doc_date", label: "Data", type: "date", value: "today" },
+      { name: "location", label: "Locația" },
+      { name: "participants", label: "Participanți" },
+      { name: "subject", label: "Subiect" },
+      { name: "content", label: "Conținut", type: "textarea", rows: 8, required: true },
+      { name: "prepared_by", label: "Întocmit de" }
+    ]
+  },
+  adeverinta: {
+    title: "Adeverință salariat",
+    description: "Generează o adeverință salariat și o salvează în biblioteca DMS.",
+    action: "/nexora/documents/templates/adeverinta/generate",
+    fields: [
+      { name: "title", label: "Titlu document", value: "Adeverință salariat", required: true },
+      { name: "employee_name", label: "Nume salariat", required: true, placeholder: "Ex: Popescu Ion" },
+      { name: "position", label: "Funcție", required: true, placeholder: "Ex: Tehnician" },
+      { name: "doc_date", label: "Data", type: "date", value: "today" },
+      { name: "prepared_by", label: "Întocmit de", placeholder: "Ex: Administrator" },
+      { name: "content", label: "Conținut / observații", type: "textarea", rows: 6 }
+    ]
+  },
+  "decizie-interna": {
+    title: "Decizie internă",
+    description: "Pregătește o decizie internă cu număr de înregistrare DMS.",
+    action: "/nexora/documents/templates/decizie-interna/generate",
+    fields: [
+      { name: "title", label: "Titlu document", required: true, placeholder: "Ex: Decizie internă nr. 1" },
+      { name: "doc_date", label: "Data", type: "date", value: "today" },
+      { name: "issuer", label: "Emitent", placeholder: "Ex: Administrator" },
+      { name: "subject", label: "Subiect", required: true },
+      { name: "content", label: "Conținut", type: "textarea", rows: 7, required: true }
+    ]
+  },
+  "notificare-client": {
+    title: "Notificare client",
+    description: "Trimite către PDF o notificare oficială legată de clientul selectat.",
+    action: "/nexora/documents/templates/notificare-client/generate",
+    fields: [
+      { name: "title", label: "Titlu document", required: true, placeholder: "Ex: Notificare client" },
+      { name: "client_id", label: "Client", type: "client-select", required: true },
+      { name: "doc_date", label: "Data", type: "date", value: "today" },
+      { name: "subject", label: "Subiect", required: true },
+      { name: "content", label: "Mesaj", type: "textarea", rows: 7, required: true },
+      { name: "prepared_by", label: "Semnat de", placeholder: "Ex: Administrator" }
+    ]
+  },
+  "cerere-concediu": {
+    title: "Cerere concediu",
+    description: "Generează cererea de concediu direct din interfața Nexora.",
+    action: "/nexora/documents/templates/cerere-concediu/generate",
+    fields: [
+      { name: "employee_name", label: "Nume salariat", required: true },
+      { name: "period", label: "Perioada", required: true, placeholder: "Ex: 10.03.2026 - 15.03.2026" },
+      { name: "leave_type", label: "Tip concediu", required: true, placeholder: "Ex: odihnă" },
+      { name: "content", label: "Motiv / observații", type: "textarea", rows: 5 },
+      { name: "doc_date", label: "Data cererii", type: "date", value: "today" }
+    ]
+  },
+  "ordin-deplasare": {
+    title: "Ordin de deplasare",
+    description: "Completează ordinul de deplasare și decontul de bază.",
+    action: "/nexora/documents/templates/ordin-deplasare/generate",
+    fields: [
+      { name: "title", label: "Titlu document", value: "Ordin de deplasare", required: true },
+      { name: "doc_date", label: "Data", type: "date", value: "today" },
+      { name: "order_number", label: "Număr ordin" },
+      { name: "employee_name", label: "Nume delegat", required: true },
+      { name: "position", label: "Funcție" },
+      { name: "department", label: "Departament / unitate" },
+      { name: "destination", label: "Destinație", required: true },
+      { name: "purpose", label: "Scop deplasare" },
+      { name: "departure_date", label: "Data plecării", type: "date" },
+      { name: "return_date", label: "Data sosirii", type: "date" },
+      { name: "transport", label: "Transport / legitimare" },
+      { name: "advance_amount", label: "Avans spre decontare", placeholder: "0.00" },
+      { name: "employee_sign", label: "Titular avans / semnătură" },
+      { name: "expenses_notes", label: "Observații decont", type: "textarea", rows: 3 }
+    ]
+  },
+  "fisa-hr": {
+    title: "Fișă HR",
+    description: "Generează o fișă internă pentru datele de personal.",
+    action: "/nexora/documents/templates/fisa-hr/generate",
+    fields: [
+      { name: "employee_name", label: "Nume salariat", required: true },
+      { name: "position", label: "Funcție", required: true },
+      { name: "department", label: "Departament" },
+      { name: "hire_date", label: "Data angajării", type: "date" },
+      { name: "content", label: "Observații / conținut", type: "textarea", rows: 6 }
+    ]
+  }
+};
+
+function todayValue() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function renderTemplateCards() {
+  return TEMPLATE_LINKS.map((template) => `
+    <a href="${escapeHtml(template.href)}">
+      <b>${escapeHtml(template.label)}</b>
+      <small>${escapeHtml(template.description)}</small>
+    </a>
+  `).join("");
+}
+
+function renderTemplateField(field, clients = []) {
+  const required = field.required ? "required" : "";
+  const value = field.value === "today" ? todayValue() : field.value || "";
+  if (field.type === "textarea") {
+    return `<label class="nx-field nx-field-wide"><span>${escapeHtml(field.label)}</span><textarea name="${escapeHtml(field.name)}" rows="${escapeHtml(field.rows || 4)}" ${required} placeholder="${escapeHtml(field.placeholder || "")}">${escapeHtml(value)}</textarea></label>`;
+  }
+  if (field.type === "client-select") {
+    return `<label class="nx-field"><span>${escapeHtml(field.label)}</span><select name="${escapeHtml(field.name)}" ${required}>
+      <option value="">Selectează clientul</option>
+      ${clients.map((client) => `<option value="${escapeHtml(client.id)}">${escapeHtml(client.name || "-")}${client.cui ? ` (${escapeHtml(client.cui)})` : ""}</option>`).join("")}
+    </select></label>`;
+  }
+  return `<label class="nx-field"><span>${escapeHtml(field.label)}</span><input name="${escapeHtml(field.name)}" type="${escapeHtml(field.type || "text")}" value="${escapeHtml(value)}" ${required} placeholder="${escapeHtml(field.placeholder || "")}"></label>`;
+}
 
 function renderNexoraDocumentsPage(options = {}) {
   const companyName = options.companyName || "Workspace";
@@ -56,9 +226,7 @@ function renderNexoraDocumentsPage(options = {}) {
     err ? `<div class="nx-alert danger">${escapeHtml(errorMessages[err] || "Operațiunea nu a putut fi finalizată.")}</div>` : ""
   ].join("");
 
-  const templatesHtml = TEMPLATE_LINKS.map(([href, label]) => `
-    <a href="${escapeHtml(href)}">${escapeHtml(label)}</a>
-  `).join("");
+  const templatesHtml = renderTemplateCards();
 
   const rowsHtml = docs.length
     ? docs.map((doc) => `
@@ -209,7 +377,7 @@ function renderNexoraDocumentsPage(options = {}) {
             <span>Formulare existente</span>
           </div>
         </div>
-        <div class="nx-shortcuts">${templatesHtml}</div>
+        <div class="nx-shortcuts nx-template-links">${templatesHtml}</div>
       </section>
 
       <section class="nx-panel">
@@ -285,6 +453,81 @@ function renderNexoraDocumentsPage(options = {}) {
     isCompanyAdmin,
     eyebrow: "Documente",
     pageTitle: "Documente / DMS",
+    body
+  });
+}
+
+function renderNexoraDocumentsTemplatesPage(options = {}) {
+  const companyName = options.companyName || "Workspace";
+  const isCompanyAdmin = Number(options.isCompanyAdmin || 0) === 1;
+  const body = `
+    <section class="nx-content-card">
+      <div class="nx-section-head">
+        <div>
+          <h1>Tipizate</h1>
+          <p>Modele de documente generate direct în Nexora DMS, cu salvare în registrul de evidență.</p>
+        </div>
+        <div class="nx-form-actions">
+          <a class="nx-btn" href="/nexora/documents">Documente / DMS</a>
+          <a class="nx-btn" href="/nexora/documents/register">Registru</a>
+        </div>
+      </div>
+      <div class="nx-shortcuts nx-template-links">${renderTemplateCards()}</div>
+    </section>
+  `;
+
+  return renderNexoraShell({
+    title: "Tipizate DMS",
+    appName: "Nexora ERP",
+    companyName,
+    user: options.user,
+    currentPath: "/nexora/documents/templates",
+    isCompanyAdmin,
+    eyebrow: "Documente / DMS",
+    pageTitle: "Tipizate",
+    body
+  });
+}
+
+function renderNexoraDocumentTemplateFormPage(options = {}) {
+  const templateKey = String(options.templateKey || "").trim();
+  const template = TEMPLATE_DEFINITIONS[templateKey];
+  if (!template) return "";
+
+  const companyName = options.companyName || "Workspace";
+  const isCompanyAdmin = Number(options.isCompanyAdmin || 0) === 1;
+  const clients = Array.isArray(options.clients) ? options.clients : [];
+  const fieldsHtml = template.fields.map((field) => renderTemplateField(field, clients)).join("");
+  const body = `
+    <section class="nx-content-card">
+      <div class="nx-section-head">
+        <div>
+          <h1>${escapeHtml(template.title)}</h1>
+          <p>${escapeHtml(template.description)}</p>
+        </div>
+        <div class="nx-form-actions">
+          <a class="nx-btn" href="/nexora/documents/templates">Tipizate</a>
+          <a class="nx-btn" href="/nexora/documents">DMS</a>
+        </div>
+      </div>
+      <form method="post" action="${escapeHtml(template.action)}" class="nx-inline-form nx-register-form">
+        ${fieldsHtml}
+        <div class="nx-form-actions">
+          <button class="nx-btn primary" type="submit">Generează PDF</button>
+        </div>
+      </form>
+    </section>
+  `;
+
+  return renderNexoraShell({
+    title: template.title,
+    appName: "Nexora ERP",
+    companyName,
+    user: options.user,
+    currentPath: "/nexora/documents/templates",
+    isCompanyAdmin,
+    eyebrow: "Documente / DMS",
+    pageTitle: template.title,
     body
   });
 }
@@ -501,8 +744,10 @@ function renderNexoraDocumentsRegisterPage(options = {}) {
 }
 
 export {
+  renderNexoraDocumentTemplateFormPage,
   renderNexoraClientDossierDetailPage,
   renderNexoraClientDossiersPage,
   renderNexoraDocumentsPage,
-  renderNexoraDocumentsRegisterPage
+  renderNexoraDocumentsRegisterPage,
+  renderNexoraDocumentsTemplatesPage
 };

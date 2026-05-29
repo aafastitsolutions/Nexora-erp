@@ -2,6 +2,23 @@
 
 ## 2026-05-29
 
+### Fix Tipizate in Documente / DMS
+- Linkul `Tipizate` din meniul `Documente / DMS` a fost mutat de pe ruta veche `/tipizate` pe `/nexora/documents/templates`.
+- A fost adaugata pagina Nexora pentru tipizate, cu aceeasi structura vizuala ca restul modulului DMS.
+- Modelele de documente din DMS folosesc acum rute Nexora:
+  - `/nexora/documents/templates/proces-verbal`;
+  - `/nexora/documents/templates/adeverinta`;
+  - `/nexora/documents/templates/decizie-interna`;
+  - `/nexora/documents/templates/notificare-client`;
+  - `/nexora/documents/templates/cerere-concediu`;
+  - `/nexora/documents/templates/ordin-deplasare`;
+  - `/nexora/documents/templates/fisa-hr`.
+- Au fost pastrate aliasurile vechi pentru compatibilitate, dar meniul Nexora nu mai trimite utilizatorul in interfata veche.
+- Validare:
+  - au fost rulate verificarile `node --check` pentru `server.js` si `src/ui/nexora-documents-page.js`;
+  - a fost rulat un smoke test de randare care confirma ca pagina Tipizate DMS nu mai contine linkuri vechi `/tipizate`.
+  - a fost verificat sidebar-ul DMS: linkul `Tipizate` indica `/nexora/documents/templates`.
+
 ### Modul Resurse Umane Nexora
 - A fost extins modulul Resurse Umane cu backend si UI functional pentru toate meniurile active:
   - `Angajati`;

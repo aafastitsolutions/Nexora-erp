@@ -129,8 +129,8 @@ function renderNexoraEmployeesPage(options = {}) {
           <a href="/nexora/hr/leave">Cerere concediu</a>
           <a href="/nexora/hr/timesheets">Pontaj zi</a>
           <a href="/nexora/hr/payroll">Stat payroll</a>
-          <a href="/tipizate/cerere-concediu">Tipizat concediu</a>
-          <a href="/tipizate/fisa-hr">Fișă HR</a>
+          <a href="/nexora/documents/templates/cerere-concediu">Tipizat concediu</a>
+          <a href="/nexora/documents/templates/fisa-hr">Fișă HR</a>
         </div>
       </section>
     </div>

@@ -2,7 +2,14 @@ import { renderNexoraAnafInboxPage } from "./src/ui/nexora-anaf-inbox-page.js";
 import { renderNexoraAnafOutboxPage } from "./src/ui/nexora-anaf-outbox-page.js";
 import { renderNexoraAnafStatusPage } from "./src/ui/nexora-anaf-status-page.js";
 import { renderNexoraClientPortalPage, renderNexoraClientPortalProjectPage } from "./src/ui/nexora-client-portal-page.js";
-import { renderNexoraClientDossierDetailPage, renderNexoraClientDossiersPage, renderNexoraDocumentsPage, renderNexoraDocumentsRegisterPage } from "./src/ui/nexora-documents-page.js";
+import {
+  renderNexoraClientDossierDetailPage,
+  renderNexoraClientDossiersPage,
+  renderNexoraDocumentTemplateFormPage,
+  renderNexoraDocumentsPage,
+  renderNexoraDocumentsRegisterPage,
+  renderNexoraDocumentsTemplatesPage
+} from "./src/ui/nexora-documents-page.js";
 import { renderNexoraEmployeesPage } from "./src/ui/nexora-employees-page.js";
 import { renderNexoraHubPage } from "./src/ui/nexora-hub-page.js";
 import { renderNexoraProductEditPage, renderNexoraProductsPage } from "./src/ui/nexora-products-page.js";
@@ -6026,6 +6033,33 @@ app.get("/nexora/documents", requireAuth, (req, res) => {
   }));
 });
 
+app.get("/nexora/documents/templates", requireAuth, (req, res) => {
+  return res.type("html").send(renderNexoraDocumentsTemplatesPage({
+    companyName: req.session.user.company_name || "",
+    user: req.session.user,
+    isCompanyAdmin: isCompanyAdminUser(req.session.user)
+  }));
+});
+
+app.get("/nexora/documents/templates/:templateKey", requireAuth, (req, res) => {
+  const companyId = Number(req.session.user.company_id || 0);
+  const clients = db.prepare(`
+    SELECT id, name, cui
+    FROM clients
+    WHERE company_id=?
+    ORDER BY name COLLATE NOCASE ASC
+  `).all(companyId);
+  const html = renderNexoraDocumentTemplateFormPage({
+    companyName: req.session.user.company_name || "",
+    user: req.session.user,
+    isCompanyAdmin: isCompanyAdminUser(req.session.user),
+    templateKey: String(req.params.templateKey || ""),
+    clients
+  });
+  if (!html) return res.status(404).send("Tipizat inexistent");
+  return res.type("html").send(html);
+});
+
 app.get("/nexora/documents/client-files", requireAuth, requireCompanyAdmin, (req, res) => {
   const companyId = Number(req.session.user.company_id || 0);
   const q = String(req.query?.q || "").trim();
@@ -7443,7 +7477,7 @@ ${crmShellEnd()}
 `);
 });
 
-app.post("/tipizate/proces-verbal/generate", requireAuth, async (req, res) => {
+app.post(["/tipizate/proces-verbal/generate", "/nexora/documents/templates/proces-verbal/generate"], requireAuth, async (req, res) => {
   try {
     const companyId = Number(req.session.user.company_id || 0);
     const title = String(req.body?.title || "").trim();
@@ -7564,7 +7598,7 @@ const html = `
   }
 });
 
-app.post("/tipizate/adeverinta/generate", requireAuth, async (req, res) => {
+app.post(["/tipizate/adeverinta/generate", "/nexora/documents/templates/adeverinta/generate"], requireAuth, async (req, res) => {
   try {
     const companyId = Number(req.session.user.company_id || 0);
     const title = String(req.body?.title || "").trim() || "Adeverință salariat";
@@ -7931,7 +7965,7 @@ app.post("/tipizate/adeverinta/generate", requireAuth, async (req, res) => {
   }
 });
 
-app.post("/tipizate/decizie-interna/generate", requireAuth, async (req, res) => {
+app.post(["/tipizate/decizie-interna/generate", "/nexora/documents/templates/decizie-interna/generate"], requireAuth, async (req, res) => {
   try {
     const companyId = Number(req.session.user.company_id || 0);
     const title = String(req.body?.title || "").trim();
@@ -7996,7 +8030,7 @@ h1{text-align:center;margin-bottom:16px}
   }
 });
 
-app.post("/tipizate/notificare-client/generate", requireAuth, async (req, res) => {
+app.post(["/tipizate/notificare-client/generate", "/nexora/documents/templates/notificare-client/generate"], requireAuth, async (req, res) => {
   try {
     const companyId = Number(req.session.user.company_id || 0);
     const title = String(req.body?.title || "").trim();
@@ -8065,7 +8099,7 @@ h1{margin-bottom:20px}
   }
 });
 
-app.post("/tipizate/cerere-concediu/generate", requireAuth, async (req, res) => {
+app.post(["/tipizate/cerere-concediu/generate", "/nexora/documents/templates/cerere-concediu/generate"], requireAuth, async (req, res) => {
   try {
     const companyId = Number(req.session.user.company_id || 0);
     const employee_name = String(req.body?.employee_name || "").trim();
@@ -8130,7 +8164,7 @@ h1{text-align:center;margin-bottom:20px}
   }
 });
 
-app.post("/tipizate/ordin-deplasare/generate", requireAuth, async (req, res) => {
+app.post(["/tipizate/ordin-deplasare/generate", "/nexora/documents/templates/ordin-deplasare/generate"], requireAuth, async (req, res) => {
   try {
     const companyId = Number(req.session.user.company_id || 0);
     const title = String(req.body?.title || "").trim() || "ORDIN DE DEPLASARE";
@@ -8443,7 +8477,7 @@ app.post("/tipizate/ordin-deplasare/generate", requireAuth, async (req, res) => 
 });
 
 
-app.post("/tipizate/fisa-hr/generate", requireAuth, async (req, res) => {
+app.post(["/tipizate/fisa-hr/generate", "/nexora/documents/templates/fisa-hr/generate"], requireAuth, async (req, res) => {
   try {
     const companyId = Number(req.session.user.company_id || 0);
     const employee_name = String(req.body?.employee_name || "").trim();

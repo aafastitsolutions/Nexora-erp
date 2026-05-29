@@ -199,7 +199,7 @@ const ERP_MODULES = [
       { label: "Dosar Client", path: "/nexora/documents/client-files", companyAdminOnly: true },
       { label: "Completare automată", path: "/nexora/documents#autofill" },
       { label: "Registru evidență", path: "/nexora/documents/register" },
-      { label: "Tipizate", path: "/tipizate" },
+      { label: "Tipizate", path: "/nexora/documents/templates" },
       { label: "OCR", path: "/nexora/documents/ocr" },
       { label: "Versiuni", path: "/nexora/documents/versions" },
       { label: "Semnături", path: "/nexora/documents/signatures" },
