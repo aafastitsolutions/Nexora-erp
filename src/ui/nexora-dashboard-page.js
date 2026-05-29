@@ -1,4 +1,5 @@
 import { renderErpSidebar } from "./erp-sidebar.js";
+import { renderNexoraShell } from "./nexora-shell.js";
 
 function escapeHtml(value = "") {
   return String(value)
@@ -7,6 +8,59 @@ function escapeHtml(value = "") {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+const DASHBOARD_KPI_OPTIONS = [
+  { key: "revenue", label: "Venit contractat", description: "Suma contractelor active.", color: "purple" },
+  { key: "clients", label: "Clienți", description: "Portofoliul de clienți.", color: "green" },
+  { key: "contracts", label: "Contracte", description: "Numărul total de contracte.", color: "blue" },
+  { key: "invoices", label: "Facturi deschise", description: "Facturi ce necesită urmărire.", color: "blue" },
+  { key: "quotes", label: "Oferte active", description: "Pipeline comercial.", color: "orange" },
+  { key: "tasks", label: "Task-uri deschise", description: "Activități de verificat.", color: "red" }
+];
+
+const DASHBOARD_PANEL_OPTIONS = [
+  { key: "chart", label: "Privire generală business", description: "Graficul sintetic din dashboard." },
+  { key: "activities", label: "Activități recente", description: "Primele task-uri și activități deschise." },
+  { key: "invoices", label: "Facturi recente", description: "Ultimele 3 facturi." },
+  { key: "actions", label: "Acțiuni rapide + e-Factura", description: "Scurtături și status ANAF compact." }
+];
+
+const DASHBOARD_SHORTCUT_OPTIONS = [
+  { key: "invoice_new", label: "Factură nouă", href: "/nexora/facturi/new" },
+  { key: "quote_new", label: "Ofertă nouă", href: "/nexora/quotes" },
+  { key: "client_new", label: "Client nou", href: "/nexora/clients/new" },
+  { key: "product_new", label: "Produs nou", href: "/nexora/products" },
+  { key: "employee_new", label: "Angajat nou", href: "/nexora/employees" },
+  { key: "projects", label: "Proiecte", href: "/nexora/projects" },
+  { key: "documents", label: "Documente", href: "/nexora/documents" },
+  { key: "reports", label: "Dashboard BI", href: "/nexora/reports" }
+];
+
+const DEFAULT_DASHBOARD_CONFIG = {
+  kpis: ["revenue", "clients", "invoices", "quotes", "tasks"],
+  panels: ["chart", "activities", "invoices", "actions"],
+  shortcuts: ["invoice_new", "quote_new", "client_new", "product_new", "employee_new", "reports"]
+};
+
+function normalizeList(values = [], allowed = [], fallback = []) {
+  const allowedSet = new Set(allowed.map((item) => item.key));
+  const result = [];
+  const source = Array.isArray(values) ? values : [];
+  for (const value of source) {
+    const normalized = String(value || "").trim();
+    if (!allowedSet.has(normalized) || result.includes(normalized)) continue;
+    result.push(normalized);
+  }
+  return result.length ? result : [...fallback];
+}
+
+function normalizeDashboardConfig(config = {}) {
+  return {
+    kpis: normalizeList(config.kpis, DASHBOARD_KPI_OPTIONS, DEFAULT_DASHBOARD_CONFIG.kpis),
+    panels: normalizeList(config.panels, DASHBOARD_PANEL_OPTIONS, DEFAULT_DASHBOARD_CONFIG.panels),
+    shortcuts: normalizeList(config.shortcuts, DASHBOARD_SHORTCUT_OPTIONS, DEFAULT_DASHBOARD_CONFIG.shortcuts)
+  };
 }
 
 function renderNexoraDashboardPage(options = {}) {
@@ -31,6 +85,10 @@ function renderNexoraDashboardPage(options = {}) {
     responseAvailable: 0,
     missingStatus: 0
   };
+  const dashboardConfig = normalizeDashboardConfig(options.dashboardConfig || {});
+  const selectedKpis = new Set(dashboardConfig.kpis);
+  const selectedPanels = new Set(dashboardConfig.panels);
+  const selectedShortcuts = new Set(dashboardConfig.shortcuts);
 
   const sidebar = renderErpSidebar({
     currentPath: "/nexora-dashboard",
@@ -71,6 +129,148 @@ function renderNexoraDashboardPage(options = {}) {
       </div>
     `;
 
+  const kpiCards = [
+    {
+      key: "revenue",
+      icon: "↗",
+      color: "purple",
+      label: "Venit contractat",
+      value: metrics.totalRevenue,
+      trendClass: "up",
+      trend: "Date reale din contracte"
+    },
+    {
+      key: "clients",
+      icon: "◉",
+      color: "green",
+      label: "Clienți",
+      value: metrics.totalClients,
+      trendClass: "up",
+      trend: "Portofoliu activ"
+    },
+    {
+      key: "contracts",
+      icon: "▥",
+      color: "blue",
+      label: "Contracte",
+      value: metrics.totalContracts,
+      trendClass: "up",
+      trend: "Documente comerciale"
+    },
+    {
+      key: "invoices",
+      icon: "▣",
+      color: "blue",
+      label: "Facturi deschise",
+      value: metrics.totalInvoicesOpen,
+      trendClass: "warn",
+      trend: "Necesită urmărire"
+    },
+    {
+      key: "quotes",
+      icon: "▤",
+      color: "orange",
+      label: "Oferte active",
+      value: metrics.totalQuotesOpen,
+      trendClass: "up",
+      trend: "Pipeline vânzări"
+    },
+    {
+      key: "tasks",
+      icon: "!",
+      color: "red",
+      label: "Task-uri deschise",
+      value: metrics.openTasks,
+      trendClass: "down",
+      trend: "De verificat azi"
+    }
+  ].filter((card) => selectedKpis.has(card.key));
+
+  const kpiGridHtml = kpiCards.length ? `
+      <section class="nx-kpi-grid">
+        ${kpiCards.map((card) => `
+          <div class="nx-kpi-card">
+            <div class="nx-kpi-icon ${escapeHtml(card.color)}">${escapeHtml(card.icon)}</div>
+            <div>
+              <div class="nx-kpi-label">${escapeHtml(card.label)}</div>
+              <div class="nx-kpi-value">${escapeHtml(card.value)}</div>
+              <div class="nx-kpi-trend ${escapeHtml(card.trendClass)}">${escapeHtml(card.trend)}</div>
+            </div>
+          </div>
+        `).join("")}
+      </section>
+    ` : "";
+
+  const shortcutLinks = DASHBOARD_SHORTCUT_OPTIONS.filter((shortcut) => selectedShortcuts.has(shortcut.key));
+  const shortcutsHtml = shortcutLinks.length
+    ? shortcutLinks.map((shortcut) => `<a href="${escapeHtml(shortcut.href)}">${escapeHtml(shortcut.label)}</a>`).join("")
+    : `<span>Nu ai scurtături selectate</span>`;
+
+  const panelBlocks = [
+    selectedPanels.has("chart") ? `
+        <div class="nx-panel large nx-dashboard-chart-panel">
+          <div class="nx-panel-head">
+            <h2>Privire generală business</h2>
+            <span>Date live</span>
+          </div>
+          <div class="nx-chart-line">
+            <div class="nx-chart-grid"></div>
+            <svg viewBox="0 0 600 220" preserveAspectRatio="none">
+              <polyline points="0,180 120,145 240,118 360,92 480,58 600,28" fill="none" stroke="currentColor" stroke-width="5" />
+              <circle cx="0" cy="180" r="7"></circle>
+              <circle cx="120" cy="145" r="7"></circle>
+              <circle cx="240" cy="118" r="7"></circle>
+              <circle cx="360" cy="92" r="7"></circle>
+              <circle cx="480" cy="58" r="7"></circle>
+              <circle cx="600" cy="28" r="7"></circle>
+            </svg>
+          </div>
+        </div>
+      ` : "",
+    selectedPanels.has("activities") ? `
+        <div class="nx-panel nx-dashboard-activity-panel">
+          <div class="nx-panel-head">
+            <h2>Activități recente</h2>
+            <span>Live</span>
+          </div>
+          <div class="nx-activity-list">
+            ${activitiesHtml}
+          </div>
+        </div>
+      ` : "",
+    selectedPanels.has("invoices") ? `
+        <div class="nx-panel nx-dashboard-invoices-panel">
+          <div class="nx-panel-head">
+            <h2>Facturi recente</h2>
+            <span>Ultimele 3</span>
+          </div>
+          <div class="nx-invoice-list">
+            ${recentInvoicesHtml}
+          </div>
+        </div>
+      ` : "",
+    selectedPanels.has("actions") ? `
+        <div class="nx-panel nx-dashboard-tools-panel">
+          <div class="nx-panel-head">
+            <h2>Acțiuni rapide</h2>
+            <span>Status + comenzi</span>
+          </div>
+          <div class="nx-anaf-compact">
+            <a class="nx-anaf-mini" href="/nexora/anaf/outbox"><span>Total</span><strong>${escapeHtml(efacturaSummary.total)}</strong></a>
+            <a class="nx-anaf-mini success" href="/nexora/anaf/outbox"><span>Răspuns</span><strong>${escapeHtml(efacturaSummary.responseAvailable)}</strong></a>
+            <a class="nx-anaf-mini warn" href="/nexora/anaf/outbox"><span>Fără status</span><strong>${escapeHtml(efacturaSummary.missingStatus)}</strong></a>
+          </div>
+          <div class="nx-shortcuts">
+            ${shortcutsHtml}
+          </div>
+        </div>
+      ` : ""
+  ].filter(Boolean).join("");
+
+  const dashboardGridHtml = panelBlocks
+    ? `<section class="nx-dashboard-grid">${panelBlocks}</section>`
+    : `<section class="nx-content-card"><div class="nx-empty-state">Nu ai selectat niciun panou pentru dashboard. Deschide setările și alege ce vrei să vezi.</div></section>`;
+
   return `<!doctype html>
 <html lang="ro">
 <head>
@@ -95,6 +295,7 @@ function renderNexoraDashboardPage(options = {}) {
         </form>
 
         <div class="nx-actions">
+          <a class="nx-btn" href="/nexora-dashboard/settings">Setări dashboard</a>
           <a class="nx-btn" href="/nexora/facturi">Facturi</a>
           <a class="nx-btn primary" href="/nexora/clients/new">Client nou</a>
           <form method="post" action="/logout" class="nx-logout-form">
@@ -103,123 +304,85 @@ function renderNexoraDashboardPage(options = {}) {
         </div>
       </header>
 
-      <section class="nx-kpi-grid">
-        <div class="nx-kpi-card">
-          <div class="nx-kpi-icon purple">↗</div>
-          <div>
-            <div class="nx-kpi-label">Venit contractat</div>
-            <div class="nx-kpi-value">${escapeHtml(metrics.totalRevenue)}</div>
-            <div class="nx-kpi-trend up">Date reale din contracte</div>
-          </div>
-        </div>
-
-        <div class="nx-kpi-card">
-          <div class="nx-kpi-icon green">◉</div>
-          <div>
-            <div class="nx-kpi-label">Clienți</div>
-            <div class="nx-kpi-value">${escapeHtml(metrics.totalClients)}</div>
-            <div class="nx-kpi-trend up">Portofoliu activ</div>
-          </div>
-        </div>
-
-        <div class="nx-kpi-card">
-          <div class="nx-kpi-icon blue">▣</div>
-          <div>
-            <div class="nx-kpi-label">Facturi deschise</div>
-            <div class="nx-kpi-value">${escapeHtml(metrics.totalInvoicesOpen)}</div>
-            <div class="nx-kpi-trend warn">Necesită urmărire</div>
-          </div>
-        </div>
-
-        <div class="nx-kpi-card">
-          <div class="nx-kpi-icon orange">▤</div>
-          <div>
-            <div class="nx-kpi-label">Oferte active</div>
-            <div class="nx-kpi-value">${escapeHtml(metrics.totalQuotesOpen)}</div>
-            <div class="nx-kpi-trend up">Pipeline vânzări</div>
-          </div>
-        </div>
-
-        <div class="nx-kpi-card">
-          <div class="nx-kpi-icon red">!</div>
-          <div>
-            <div class="nx-kpi-label">Task-uri deschise</div>
-            <div class="nx-kpi-value">${escapeHtml(metrics.openTasks)}</div>
-            <div class="nx-kpi-trend down">De verificat azi</div>
-          </div>
-        </div>
-      </section>
-
-      <section class="nx-dashboard-grid">
-        <div class="nx-panel large nx-dashboard-chart-panel">
-          <div class="nx-panel-head">
-            <h2>Privire generală business</h2>
-            <span>Date live</span>
-          </div>
-          <div class="nx-chart-line">
-            <div class="nx-chart-grid"></div>
-            <svg viewBox="0 0 600 220" preserveAspectRatio="none">
-              <polyline points="0,180 120,145 240,118 360,92 480,58 600,28" fill="none" stroke="currentColor" stroke-width="5" />
-              <circle cx="0" cy="180" r="7"></circle>
-              <circle cx="120" cy="145" r="7"></circle>
-              <circle cx="240" cy="118" r="7"></circle>
-              <circle cx="360" cy="92" r="7"></circle>
-              <circle cx="480" cy="58" r="7"></circle>
-              <circle cx="600" cy="28" r="7"></circle>
-            </svg>
-          </div>
-        </div>
-
-        <div class="nx-panel nx-dashboard-activity-panel">
-          <div class="nx-panel-head">
-            <h2>Activități recente</h2>
-            <span>Live</span>
-          </div>
-
-          <div class="nx-activity-list">
-            ${activitiesHtml}
-          </div>
-        </div>
-
-        <div class="nx-panel nx-dashboard-invoices-panel">
-          <div class="nx-panel-head">
-            <h2>Facturi recente</h2>
-            <span>Ultimele 3</span>
-          </div>
-
-          <div class="nx-invoice-list">
-            ${recentInvoicesHtml}
-          </div>
-        </div>
-
-        <div class="nx-panel nx-dashboard-tools-panel">
-          <div class="nx-panel-head">
-            <h2>Acțiuni rapide</h2>
-            <span>Status + comenzi</span>
-          </div>
-
-          <div class="nx-anaf-compact">
-            <a class="nx-anaf-mini" href="/nexora/anaf/outbox"><span>Total</span><strong>${escapeHtml(efacturaSummary.total)}</strong></a>
-            <a class="nx-anaf-mini success" href="/nexora/anaf/outbox"><span>Răspuns</span><strong>${escapeHtml(efacturaSummary.responseAvailable)}</strong></a>
-            <a class="nx-anaf-mini warn" href="/nexora/anaf/outbox"><span>Fără status</span><strong>${escapeHtml(efacturaSummary.missingStatus)}</strong></a>
-          </div>
-
-          <div class="nx-shortcuts">
-            <a href="/nexora/facturi/new">Factură nouă</a>
-            <a href="/nexora/quotes">Ofertă nouă</a>
-            <a href="/nexora/clients/new">Client nou</a>
-            <a href="/nexora/products">Produs nou</a>
-            <a href="/nexora/employees">Angajat nou</a>
-            <a href="/nexora/reports">Dashboard BI</a>
-          </div>
-        </div>
-      </section>
+      ${kpiGridHtml}
+      ${dashboardGridHtml}
     </main>
   </div>
 </body>
 </html>`;
 }
 
+function checkboxList(name, options = [], selected = []) {
+  const selectedSet = new Set(selected.map(String));
+  return options.map((option) => `
+    <label class="nx-dashboard-config-option">
+      <input type="checkbox" name="${escapeHtml(name)}" value="${escapeHtml(option.key)}" ${selectedSet.has(option.key) ? "checked" : ""}>
+      <span>
+        <b>${escapeHtml(option.label)}</b>
+        ${option.description ? `<small>${escapeHtml(option.description)}</small>` : ""}
+      </span>
+    </label>
+  `).join("");
+}
+
+function renderNexoraDashboardSettingsPage(options = {}) {
+  const user = options.user || {};
+  const config = normalizeDashboardConfig(options.dashboardConfig || {});
+  const saved = options.saved || "";
+  const body = `
+    ${saved === "1" ? `<section class="nx-content-card nx-dashboard-config-flash">Setările dashboardului au fost salvate.</section>` : ""}
+    <form method="post" action="/nexora-dashboard/settings" class="nx-dashboard-config-form">
+      <section class="nx-content-card">
+        <div class="nx-section-head">
+          <div>
+            <h1>Setări dashboard</h1>
+            <p>Alege ce vezi pe prima pagină. Configurația este salvată doar pentru utilizatorul tău.</p>
+          </div>
+          <div class="nx-actions">
+            <button class="nx-btn primary" type="submit">Salvează</button>
+            <button class="nx-btn" type="submit" formaction="/nexora-dashboard/settings/reset">Resetează</button>
+          </div>
+        </div>
+      </section>
+
+      <div class="nx-dashboard-config-grid">
+        <section class="nx-panel">
+          <div class="nx-panel-head"><h2>KPI-uri</h2><span>Carduri sus</span></div>
+          <div class="nx-dashboard-config-list">${checkboxList("kpis", DASHBOARD_KPI_OPTIONS, config.kpis)}</div>
+        </section>
+
+        <section class="nx-panel">
+          <div class="nx-panel-head"><h2>Panouri</h2><span>Blocuri principale</span></div>
+          <div class="nx-dashboard-config-list">${checkboxList("panels", DASHBOARD_PANEL_OPTIONS, config.panels)}</div>
+        </section>
+
+        <section class="nx-panel nx-dashboard-config-wide">
+          <div class="nx-panel-head"><h2>Scurtături rapide</h2><span>Linkuri în dashboard</span></div>
+          <div class="nx-dashboard-config-list nx-dashboard-config-list-compact">${checkboxList("shortcuts", DASHBOARD_SHORTCUT_OPTIONS, config.shortcuts)}</div>
+        </section>
+      </div>
+    </form>
+  `;
+
+  return renderNexoraShell({
+    title: "Setări dashboard",
+    appName: "Nexora ERP",
+    companyName: user.company_name || "Workspace",
+    user,
+    currentPath: "/nexora-dashboard",
+    eyebrow: "Dashboard",
+    pageTitle: "Setări dashboard",
+    actionsHtml: `<a class="nx-btn" href="/nexora-dashboard">Înapoi la dashboard</a>`,
+    body
+  });
+}
+
 export {
-  renderNexoraDashboardPage
+  DASHBOARD_KPI_OPTIONS,
+  DASHBOARD_PANEL_OPTIONS,
+  DASHBOARD_SHORTCUT_OPTIONS,
+  DEFAULT_DASHBOARD_CONFIG,
+  normalizeDashboardConfig,
+  renderNexoraDashboardPage,
+  renderNexoraDashboardSettingsPage
 };

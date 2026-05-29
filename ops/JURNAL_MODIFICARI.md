@@ -2,6 +2,18 @@
 
 ## 2026-05-29
 
+### Setari Dashboard Nexora
+- A fost adaugat meniul `Setari dashboard` pe `/nexora-dashboard/settings`.
+- Preferintele sunt salvate per utilizator in tabela `dashboard_preferences`.
+- Utilizatorul poate alege:
+  - KPI-urile afisate in partea de sus;
+  - panourile principale vizibile pe dashboard;
+  - scurtaturile rapide afisate in panoul de actiuni.
+- Dashboardul citeste configuratia salvata inainte de randare si pastreaza valorile implicite daca nu exista preferinte.
+- Validare:
+  - au fost rulate verificarile `node --check` pentru `db.js`, `routes/dashboard-routes.js` si `src/ui/nexora-dashboard-page.js`;
+  - a fost testata salvarea preferintelor in tranzactie cu `ROLLBACK`.
+
 ### Compactare UI si Dashboard Nexora
 - UI-ul Nexora a fost compactat global:
   - sidebar mai ingust, cu `height: 100vh` si scroll propriu;

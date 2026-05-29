@@ -1211,6 +1211,18 @@ export function migrate() {
       FOREIGN KEY (uploaded_by_user_id) REFERENCES users(id) ON DELETE SET NULL
     );
 
+    CREATE TABLE IF NOT EXISTS dashboard_preferences (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      widget_config_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE(company_id, user_id)
+    );
+
     CREATE TABLE IF NOT EXISTS anaf_messages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       account_id INTEGER,
@@ -1821,6 +1833,7 @@ export function migrate() {
     CREATE INDEX IF NOT EXISTS idx_client_portal_comments_ticket ON client_portal_comments(company_id, ticket_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_client_portal_uploads_client_created ON client_portal_uploads(company_id, client_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_client_portal_uploads_ticket ON client_portal_uploads(company_id, ticket_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_dashboard_preferences_user ON dashboard_preferences(company_id, user_id);
   `);
 
   ensureColumn("users", "module_permissions", "TEXT");

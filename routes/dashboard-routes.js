@@ -1,4 +1,9 @@
-import { renderNexoraDashboardPage } from "../src/ui/nexora-dashboard-page.js";
+import {
+  DEFAULT_DASHBOARD_CONFIG,
+  normalizeDashboardConfig,
+  renderNexoraDashboardPage,
+  renderNexoraDashboardSettingsPage
+} from "../src/ui/nexora-dashboard-page.js";
 import { renderNexoraShell } from "../src/ui/nexora-shell.js";
 import { formatInvoiceDisplayNumber } from "../lib/invoice-numbering.js";
 
@@ -14,6 +19,45 @@ function renderSearchResultSection({ title, count, rows, emptyText }) {
       </div>
     </section>
   `;
+}
+
+function parseDashboardConfig(value = "") {
+  if (!value) return normalizeDashboardConfig(DEFAULT_DASHBOARD_CONFIG);
+  try {
+    return normalizeDashboardConfig(JSON.parse(value));
+  } catch {
+    return normalizeDashboardConfig(DEFAULT_DASHBOARD_CONFIG);
+  }
+}
+
+function readDashboardConfig(db, req) {
+  const companyId = Number(req.session?.user?.company_id || 0);
+  const userId = Number(req.session?.user?.id || 0);
+  if (!companyId || !userId) return normalizeDashboardConfig(DEFAULT_DASHBOARD_CONFIG);
+  const row = db.prepare(`
+    SELECT widget_config_json
+    FROM dashboard_preferences
+    WHERE company_id=? AND user_id=?
+  `).get(companyId, userId);
+  return parseDashboardConfig(row?.widget_config_json || "");
+}
+
+function asArray(value) {
+  if (Array.isArray(value)) return value.map(String);
+  if (typeof value === "string" && value.trim()) return [value];
+  return [];
+}
+
+function writeDashboardConfig(db, req, config) {
+  const companyId = Number(req.session?.user?.company_id || 0);
+  const userId = Number(req.session?.user?.id || 0);
+  if (!companyId || !userId) return;
+  db.prepare(`
+    INSERT INTO dashboard_preferences (company_id, user_id, widget_config_json, created_at, updated_at)
+    VALUES (?, ?, ?, datetime('now'), datetime('now'))
+    ON CONFLICT(company_id, user_id)
+    DO UPDATE SET widget_config_json=excluded.widget_config_json, updated_at=datetime('now')
+  `).run(companyId, userId, JSON.stringify(normalizeDashboardConfig(config)));
 }
 
 export function registerDashboardRoutes(app, { db, requireAuth, todayISO, escapeHtml, fmtMoney, crmShellStart, crmShellEnd }) {
@@ -603,8 +647,35 @@ ${crmShellEnd()}
       openTasks: tasks.length,
       activities,
       recentInvoices,
-      efacturaSummary
+      efacturaSummary,
+      dashboardConfig: readDashboardConfig(db, req)
     }));
+  });
+
+  app.get("/nexora-dashboard/settings", requireAuth, (req, res) => {
+    res.type("html").send(renderNexoraDashboardSettingsPage({
+      user: req.session.user,
+      dashboardConfig: readDashboardConfig(db, req),
+      saved: String(req.query?.saved || "")
+    }));
+  });
+
+  app.post("/nexora-dashboard/settings", requireAuth, (req, res) => {
+    writeDashboardConfig(db, req, {
+      kpis: asArray(req.body?.kpis),
+      panels: asArray(req.body?.panels),
+      shortcuts: asArray(req.body?.shortcuts)
+    });
+    res.redirect("/nexora-dashboard/settings?saved=1");
+  });
+
+  app.post("/nexora-dashboard/settings/reset", requireAuth, (req, res) => {
+    const companyId = Number(req.session?.user?.company_id || 0);
+    const userId = Number(req.session?.user?.id || 0);
+    if (companyId && userId) {
+      db.prepare("DELETE FROM dashboard_preferences WHERE company_id=? AND user_id=?").run(companyId, userId);
+    }
+    res.redirect("/nexora-dashboard/settings?saved=1");
   });
 
   app.get("/nexora/search", requireAuth, (req, res) => {
