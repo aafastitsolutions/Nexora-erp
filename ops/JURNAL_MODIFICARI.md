@@ -2,6 +2,35 @@
 
 ## 2026-05-29
 
+### Modul Workflow & Automatizari / RPA Nexora
+- A fost implementat modulul `Workflow & Automatizari` ca zona RPA in Nexora.
+- Meniul modulului a fost extins cu:
+  - `RPA Dashboard`;
+  - `RPA Studio`;
+  - `Automatizare facturi`;
+  - `Reguli business`;
+  - `Aprobari`;
+  - `Notificari`;
+  - `Istoric rulari`.
+- Au fost adaugate tabele pentru roboti RPA, reguli business, automatizari facturi, rulari, pasi de executie, aprobari si notificari.
+- `RPA Studio` permite definirea de roboti cu trigger, modul sursa, actiune, responsabil, status si configuratie JSON.
+- `Automatizare facturi` permite reguli pentru:
+  - facturi scadente in curand;
+  - facturi cu scadenta depasita;
+  - facturi create/status schimbat;
+  - pregatire reminder client;
+  - creare notificare interna;
+  - cerere aprobare/verificare;
+  - pregatire e-Factura fara trimitere automata catre ANAF.
+- `Reguli business` permite configurarea de conditii si actiuni reutilizabile.
+- `Aprobari` si `Notificari` pot fi create manual sau generate de automatizari.
+- `Istoric rulari` pastreaza auditul executiilor RPA si pasii executati.
+- Toate datele sunt filtrate pe compania autentificata.
+- Validare:
+  - au fost rulate verificarile `node --check` pentru `db.js`, `server.js`, `routes/workflow-routes.js`, `src/ui/nexora-workflow-pages.js` si `src/config/erp-modules.js`;
+  - a fost rulat un smoke test local care creeaza robot RPA, regula, automatizare facturi, aprobare si notificare, ruleaza automatizarile si verifica toate paginile cu raspuns `200`;
+  - testul a fost finalizat cu `ROLLBACK`.
+
 ### Fix Tipizate in Documente / DMS
 - Linkul `Tipizate` din meniul `Documente / DMS` a fost mutat de pe ruta veche `/tipizate` pe `/nexora/documents/templates`.
 - A fost adaugata pagina Nexora pentru tipizate, cu aceeasi structura vizuala ca restul modulului DMS.

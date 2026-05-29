@@ -213,10 +213,13 @@ const ERP_MODULES = [
     path: "/nexora/workflow",
     legacyModuleKeys: [],
     children: [
-      { label: "Aprobări", path: "/nexora/workflow/approvals" },
-      { label: "Automatizări", path: "/nexora/workflow/automations" },
+      { label: "RPA Dashboard", path: "/nexora/workflow" },
+      { label: "RPA Studio", path: "/nexora/workflow/automations" },
+      { label: "Automatizare facturi", path: "/nexora/workflow/invoice-automation" },
       { label: "Reguli business", path: "/nexora/workflow/rules" },
-      { label: "Notificări", path: "/nexora/workflow/notifications" }
+      { label: "Aprobări", path: "/nexora/workflow/approvals" },
+      { label: "Notificări", path: "/nexora/workflow/notifications" },
+      { label: "Istoric rulări", path: "/nexora/workflow/runs" }
     ]
   },
   {

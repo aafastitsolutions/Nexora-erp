@@ -1223,6 +1223,145 @@ export function migrate() {
       UNIQUE(company_id, user_id)
     );
 
+    CREATE TABLE IF NOT EXISTS workflow_automations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      automation_number TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      category TEXT NOT NULL DEFAULT 'RPA',
+      source_module TEXT NOT NULL DEFAULT 'GENERAL',
+      trigger_event TEXT NOT NULL DEFAULT 'MANUAL',
+      action_type TEXT NOT NULL DEFAULT 'CREATE_NOTIFICATION',
+      action_config_json TEXT NOT NULL DEFAULT '{}',
+      schedule_label TEXT,
+      owner_email TEXT,
+      priority TEXT NOT NULL DEFAULT 'MEDIE',
+      status TEXT NOT NULL DEFAULT 'DRAFT',
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(company_id, automation_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS workflow_rules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      rule_number TEXT NOT NULL,
+      name TEXT NOT NULL,
+      applies_to TEXT NOT NULL DEFAULT 'GENERAL',
+      trigger_event TEXT NOT NULL DEFAULT 'ON_CREATE',
+      condition_field TEXT,
+      condition_operator TEXT NOT NULL DEFAULT 'ALWAYS',
+      condition_value TEXT,
+      action_type TEXT NOT NULL DEFAULT 'CREATE_NOTIFICATION',
+      action_target TEXT,
+      severity TEXT NOT NULL DEFAULT 'MEDIE',
+      status TEXT NOT NULL DEFAULT 'ACTIVE',
+      stop_on_match INTEGER NOT NULL DEFAULT 0,
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(company_id, rule_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS workflow_invoice_automations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      automation_number TEXT NOT NULL,
+      name TEXT NOT NULL,
+      trigger_event TEXT NOT NULL DEFAULT 'INVOICE_CREATED',
+      invoice_status_filter TEXT,
+      due_days INTEGER NOT NULL DEFAULT 0,
+      client_filter TEXT,
+      amount_min REAL NOT NULL DEFAULT 0,
+      action_type TEXT NOT NULL DEFAULT 'CREATE_NOTIFICATION',
+      notify_email TEXT,
+      status TEXT NOT NULL DEFAULT 'ACTIVE',
+      notes TEXT,
+      last_run_at TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(company_id, automation_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS workflow_runs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      run_number TEXT NOT NULL,
+      automation_id INTEGER,
+      invoice_automation_id INTEGER,
+      rule_id INTEGER,
+      run_type TEXT NOT NULL DEFAULT 'MANUAL',
+      status TEXT NOT NULL DEFAULT 'QUEUED',
+      started_at TEXT NOT NULL DEFAULT (datetime('now')),
+      finished_at TEXT,
+      processed_count INTEGER NOT NULL DEFAULT 0,
+      success_count INTEGER NOT NULL DEFAULT 0,
+      failed_count INTEGER NOT NULL DEFAULT 0,
+      summary TEXT,
+      actor_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (automation_id) REFERENCES workflow_automations(id) ON DELETE SET NULL,
+      FOREIGN KEY (invoice_automation_id) REFERENCES workflow_invoice_automations(id) ON DELETE SET NULL,
+      FOREIGN KEY (rule_id) REFERENCES workflow_rules(id) ON DELETE SET NULL,
+      UNIQUE(company_id, run_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS workflow_run_steps (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      run_id INTEGER NOT NULL,
+      step_order INTEGER NOT NULL DEFAULT 1,
+      step_name TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'DONE',
+      details TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (run_id) REFERENCES workflow_runs(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS workflow_approvals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      approval_number TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      module TEXT NOT NULL DEFAULT 'GENERAL',
+      entity_type TEXT,
+      entity_id INTEGER,
+      amount REAL NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'PENDING',
+      requested_by_email TEXT,
+      approver_email TEXT,
+      due_date TEXT,
+      decision_notes TEXT,
+      decided_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(company_id, approval_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS workflow_notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      notification_number TEXT NOT NULL,
+      channel TEXT NOT NULL DEFAULT 'IN_APP',
+      recipient TEXT,
+      subject TEXT NOT NULL,
+      body TEXT,
+      status TEXT NOT NULL DEFAULT 'DRAFT',
+      related_module TEXT,
+      entity_type TEXT,
+      entity_id INTEGER,
+      scheduled_at TEXT,
+      sent_at TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(company_id, notification_number)
+    );
+
     CREATE TABLE IF NOT EXISTS anaf_messages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       account_id INTEGER,
@@ -1970,6 +2109,13 @@ export function migrate() {
     CREATE INDEX IF NOT EXISTS idx_hr_timesheets_date ON hr_timesheets(company_id, work_date);
     CREATE INDEX IF NOT EXISTS idx_hr_recruitment_stage ON hr_recruitment_candidates(company_id, stage);
     CREATE INDEX IF NOT EXISTS idx_hr_reviews_employee ON hr_performance_reviews(company_id, employee_id, review_date);
+    CREATE INDEX IF NOT EXISTS idx_workflow_automations_status ON workflow_automations(company_id, status);
+    CREATE INDEX IF NOT EXISTS idx_workflow_rules_status ON workflow_rules(company_id, applies_to, status);
+    CREATE INDEX IF NOT EXISTS idx_workflow_invoice_automations_status ON workflow_invoice_automations(company_id, status);
+    CREATE INDEX IF NOT EXISTS idx_workflow_runs_created ON workflow_runs(company_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_workflow_run_steps_run ON workflow_run_steps(company_id, run_id, step_order);
+    CREATE INDEX IF NOT EXISTS idx_workflow_approvals_status ON workflow_approvals(company_id, status, due_date);
+    CREATE INDEX IF NOT EXISTS idx_workflow_notifications_status ON workflow_notifications(company_id, status, scheduled_at);
   `);
 
   ensureColumn("users", "module_permissions", "TEXT");

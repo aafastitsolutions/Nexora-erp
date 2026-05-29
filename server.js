@@ -57,6 +57,7 @@ import { registerProcurementRoutes } from "./routes/procurement-routes.js";
 import { registerProjectsRoutes } from "./routes/projects-routes.js";
 import { registerQuotesRoutes } from "./routes/quotes-routes.js";
 import { registerSalesRoutes } from "./routes/sales-routes.js";
+import { registerWorkflowRoutes } from "./routes/workflow-routes.js";
 import { db, migrate } from "./db.js";
 import bcrypt from "bcrypt";
 import { canAccessSpvUser, requireAuth, requireRole, requireModule, requireSpvAccess, requireSuperAdmin, seedAdminFromEnv, verifyUser, verifyUserAttempt } from "./auth.js";
@@ -4589,6 +4590,7 @@ registerProcurementRoutes(app, { db, requireAuth, fmtMoney, fs, path, __dirname,
 registerProjectsRoutes(app, { db, requireAuth, fs, path, __dirname });
 registerClientPortalRoutes(app, { db, requireAuth, fs, path, __dirname, upload });
 registerHrRoutes(app, { db, requireAuth });
+registerWorkflowRoutes(app, { db, requireAuth });
 
 db.prepare(`
 CREATE TABLE IF NOT EXISTS app_settings(
