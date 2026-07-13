@@ -37,8 +37,8 @@ function fmtCatalogPrice(value, currency = "RON", suffix = "") {
 
 function statusTone(value = "") {
   const normalized = String(value || "").trim().toUpperCase();
-  if (["ACTIV", "PUBLICAT", "CASTIGAT", "GENERAT", "FINALIZAT", "PLATIT", "PAID"].includes(normalized)) return "success";
-  if (["TRIAL", "IN_REVIZIE", "CONTACTAT", "OFERTA", "PLANIFICAT", "DE_REVIZUIT", "NOU", "IN_LUCRU", "PENDING", "CHECKOUT_CREATED"].includes(normalized)) return "warn";
+  if (["ACTIV", "PUBLICAT", "CASTIGAT", "GENERAT", "FINALIZAT", "PLATIT", "PAID", "TRIMIS"].includes(normalized)) return "success";
+  if (["TRIAL", "IN_REVIZIE", "CONTACTAT", "OFERTA", "PLANIFICAT", "DE_REVIZUIT", "NOU", "IN_LUCRU", "PENDING", "CHECKOUT_CREATED", "PREGATIT"].includes(normalized)) return "warn";
   if (["RESPINS", "PIERDUT", "ANULAT", "ESUAT"].includes(normalized)) return "danger";
   return "neutral";
 }
@@ -64,6 +64,7 @@ const TABS = [
   ["Parteneri", "/nexora/e-marqet/partners"],
   ["Lead-uri", "/nexora/e-marqet/leads"],
   ["Abonamente", "/nexora/e-marqet/subscriptions"],
+  ["Email & Suport", "/nexora/e-marqet/email"],
   ["Servicii", "/nexora/e-marqet/services"],
   ["Social", "/nexora/e-marqet/social"],
   ["Integrări", "/nexora/e-marqet/integrations"],
@@ -303,6 +304,47 @@ function emarqetStyles() {
         line-height: 1.35;
       }
 
+      .emq-mailbox-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .emq-mailbox-card {
+        border: 1px solid #d6eefc;
+        border-radius: 8px;
+        padding: 12px;
+        background: #ffffff;
+        display: grid;
+        gap: 8px;
+      }
+
+      .emq-mailbox-card h2 {
+        margin: 0;
+        font-size: 16px;
+        line-height: 1.25;
+      }
+
+      .emq-mailbox-card code {
+        color: #075985;
+        font-weight: 900;
+        overflow-wrap: anywhere;
+      }
+
+      .emq-mailbox-card p {
+        margin: 0;
+        color: #64748b;
+        font-size: 13px;
+        line-height: 1.4;
+      }
+
+      .emq-mailbox-stats {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+      }
+
       .emq-shell .nx-table-action-form {
         display: inline-flex;
         gap: 6px;
@@ -475,6 +517,7 @@ function emarqetStyles() {
           grid-template-columns: 1fr;
         }
 
+        .emq-mailbox-grid,
         .emq-social-card-grid,
         .emq-social-target-form {
           grid-template-columns: 1fr;
@@ -621,6 +664,7 @@ function heroHtml() {
         <a class="nx-btn" href="/nexora/e-marqet/partners">Parteneri</a>
         <a class="nx-btn" href="/nexora/e-marqet/leads">Lead nou</a>
         <a class="nx-btn" href="/nexora/e-marqet/subscriptions">Abonament</a>
+        <a class="nx-btn primary" href="/nexora/e-marqet/email">Email & Suport</a>
         <a class="nx-btn" href="/nexora/e-marqet/services">Servicii</a>
       </div>
     </section>
@@ -795,6 +839,63 @@ function requestRows(rows = []) {
       </td>
     </tr>
   `, "Nu există cereri de servicii integrate.");
+}
+
+function mailboxCards(rows = []) {
+  return rows.length
+    ? rows.map((row) => `
+      <article class="emq-mailbox-card">
+        <div>
+          <h2>${escapeHtml(row.label || "-")}</h2>
+          <code>${escapeHtml(row.email || "-")}</code>
+        </div>
+        <p>${escapeHtml(row.role || "-")}</p>
+        <div class="emq-mailbox-stats">
+          ${statusBadge(row.direction === "OUT" ? "TRIMIS" : "NOU")}
+          <span class="emq-chip">${escapeHtml(row.direction === "OUT" ? "Trimise" : "Tichete deschise")}: ${fmtInt(row.primaryCount)}</span>
+          <span class="emq-chip">${escapeHtml(row.direction === "OUT" ? "Eșuate" : "Lead-uri")}: ${fmtInt(row.secondaryCount)}</span>
+          <span class="nx-table-sub">Ultima activitate: ${escapeHtml(dateValue(row.lastActivityAt) || "-")}</span>
+        </div>
+      </article>
+    `).join("")
+    : `<div class="nx-empty-state">Nu există mailbox-uri mapate.</div>`;
+}
+
+function outboundEmailRows(rows = []) {
+  return rowsOrEmpty(rows, 9, (row) => `
+    <tr>
+      <td><b>${escapeHtml(row.from_email || row.mailbox || "-")}</b><div class="nx-table-sub">Reply-To: ${escapeHtml(row.reply_to_email || "-")}</div><div class="nx-table-sub">CC: ${escapeHtml(row.cc_email || "-")}</div></td>
+      <td>${escapeHtml(row.recipient_email || "-")}</td>
+      <td><b>${escapeHtml(row.subject || "-")}</b><div class="nx-table-sub">${escapeHtml(row.template_key || row.message_type || "")}</div></td>
+      <td>${escapeHtml(row.company_name || "-")}<div class="nx-table-sub">${escapeHtml([row.city, row.county].filter(Boolean).join(", "))}</div></td>
+      <td>${statusBadge(row.status)}</td>
+      <td>${escapeHtml(row.provider_message_id || "-")}</td>
+      <td>${escapeHtml(row.error || "-")}</td>
+      <td>${escapeHtml(dateValue(row.sent_at || row.created_at) || "-")}</td>
+      <td>${escapeHtml(row.created_by || "-")}</td>
+    </tr>
+  `, "Nu există emailuri ieșite pentru e-Marqet.");
+}
+
+function inboundEmailRows(rows = []) {
+  return rowsOrEmpty(rows, 9, (row) => `
+    <tr>
+      <td><b>${escapeHtml(row.type === "ticket" ? "Tichet" : "Lead")}</b><div class="nx-table-sub">${escapeHtml(row.ticketNumber || `#${row.id}`)}</div></td>
+      <td>${escapeHtml(row.fromEmail || "-")}<div class="nx-table-sub">${escapeHtml(row.contactName || "")}</div></td>
+      <td>${escapeHtml(row.toEmail || "-")}</td>
+      <td><b>${escapeHtml(row.subject || "-")}</b><div class="nx-table-sub">${escapeHtml(row.details || "")}</div></td>
+      <td>${escapeHtml(row.phone || "-")}</td>
+      <td>${statusBadge(row.status)}</td>
+      <td>${escapeHtml(dateValue(row.createdAt) || "-")}</td>
+      <td>${row.type === "ticket" ? `
+        <form method="post" action="/nexora/e-marqet/email/tickets/${escapeHtml(row.id)}/status" class="nx-table-action-form">
+          <select name="status">${optionList(SERVICE_REQUEST_STATUS_OPTIONS, row.status)}</select>
+          <button class="nx-btn" type="submit">Status</button>
+        </form>
+      ` : `<a class="nx-btn" href="/nexora/e-marqet/leads">Lead-uri</a>`}</td>
+      <td>${escapeHtml(row.type === "ticket" ? "suport" : "lead")}</td>
+    </tr>
+  `, "Nu există încă intrări sau tichete e-Marqet.");
 }
 
 const SOCIAL_ACCOUNT_STATUS_OPTIONS = [
@@ -1363,6 +1464,7 @@ function renderEmarqetDashboardPage(options = {}) {
       <section class="nx-content-card">
         <div class="nx-section-head"><div><h1>Legături Nexora</h1><p>Zonele operaționale conectate la e-Marqet.</p></div></div>
         <div class="emq-link-list">
+          <a class="emq-link-row" href="/nexora/e-marqet/email"><span>Email & Suport E-MARQET</span><span>Deschide</span></a>
           <a class="emq-link-row" href="/nexora/travel/dashboard"><span>Trevoro / Turism</span><span>Deschide</span></a>
           <a class="emq-link-row" href="/nexora/clients"><span>Clienți & conturi</span><span>Deschide</span></a>
           <a class="emq-link-row" href="/nexora/facturi"><span>Facturi</span><span>Deschide</span></a>
@@ -1535,6 +1637,50 @@ function renderEmarqetSubscriptionsPage(options = {}) {
     </section>
   `;
   return shell({ title: "Abonamente e-Marqet", activePath: "/nexora/e-marqet/subscriptions", companyName, user: options.user, body });
+}
+
+function renderEmarqetEmailPage(options = {}) {
+  const companyName = options.companyName || "Workspace";
+  const email = options.email || {};
+  const summary = email.summary || {};
+  const settings = email.settings || {};
+  const mailboxes = Array.isArray(email.mailboxes) ? email.mailboxes : [];
+  const outbound = Array.isArray(email.outbound) ? email.outbound : [];
+  const inbound = Array.isArray(email.inbound) ? email.inbound : [];
+  const body = `
+    ${alertHtml(options.ok, options.err)}
+    <section class="nx-content-card">
+      <div class="nx-section-head">
+        <div>
+          <h1>Email & Suport E-MARQET</h1>
+          <p>Mailbox-uri mapate pentru sender, reply-uri, intrări și tichete.</p>
+        </div>
+        <a class="nx-btn" href="mailto:${escapeHtml(settings.supportEmail || "suport@e-marqet.com")}">Scrie suport</a>
+      </div>
+      <div class="emq-mailbox-grid">${mailboxCards(mailboxes)}</div>
+    </section>
+
+    <section class="nx-kpi-grid">
+      ${kpiCard("Trimise total", fmtInt(summary.outboundSent), "OUT", "green")}
+      ${kpiCard("Trimise 7 zile", fmtInt(summary.outboundSent7d), "7", "blue")}
+      ${kpiCard("Eșuate", fmtInt(summary.outboundFailed), "!", "orange")}
+      ${kpiCard("Lead-uri intrate", fmtInt(summary.inboundLeads), "IN", "purple")}
+      ${kpiCard("Lead-uri 7 zile", fmtInt(summary.inboundLeads7d), "7", "blue")}
+      ${kpiCard("Tichete deschise", fmtInt(summary.openTickets), "T", "orange")}
+      ${kpiCard("Tichete 7 zile", fmtInt(summary.tickets7d), "S", "green")}
+    </section>
+
+    <section class="nx-content-card">
+      <div class="nx-section-head"><div><h1>Ieșiri email</h1><p>Outreach și comunicări plecate din mailbox-ul office.</p></div></div>
+      <div class="nx-table-wrap"><table class="nx-table"><thead><tr><th>From</th><th>Către</th><th>Subiect</th><th>Companie</th><th>Status</th><th>Message ID</th><th>Eroare</th><th>Data</th><th>Creat de</th></tr></thead><tbody>${outboundEmailRows(outbound)}</tbody></table></div>
+    </section>
+
+    <section class="nx-content-card">
+      <div class="nx-section-head"><div><h1>Intrări & tichete</h1><p>Lead-uri și cereri care intră pe suportul e-Marqet.</p></div></div>
+      <div class="nx-table-wrap"><table class="nx-table"><thead><tr><th>Tip</th><th>De la</th><th>Către</th><th>Subiect</th><th>Telefon</th><th>Status</th><th>Data</th><th>Acțiune</th><th>Canal</th></tr></thead><tbody>${inboundEmailRows(inbound)}</tbody></table></div>
+    </section>
+  `;
+  return shell({ title: "Email & Suport e-Marqet", activePath: "/nexora/e-marqet/email", companyName, user: options.user, body });
 }
 
 function renderEmarqetServicesPage(options = {}) {
@@ -2016,6 +2162,7 @@ function renderEmarqetSettingsPage(options = {}) {
 
 export {
   renderEmarqetDashboardPage,
+  renderEmarqetEmailPage,
   renderEmarqetIntegrationsPage,
   renderEmarqetLeadsPage,
   renderEmarqetListingsPage,

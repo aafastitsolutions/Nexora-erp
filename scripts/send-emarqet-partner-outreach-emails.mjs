@@ -5,6 +5,11 @@ import path from "node:path";
 import { db } from "../db.js";
 import { createTransporter } from "../lib/bootstrap.js";
 import {
+  emarqetOfficeEmail,
+  emarqetOutreachCcEmails,
+  emarqetReplyToEmail
+} from "../lib/emarqet-mailboxes.js";
+import {
   buildEmarqetOutboundMessage,
   ensureEmarqetOutboundSchema,
   isGenericBusinessEmail,
@@ -56,7 +61,7 @@ function matchesFilter(value = "", filter = "") {
 }
 
 function requireEmailConfig() {
-  const from = safeText(process.env.EMARQET_MAIL_FROM || process.env.MAIL_FROM || process.env.EMAIL_FROM || process.env.SMTP_USER);
+  const from = emarqetOfficeEmail();
   if (!from || !process.env.SMTP_USER || !(process.env.SMTP_PASS || process.env.TREVORO_MAIL_PASS)) {
     throw new Error("SMTP nu este configurat complet.");
   }
@@ -119,7 +124,7 @@ function loadEligibleLeads(companyId, filters = {}) {
   return selected;
 }
 
-function markSent(companyId, row, message, info, from) {
+function markSent(companyId, row, message, info, from, replyTo, cc) {
   db.prepare(`
     UPDATE emarqet_outbound_leads
     SET contact_status='CONTACTED',
@@ -134,10 +139,11 @@ function markSent(companyId, row, message, info, from) {
   db.prepare(`
     INSERT INTO emarqet_outbound_email_events (
       company_id, outbound_lead_id, direction, recipient_email, subject,
-      template_key, status, provider_message_id, sent_at, created_by
+      template_key, from_email, reply_to_email, cc_email, mailbox, message_type,
+      status, provider_message_id, sent_at, created_by
     )
-    VALUES (?, ?, 'OUT', ?, ?, ?, 'TRIMIS', ?, datetime('now'), 'emarqet-outbound-email')
-  `).run(companyId, row.id, row.email, message.subject, message.templateKey, safeText(info?.messageId));
+    VALUES (?, ?, 'OUT', ?, ?, ?, ?, ?, ?, ?, 'partner_outreach', 'TRIMIS', ?, datetime('now'), 'emarqet-outbound-email')
+  `).run(companyId, row.id, row.email, message.subject, message.templateKey, from, replyTo, cc, from, safeText(info?.messageId));
 
   const existingLead = db.prepare(`
     SELECT id
@@ -171,7 +177,7 @@ function markSent(companyId, row, message, info, from) {
   }
 }
 
-function markFailed(companyId, row, message, error) {
+function markFailed(companyId, row, message, error, from, replyTo, cc) {
   const errorText = safeText(error?.message || error || "email_send_failed");
   db.prepare(`
     UPDATE emarqet_outbound_leads
@@ -183,10 +189,11 @@ function markFailed(companyId, row, message, error) {
   db.prepare(`
     INSERT INTO emarqet_outbound_email_events (
       company_id, outbound_lead_id, direction, recipient_email, subject,
-      template_key, status, error, created_by
+      template_key, from_email, reply_to_email, cc_email, mailbox, message_type,
+      status, error, created_by
     )
-    VALUES (?, ?, 'OUT', ?, ?, ?, 'ESUAT', ?, 'emarqet-outbound-email')
-  `).run(companyId, row.id, row.email, message.subject, message.templateKey, errorText);
+    VALUES (?, ?, 'OUT', ?, ?, ?, ?, ?, ?, ?, 'partner_outreach', 'ESUAT', ?, 'emarqet-outbound-email')
+  `).run(companyId, row.id, row.email, message.subject, message.templateKey, from, replyTo, cc, from, errorText);
 }
 
 async function main() {
@@ -197,8 +204,8 @@ async function main() {
   const county = safeText(argValue("--county"));
   const city = safeText(argValue("--city"));
   const delayMs = Math.max(0, Number(argValue("--delay-ms", "1500")) || 0);
-  const cc = safeText(argValue("--cc", process.env.EMARQET_OUTREACH_CC || ""));
-  const replyTo = safeText(argValue("--reply-to", process.env.EMARQET_REPLY_TO || process.env.MAIL_REPLY_TO || process.env.REPLY_TO || ""));
+  const cc = safeText(argValue("--cc", emarqetOutreachCcEmails()));
+  const replyTo = safeText(argValue("--reply-to", emarqetReplyToEmail()));
   const allowNonGeneric = hasFlag("--allow-non-generic");
   const dryRun = !hasFlag("--send") || hasFlag("--dry-run");
   const from = requireEmailConfig();
@@ -238,10 +245,10 @@ async function main() {
         text: message.text,
         html: message.html
       });
-      markSent(companyId, row, message, info, from);
+      markSent(companyId, row, message, info, from, replyTo, cc);
       report.push({ ok: true, id: row.id, company: row.company_name, email: maskEmail(row.email), segment: row.segment_key, subject: message.subject, messageId: safeText(info?.messageId) });
     } catch (error) {
-      markFailed(companyId, row, message, error);
+      markFailed(companyId, row, message, error, from, replyTo, cc);
       report.push({ ok: false, id: row.id, company: row.company_name, email: maskEmail(row.email), segment: row.segment_key, subject: message.subject, error: error?.message || String(error) });
     }
     if (delayMs && index < rows.length - 1) await sleep(delayMs);
@@ -261,6 +268,8 @@ async function main() {
     stoppedEarly,
     pauseFile: EMAIL_PAUSE_FILE,
     allowNonGeneric,
+    from: maskEmail(from),
+    replyTo: maskEmail(replyTo),
     cc: maskEmail(cc),
     report
   }, null, 2));

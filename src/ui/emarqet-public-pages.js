@@ -6,8 +6,13 @@ import {
   publishFieldsFor,
   searchFieldsFor
 } from "../../lib/emarqet-categories.js";
+import {
+  emarqetOfficeEmail,
+  emarqetSupportEmail
+} from "../../lib/emarqet-mailboxes.js";
 
-const EMARQET_SUPPORT_EMAIL = "aafastitsolutions@gmail.com";
+const EMARQET_OFFICE_EMAIL = emarqetOfficeEmail();
+const EMARQET_SUPPORT_EMAIL = emarqetSupportEmail();
 const EMARQET_PUBLIC_BASE_URL = String(process.env.EMARQET_PUBLIC_URL || "https://e-marqet.com").replace(/\/+$/, "");
 
 function escapeHtml(value = "") {
@@ -3745,13 +3750,14 @@ function renderEmarqetContactPage(options = {}) {
   return renderEmarqetInfoPage({
     title: "Contact",
     eyebrow: "Suport",
-    description: "Pentru conturi, plăți, anunțuri, parteneriate și raportări, folosește adresa de suport e-Marqet.",
+    description: "Pentru conturi, plăți, anunțuri, parteneriate și raportări, folosește adresele oficiale e-Marqet.",
     canonicalPath: "/contact",
     user: options.user,
     sections: [
+      { title: "Email office", text: EMARQET_OFFICE_EMAIL },
       { title: "Email suport", text: EMARQET_SUPPORT_EMAIL },
       { title: "Parteneriate", text: "Dealerii auto, agențiile imobiliare și comercianții pot solicita profil business și importuri în contul e-Marqet." },
-      { title: "Plăți și facturi", text: "Solicitările legate de plăți, abonamente și facturi sunt preluate prin aceeași adresă de suport." }
+      { title: "Plăți și facturi", text: "Solicitările legate de plăți, abonamente și facturi sunt preluate prin office sau suport, în funcție de situație." }
     ]
   });
 }

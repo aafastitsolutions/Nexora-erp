@@ -50,6 +50,7 @@ import {
   marketplaceServicesPayload,
   seedMarketplaceServicesCatalog
 } from "../lib/emarqet-marketplace-services.js";
+import { emarqetSupportEmail } from "../lib/emarqet-mailboxes.js";
 import {
   emarqetStripeBillingDetails,
   finalizeEmarqetStripePayment,
@@ -1722,7 +1723,7 @@ function createCrmDealerRequest(db, companyId, payload = {}) {
     payload.person_name,
     payload.email,
     payload.phone,
-    safeText(process.env.EMARQET_DEALER_OWNER_EMAIL || process.env.EMARQET_SUPPORT_EMAIL || "aafastitsolutions@gmail.com"),
+    safeText(process.env.EMARQET_DEALER_OWNER_EMAIL || emarqetSupportEmail()),
     "Verifica cererea de Dealer Fondator si stabileste metoda de import.",
     notes
   );
@@ -1737,7 +1738,7 @@ function createCrmDealerRequest(db, companyId, payload = {}) {
       Number(companyId || 0),
       crmLeadId,
       "Contacteaza dealerul, confirma firma, cere stocul si stabileste import CSV/XLSX/XML/API/feed.",
-      safeText(process.env.EMARQET_DEALER_OWNER_EMAIL || process.env.EMARQET_SUPPORT_EMAIL || "aafastitsolutions@gmail.com")
+      safeText(process.env.EMARQET_DEALER_OWNER_EMAIL || emarqetSupportEmail())
     );
   }
   return { ok: true, crmLeadId };

@@ -1,5 +1,6 @@
 import {
   renderEmarqetDashboardPage,
+  renderEmarqetEmailPage,
   renderEmarqetIntegrationsPage,
   renderEmarqetLeadsPage,
   renderEmarqetListingsPage,
@@ -10,6 +11,7 @@ import {
   renderEmarqetSubscriptionsPage,
   renderEmarqetVerticalsPage
 } from "../src/ui/nexora-emarqet-pages.js";
+import { loadEmarqetEmailDashboard } from "../lib/emarqet-email-dashboard.js";
 import {
   ensureEmarqetAnalyticsSchema,
   loadEmarqetDashboardAnalytics
@@ -906,6 +908,44 @@ export function registerEmarqetRoutes(app, { db, requireAuth }) {
       ok: safeText(req.query?.ok),
       err: safeText(req.query?.err)
     }));
+  });
+
+  app.get("/nexora/emarqet", requireAuth, (_req, res) => {
+    return res.redirect(301, "/nexora/e-marqet");
+  });
+
+  app.get("/nexora/emarqet/email", requireAuth, (_req, res) => {
+    return res.redirect(301, "/nexora/e-marqet/email");
+  });
+
+  app.get("/nexora/e-marqet/support", requireAuth, (_req, res) => {
+    return res.redirect(301, "/nexora/e-marqet/email");
+  });
+
+  app.get("/nexora/emarqet/support", requireAuth, (_req, res) => {
+    return res.redirect(301, "/nexora/e-marqet/email");
+  });
+
+  app.get("/nexora/e-marqet/email", requireAuth, (req, res) => {
+    const companyId = companyIdFrom(req);
+    bootstrapWorkspace(db, companyId, currentUserEmail(req));
+    return res.type("html").send(renderEmarqetEmailPage({
+      companyName: req.session.user.company_name || "",
+      user: req.session.user,
+      email: loadEmarqetEmailDashboard(db, companyId),
+      ok: safeText(req.query?.ok),
+      err: safeText(req.query?.err)
+    }));
+  });
+
+  app.post("/nexora/e-marqet/email/tickets/:id/status", requireAuth, (req, res) => {
+    const companyId = companyIdFrom(req);
+    bootstrapWorkspace(db, companyId, currentUserEmail(req));
+    const id = Number(req.params.id || 0);
+    const status = normalizeStatus(req.body?.status, SERVICE_REQUEST_STATUSES, "");
+    if (!id || !status) return res.redirect("/nexora/e-marqet/email?err=invalid");
+    const changes = updateMarketplaceServiceRequestStatus(db, companyId, id, status);
+    return res.redirect(`/nexora/e-marqet/email?${changes ? "ok=status" : "err=missing"}`);
   });
 
   app.get("/nexora/e-marqet/listings", requireAuth, (req, res) => {

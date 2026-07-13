@@ -207,6 +207,7 @@ const ERP_MODULES = [
       { label: "Parteneri", path: "/nexora/e-marqet/partners" },
       { label: "Lead-uri", path: "/nexora/e-marqet/leads" },
       { label: "Abonamente", path: "/nexora/e-marqet/subscriptions" },
+      { label: "Email & Suport", path: "/nexora/e-marqet/email" },
       { label: "Servicii", path: "/nexora/e-marqet/services" },
       { label: "Social", path: "/nexora/e-marqet/social" },
       { label: "Verticale", path: "/nexora/e-marqet/verticals" },
