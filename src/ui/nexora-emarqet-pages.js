@@ -186,6 +186,20 @@ function emarqetStyles() {
         font-size: 13px;
       }
 
+      .emq-release-badge {
+        display: inline-flex;
+        align-items: center;
+        min-height: 24px;
+        margin-top: 8px;
+        padding: 0 8px;
+        border-radius: 8px;
+        border: 1px solid #86efac;
+        background: #f0fdf4;
+        color: #166534;
+        font-size: 12px;
+        font-weight: 800;
+      }
+
       .emq-actions {
         display: flex;
         gap: 8px;
@@ -656,6 +670,7 @@ function heroHtml() {
         <div class="emq-title-block">
           <h1>e-Marqet</h1>
           <p>Publici ușor. Gestionezi centralizat. Plătești transparent.</p>
+          <span class="emq-release-badge">Email &amp; Suport activ</span>
         </div>
       </div>
       <div class="emq-actions">
