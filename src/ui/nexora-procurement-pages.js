@@ -19,8 +19,14 @@ function dateValue(value) {
   return String(value || "").slice(0, 10);
 }
 
+function dateTimeValue(value) {
+  const raw = String(value || "");
+  if (!raw) return "-";
+  return raw.slice(0, 16).replace("T", " ");
+}
+
 function selected(actual, expected) {
-  return String(actual || "").toUpperCase() === expected ? "selected" : "";
+  return String(actual || "").toUpperCase() === String(expected || "").toUpperCase() ? "selected" : "";
 }
 
 function statusBadge(value) {
@@ -37,9 +43,46 @@ function statusBadge(value) {
   return `<span class="nx-status-pill neutral">${escapeHtml(normalized.toLowerCase().replaceAll("_", " ") || "-")}</span>`;
 }
 
+function sourceBadge(value) {
+  const normalized = String(value || "").trim().toUpperCase();
+  const labels = {
+    SICAP_PROCEDURI: "SICAP proceduri",
+    SICAP_PUBLICITATE: "SICAP publicitate",
+    TED_RO: "TED România",
+    OPORTUNITATI_UE: "Fonduri UE / PNRR",
+    PNRR_PROCEDURI: "PNRR proceduri",
+    BENEFICIAR_FONDURI_UE: "Beneficiar fonduri UE",
+    FILTRU_IT_SOFTWARE: "Filtru IT/software",
+    EU_PNRR: "PNRR",
+    EU_ADR: "ADR",
+    EU_INTERREG: "Interreg",
+    EU_CORDIS: "CORDIS",
+    EU_HORIZON: "Horizon",
+    EU_EIT: "EIT",
+    EU_UNIVERSITATE: "Universitate",
+    EU_INSTITUT: "Institut",
+    EU_BENEFICIAR_PRIVAT: "Beneficiar privat"
+  };
+  return `<span class="nx-status-pill neutral">${escapeHtml(labels[normalized] || normalized || "-")}</span>`;
+}
+
+function activeBadge(row = {}) {
+  return Number(row.is_active || 0) === 1
+    ? `<span class="nx-status-pill success">activ</span>`
+    : `<span class="nx-status-pill danger">expirat</span>`;
+}
+
+function valueWithCurrency(value, currency = "RON", fmtMoney) {
+  if (value === null || value === undefined || value === "") return "-";
+  if (String(currency || "").toUpperCase() === "RON") return money(value, fmtMoney);
+  const n = Number(value || 0);
+  return `${Number.isFinite(n) ? n.toLocaleString("ro-RO", { maximumFractionDigits: 2 }) : "0"} ${currency || ""}`.trim();
+}
+
 function renderProcurementNav(activePath) {
   const items = [
     ["General", "/nexora/procurement"],
+    ["EU Opportunity Finder", "/nexora/procurement/opportunities"],
     ["Furnizori", "/nexora/procurement/suppliers"],
     ["Comenzi achiziție", "/nexora/procurement/orders"],
     ["Recepții", "/nexora/procurement/receipts"],
@@ -114,6 +157,149 @@ function billOptions(bills = [], selectedId = "", emptyLabel = "Fără factură"
     `<option value="">${escapeHtml(emptyLabel)}</option>`,
     ...bills.map((bill) => `<option value="${escapeHtml(bill.id)}" ${String(bill.id) === String(selectedId) ? "selected" : ""}>${escapeHtml(bill.bill_number || "-")} · ${escapeHtml(bill.supplier_name || "-")} · ${escapeHtml(money(bill.total))}</option>`)
   ].join("");
+}
+
+function renderNexoraProcurementOpportunitiesPage(options = {}) {
+  const companyName = options.companyName || "Workspace";
+  const rows = Array.isArray(options.rows) ? options.rows : [];
+  const stats = options.stats || {};
+  const filters = options.filters || {};
+  const latestRuns = Array.isArray(options.latestRuns) ? options.latestRuns : [];
+  const syncResults = Array.isArray(options.syncResults) ? options.syncResults : [];
+  const sources = Array.isArray(options.sources) ? options.sources : [];
+  const notifications = Array.isArray(options.notifications) ? options.notifications : [];
+  const fmtMoney = options.fmtMoney;
+
+  const sourceTypeOptions = Array.from(new Set(sources.map((source) => String(source.source_type || "").trim()).filter(Boolean))).sort();
+  const countryOptions = Array.from(new Set(sources.map((source) => String(source.country || "").trim()).filter(Boolean))).sort();
+
+  const docsHtml = (row = {}) => {
+    const docs = Array.isArray(row.documents) ? row.documents : [];
+    if (!docs.length) return `<span class="nx-table-sub">fără documente</span>`;
+    return docs.slice(0, 3).map((doc, index) => {
+      const href = doc.source_url || doc.url || doc.file_path || "";
+      const label = doc.file_name || doc.title || `Document ${index + 1}`;
+      return href ? `<a class="nx-btn" href="${escapeHtml(href)}" target="_blank" rel="noopener">Vezi documente</a>` : `<span class="nx-table-sub">${escapeHtml(label)}</span>`;
+    }).join(" ");
+  };
+
+  const statusActions = (row = {}) => `
+    <form method="post" action="/nexora/procurement/opportunities/${escapeHtml(row.id)}/status" class="nx-form-actions" style="gap:6px; flex-wrap:wrap">
+      <button class="nx-btn" name="review_status" value="interesant" type="submit">Marchează interesant</button>
+      <button class="nx-btn" name="review_status" value="respins" type="submit">Respinge</button>
+      <button class="nx-btn" name="review_status" value="analizat" type="submit">Analizat</button>
+    </form>
+  `;
+
+  const rowsHtml = rows.map((row) => `
+    <tr>
+      <td>
+        <b>${escapeHtml(row.notice_no || row.source_id || "-")}</b>
+        <div class="nx-table-sub">${sourceBadge(row.source)} ${activeBadge(row)}</div>
+        <div class="nx-table-sub">${escapeHtml(row.country || "-")} · ${escapeHtml(row.funding_program || row.contract_type || "-")}</div>
+      </td>
+      <td>
+        <b>${escapeHtml(row.title || "-")}</b>
+        <div class="nx-table-sub">${escapeHtml(row.buyer_name || "-")}</div>
+        <div class="nx-table-sub">${escapeHtml(row.description || row.cpv_code || "")}</div>
+      </td>
+      <td><b>${escapeHtml(Number(row.relevance_score || 0))}/100</b><div class="nx-table-sub">${escapeHtml(row.detected_keywords || "")}</div></td>
+      <td>${statusBadge(row.review_status || "nou")}<div class="nx-table-sub">${statusBadge(row.status)}</div></td>
+      <td>${escapeHtml(dateTimeValue(row.publication_date))}</td>
+      <td><b>${escapeHtml(dateTimeValue(row.submission_deadline))}</b></td>
+      <td class="nx-right">${escapeHtml(valueWithCurrency(row.estimated_value, row.currency, fmtMoney))}</td>
+      <td>
+        <div class="nx-table-actions" style="gap:6px; flex-wrap:wrap">
+          ${row.detail_url ? `<a class="nx-btn" href="${escapeHtml(row.detail_url)}" target="_blank" rel="noopener">Deschide</a>` : ""}
+          ${docsHtml(row)}
+          ${row.crm_lead_id ? `<a class="nx-btn" href="/nexora/crm/leads?q=${escapeHtml(row.crm_lead_id)}">Lead creat</a>` : `<form method="post" action="/nexora/procurement/opportunities/${escapeHtml(row.id)}/create-lead"><button class="nx-btn primary" type="submit">Creează lead</button></form>`}
+        </div>
+        ${statusActions(row)}
+      </td>
+    </tr>
+  `).join("");
+
+  const runsHtml = latestRuns.map((run) => `
+    <tr>
+      <td>${sourceBadge(run.source)}</td>
+      <td>${statusBadge(run.status)}</td>
+      <td class="nx-right">${escapeHtml(run.imported_count || 0)}</td>
+      <td class="nx-right">${escapeHtml(run.updated_count || 0)}</td>
+      <td class="nx-right">${escapeHtml(run.opportunities_found || 0)}</td>
+      <td class="nx-right">${escapeHtml(run.pages_scanned || 0)}</td>
+      <td>${escapeHtml(dateTimeValue(run.finished_at || run.started_at))}</td>
+    </tr>
+  `).join("");
+
+  const syncHtml = syncResults.length ? `
+    <div class="nx-alert success">
+      Sincronizare finalizată:
+      ${syncResults.map((item) => `${escapeHtml(item.source)} ${escapeHtml(item.status)} (+${escapeHtml(item.imported || 0)} / upd ${escapeHtml(item.updated || 0)} / găsite ${escapeHtml(item.found || 0)})`).join(" · ")}
+    </div>
+  ` : "";
+
+  const notificationsHtml = notifications.length ? `
+    <div class="nx-alert warn">
+      ${notifications.map((item) => `Scor ${escapeHtml(item.relevance_score || 0)}: ${escapeHtml(item.title || item.message || "-")}`).join(" · ")}
+    </div>
+  ` : "";
+
+  const body = `
+    ${syncHtml}
+    ${notificationsHtml}
+    ${options.err ? `<div class="nx-alert danger">${escapeHtml(options.err)}</div>` : ""}
+
+    <section class="nx-content-card">
+      <div class="nx-section-head">
+        <div>
+          <h1>EU Opportunity Finder</h1>
+          <p>Proceduri publice din PNRR, ADR, Interreg, CORDIS, Horizon, EIT, universități, institute și beneficiari privați, filtrate pentru servicii IT.</p>
+        </div>
+        <form method="post" action="/nexora/procurement/opportunities/sync" class="nx-form-actions">
+          <button class="nx-btn primary" type="submit">Sincronizează acum</button>
+        </form>
+      </div>
+    </section>
+
+    <section class="nx-kpi-grid invoice-kpis">
+      <div class="nx-kpi-card"><div class="nx-kpi-icon blue">ALL</div><div><div class="nx-kpi-label">Total importate</div><div class="nx-kpi-value">${escapeHtml(stats.total || 0)}</div></div></div>
+      <div class="nx-kpi-card"><div class="nx-kpi-icon green">ACT</div><div><div class="nx-kpi-label">Active</div><div class="nx-kpi-value">${escapeHtml(stats.active || 0)}</div></div></div>
+      <div class="nx-kpi-card"><div class="nx-kpi-icon orange">70+</div><div><div class="nx-kpi-label">Scor peste 70</div><div class="nx-kpi-value">${escapeHtml(stats.high_score || 0)}</div></div></div>
+      <div class="nx-kpi-card"><div class="nx-kpi-icon purple">CRM</div><div><div class="nx-kpi-label">Leaduri create</div><div class="nx-kpi-value">${escapeHtml(stats.crm_leads || 0)}</div></div></div>
+    </section>
+
+    <section class="nx-panel">
+      <div class="nx-panel-head"><div><h2>Filtre</h2><span>${escapeHtml(rows.length)} rezultate afișate</span></div></div>
+      <form method="get" action="/nexora/procurement/opportunities" class="nx-form">
+        <div class="nx-two-column-grid compact">
+          <label class="nx-field"><span>Tip sursă</span><select name="source_type"><option value="">toate</option>${sourceTypeOptions.map((type) => `<option value="${escapeHtml(type)}" ${selected(filters.source_type, type)}>${escapeHtml(type)}</option>`).join("")}</select></label>
+          <label class="nx-field"><span>Țară</span><select name="country"><option value="">toate</option>${countryOptions.map((country) => `<option value="${escapeHtml(country)}" ${selected(filters.country, country)}>${escapeHtml(country)}</option>`).join("")}</select></label>
+          <label class="nx-field"><span>Stare anunț</span><select name="status"><option value="active" ${selected(filters.status || "active", "active")}>active</option><option value="">toate</option><option value="expired" ${selected(filters.status, "expired")}>expirate</option></select></label>
+          <label class="nx-field"><span>Status analiză</span><select name="review_status"><option value="">toate</option><option value="nou" ${selected(filters.review_status, "nou")}>nou</option><option value="analizat" ${selected(filters.review_status, "analizat")}>analizat</option><option value="interesant" ${selected(filters.review_status, "interesant")}>interesant</option><option value="respins" ${selected(filters.review_status, "respins")}>respins</option><option value="aplicat" ${selected(filters.review_status, "aplicat")}>aplicat</option></select></label>
+          <label class="nx-field"><span>Program</span><input name="funding_program" value="${escapeHtml(filters.funding_program || "")}" placeholder="PNRR, Interreg, Horizon"></label>
+          <label class="nx-field"><span>Scor minim</span><input type="number" min="0" max="100" name="min_score" value="${escapeHtml(filters.min_score || "")}" placeholder="70"></label>
+          <label class="nx-field"><span>Căutare</span><input name="q" value="${escapeHtml(filters.q || "")}" placeholder="software, website, CRM, ERP, platformă"></label>
+          <label class="nx-field"><span>Dată publicare de la</span><input type="date" name="publication_from" value="${escapeHtml(filters.publication_from || "")}"></label>
+          <label class="nx-field"><span>Dată publicare până la</span><input type="date" name="publication_to" value="${escapeHtml(filters.publication_to || "")}"></label>
+          <label class="nx-field"><span>Dată limită depunere de la</span><input type="date" name="deadline_from" value="${escapeHtml(filters.deadline_from || "")}"></label>
+          <label class="nx-field"><span>Dată limită depunere până la</span><input type="date" name="deadline_to" value="${escapeHtml(filters.deadline_to || "")}"></label>
+        </div>
+        <div class="nx-form-actions"><button class="nx-btn primary" type="submit">Aplică filtre</button><a class="nx-btn" href="/nexora/procurement/opportunities">Reset</a></div>
+      </form>
+    </section>
+
+    <section class="nx-content-card">
+      <div class="nx-section-head"><div><h1>Oportunități EU</h1><p>Scorul se calculează din titlu, conținutul paginii și documentele publice descărcate.</p></div></div>
+      <div class="nx-table-wrap"><table class="nx-table"><thead><tr><th>Anunț</th><th>Titlu / beneficiar</th><th>Scor</th><th>Status</th><th>Publicat</th><th>Limită</th><th class="nx-right">Valoare</th><th>Acțiuni</th></tr></thead><tbody>${rowsHtml || `<tr><td colspan="8"><div class="nx-empty-state">Nu există oportunități pentru filtrele curente. Rulează sincronizarea.</div></td></tr>`}</tbody></table></div>
+    </section>
+
+    <section class="nx-panel" style="margin-top:18px">
+      <div class="nx-panel-head"><div><h2>Ultimele sincronizări</h2><span>monitorizare surse</span></div></div>
+      <div class="nx-table-wrap"><table class="nx-table"><thead><tr><th>Sursă</th><th>Status</th><th class="nx-right">Noi</th><th class="nx-right">Actualizate</th><th class="nx-right">Găsite</th><th class="nx-right">Pagini</th><th>Ora</th></tr></thead><tbody>${runsHtml || `<tr><td colspan="7"><div class="nx-empty-state">Nu există încă sincronizări.</div></td></tr>`}</tbody></table></div>
+    </section>
+  `;
+
+  return renderProcurementShell({ title: "EU Opportunity Finder", companyName, user: options.user, currentPath: "/nexora/procurement/opportunities", body });
 }
 
 function renderNexoraProcurementHubPage(options = {}) {
@@ -608,6 +794,7 @@ export {
   renderNexoraProcurementBillsPage,
   renderNexoraProcurementCostsPage,
   renderNexoraProcurementHubPage,
+  renderNexoraProcurementOpportunitiesPage,
   renderNexoraProcurementOrdersPage,
   renderNexoraProcurementReceiptsPage,
   renderNexoraProcurementSuppliersPage

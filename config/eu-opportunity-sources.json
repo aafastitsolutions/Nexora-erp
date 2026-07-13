@@ -1,0 +1,236 @@
+{
+  "sources": [
+    {
+      "name": "Portal PNRR - anunturi proceduri",
+      "url": "https://proiecte.pnrr.gov.ro/#/anunturi-proceduri",
+      "source_type": "PNRR",
+      "country": "RO",
+      "check_frequency_minutes": 1440,
+      "status": "activ"
+    },
+    {
+      "name": "Oportunitati UE",
+      "url": "https://oportunitati-ue.gov.ro/apeluri/",
+      "source_type": "PNRR",
+      "country": "RO",
+      "check_frequency_minutes": 1440,
+      "status": "activ"
+    },
+    {
+      "name": "Beneficiar fonduri UE - anunturi",
+      "url": "https://beneficiar.fonduri-ue.ro:8080/anunturi",
+      "source_type": "Beneficiar privat",
+      "country": "RO",
+      "check_frequency_minutes": 1440,
+      "status": "activ"
+    },
+    {
+      "name": "ADR Nord-Est",
+      "url": "https://www.adrnordest.ro/informatii-de-interes-public/anunturi-achizitii-publice/",
+      "source_type": "ADR",
+      "country": "RO",
+      "check_frequency_minutes": 1440,
+      "status": "activ"
+    },
+    {
+      "name": "ADR Sud-Est",
+      "url": "https://www.adrse.ro/",
+      "source_type": "ADR",
+      "country": "RO",
+      "check_frequency_minutes": 1440,
+      "status": "activ"
+    },
+    {
+      "name": "ADR Sud Muntenia",
+      "url": "https://www.adrmuntenia.ro/",
+      "source_type": "ADR",
+      "country": "RO",
+      "check_frequency_minutes": 1440,
+      "status": "activ"
+    },
+    {
+      "name": "ADR Sud-Vest Oltenia",
+      "url": "https://www.adroltenia.ro/",
+      "source_type": "ADR",
+      "country": "RO",
+      "check_frequency_minutes": 1440,
+      "status": "activ"
+    },
+    {
+      "name": "ADR Vest",
+      "url": "https://adrvest.ro/",
+      "source_type": "ADR",
+      "country": "RO",
+      "check_frequency_minutes": 1440,
+      "status": "activ"
+    },
+    {
+      "name": "ADR Nord-Vest",
+      "url": "https://www.nord-vest.ro/",
+      "source_type": "ADR",
+      "country": "RO",
+      "check_frequency_minutes": 1440,
+      "status": "activ"
+    },
+    {
+      "name": "ADR Centru",
+      "url": "https://www.adrcentru.ro/",
+      "source_type": "ADR",
+      "country": "RO",
+      "check_frequency_minutes": 1440,
+      "status": "activ"
+    },
+    {
+      "name": "ADR Bucuresti-Ilfov",
+      "url": "https://www.adrbi.ro/",
+      "source_type": "ADR",
+      "country": "RO",
+      "check_frequency_minutes": 1440,
+      "status": "activ"
+    },
+    {
+      "name": "Interreg Romania-Bulgaria",
+      "url": "https://interregviarobg.eu/en/home",
+      "source_type": "Interreg",
+      "country": "RO/BG",
+      "check_frequency_minutes": 1440,
+      "status": "activ"
+    },
+    {
+      "name": "Interreg Romania-Ungaria",
+      "url": "https://interreg-rohu.eu/",
+      "source_type": "Interreg",
+      "country": "RO/HU",
+      "check_frequency_minutes": 1440,
+      "status": "activ"
+    },
+    {
+      "name": "Interreg Romania-Serbia",
+      "url": "https://romania-serbia.net/",
+      "source_type": "Interreg",
+      "country": "RO/RS",
+      "check_frequency_minutes": 1440,
+      "status": "activ"
+    },
+    {
+      "name": "Interreg NEXT Romania-Ucraina",
+      "url": "https://ro-ua.net/",
+      "source_type": "Interreg",
+      "country": "RO/UA",
+      "check_frequency_minutes": 1440,
+      "status": "activ"
+    },
+    {
+      "name": "Danube Region Programme",
+      "url": "https://www.interreg-danube.eu/",
+      "source_type": "Interreg",
+      "country": "EU",
+      "check_frequency_minutes": 1440,
+      "status": "activ"
+    },
+    {
+      "name": "Interreg Europe",
+      "url": "https://www.interregeurope.eu/",
+      "source_type": "Interreg",
+      "country": "EU",
+      "check_frequency_minutes": 1440,
+      "status": "activ"
+    },
+    {
+      "name": "CORDIS projects",
+      "url": "https://cordis.europa.eu/projects",
+      "source_type": "CORDIS",
+      "country": "EU",
+      "check_frequency_minutes": 1440,
+      "status": "activ"
+    },
+    {
+      "name": "EU Funding and Tenders - project results",
+      "url": "https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/projects-results",
+      "source_type": "Horizon",
+      "country": "EU",
+      "check_frequency_minutes": 1440,
+      "status": "activ"
+    },
+    {
+      "name": "EIT Digital",
+      "url": "https://www.eitdigital.eu/",
+      "source_type": "EIT",
+      "country": "EU",
+      "check_frequency_minutes": 1440,
+      "status": "activ"
+    },
+    {
+      "name": "EIT Manufacturing",
+      "url": "https://www.eitmanufacturing.eu/",
+      "source_type": "EIT",
+      "country": "EU",
+      "check_frequency_minutes": 1440,
+      "status": "activ"
+    },
+    {
+      "name": "EIT Food",
+      "url": "https://www.eitfood.eu/",
+      "source_type": "EIT",
+      "country": "EU",
+      "check_frequency_minutes": 1440,
+      "status": "activ"
+    },
+    {
+      "name": "EIT Health",
+      "url": "https://eithealth.eu/",
+      "source_type": "EIT",
+      "country": "EU",
+      "check_frequency_minutes": 1440,
+      "status": "activ"
+    },
+    {
+      "name": "EIT Urban Mobility",
+      "url": "https://www.eiturbanmobility.eu/",
+      "source_type": "EIT",
+      "country": "EU",
+      "check_frequency_minutes": 1440,
+      "status": "activ"
+    },
+    {
+      "name": "EIT Climate-KIC",
+      "url": "https://www.climate-kic.org/",
+      "source_type": "EIT",
+      "country": "EU",
+      "check_frequency_minutes": 1440,
+      "status": "activ"
+    },
+    {
+      "name": "Universitatea din Bucuresti",
+      "url": "https://unibuc.ro/despre-ub/organizare/achizitii-publice/",
+      "source_type": "Universitate",
+      "country": "RO",
+      "check_frequency_minutes": 1440,
+      "status": "activ"
+    },
+    {
+      "name": "Universitatea Politehnica Bucuresti",
+      "url": "https://upb.ro/",
+      "source_type": "Universitate",
+      "country": "RO",
+      "check_frequency_minutes": 1440,
+      "status": "activ"
+    },
+    {
+      "name": "Universitatea Babes-Bolyai",
+      "url": "https://www.ubbcluj.ro/ro/despre/achizitii_publice",
+      "source_type": "Universitate",
+      "country": "RO",
+      "check_frequency_minutes": 1440,
+      "status": "activ"
+    },
+    {
+      "name": "ASE Bucuresti",
+      "url": "https://ase.ro/",
+      "source_type": "Universitate",
+      "country": "RO",
+      "check_frequency_minutes": 1440,
+      "status": "activ"
+    }
+  ]
+}

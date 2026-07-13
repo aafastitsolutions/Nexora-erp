@@ -218,6 +218,9 @@ function renderNexoraDocumentsPage(options = {}) {
     invalid_docx: "Fișierul DOCX nu poate fi citit.",
     invalid_pdf: "Fișierul PDF nu poate fi citit.",
     no_fields: "Nu au fost găsite câmpuri completabile: folosește linii punctate etichetate ori markeri în DOCX sau un PDF cu câmpuri editabile.",
+    file_too_large: "Fișierul este prea mare. Limita pentru completare automată este 20 MB.",
+    storage_full: "Serverul nu mai avea spațiu liber pentru upload. Am curățat spațiul; încearcă din nou.",
+    upload: "Fișierul nu a putut fi încărcat. Încearcă din nou.",
     processing: "Formularul nu a putut fi procesat."
   };
 
@@ -256,6 +259,8 @@ function renderNexoraDocumentsPage(options = {}) {
     ["Adresă", autofillProfile.company_address],
     ["IBAN / Bancă", [autofillProfile.company_iban, autofillProfile.company_bank].filter(Boolean).join(" / ")],
     ["Reprezentant legal", autofillProfile.legal_representative],
+    ["CNP reprezentant", autofillProfile.legal_representative_cnp],
+    ["Funcție reprezentant", autofillProfile.legal_representative_role],
     ["CI reprezentant", [autofillProfile.legal_representative_ci_series, autofillProfile.legal_representative_ci_number, autofillProfile.legal_representative_ci_issued_by].filter(Boolean).join(" / ")],
     ["Contact", [autofillProfile.company_phone, autofillProfile.company_email].filter(Boolean).join(" / ")]
   ].map(([label, value]) => `
@@ -295,7 +300,10 @@ function renderNexoraDocumentsPage(options = {}) {
           <h1>Completare automată formulare</h1>
           <p>Încarcă un DOCX sau PDF, iar Nexora completează numai datele firmei și ale reprezentantului legal.</p>
         </div>
-        <a class="nx-btn" href="/nexora/settings?tab=company">Actualizează date firmă</a>
+        <div class="nx-form-actions">
+          <a class="nx-btn" href="/nexora/documents/ocr">OCR document</a>
+          <a class="nx-btn" href="/nexora/settings?tab=company">Actualizează date firmă</a>
+        </div>
       </div>
 
       <div class="nx-two-column-grid">
@@ -310,7 +318,7 @@ function renderNexoraDocumentsPage(options = {}) {
               <span>Formular DOCX sau PDF</span>
               <input type="file" name="template" accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required>
             </label>
-            <p class="nx-field-hint">DOCX: sunt recunoscute liniile punctate etichetate (de ex. Subsemnatul, seria și nr. CI, eliberat de, sediul social, cod fiscal) și markerii de mai jos. PDF: formularul trebuie să conțină câmpuri editabile denumite pentru firmă ori reprezentant.</p>
+            <p class="nx-field-hint">DOCX: sunt recunoscute liniile punctate etichetate (de ex. OFERTANT/ASOCIAT, Subsemnatul/a, solicitantul, CNP, seria și nr. CI, eliberat de, sediul social, cod fiscal) și markerii de mai jos. PDF: formularul trebuie să conțină câmpuri editabile denumite pentru firmă ori reprezentant.</p>
             <div class="nx-form-actions"><button class="nx-btn primary" type="submit">Completează automat</button></div>
           </form>
         </section>
@@ -327,7 +335,7 @@ function renderNexoraDocumentsPage(options = {}) {
         <div class="nx-panel-head">
           <div><h2>Câmpuri DOCX acceptate</h2><span>Se completează strict aceste informații</span></div>
         </div>
-        <p class="nx-field-hint">Nexora completează automat spații punctate după etichete clare precum <code>Subsemnatul(a)</code>, <code>seria</code> / <code>nr.</code> CI, <code>eliberat(ă) de</code>, <code>reprezentant legal al</code>, <code>sediul social</code> și <code>cod de înregistrare fiscală</code>. Se completează numai valorile existente în Setări / Date firmă.</p>
+        <p class="nx-field-hint">Nexora completează automat spații punctate după etichete clare precum <code>OFERTANT/ASOCIAT</code>, <code>Subsemnatul/a</code>, <code>solicitantul</code>, <code>CNP</code>, <code>seria</code> / <code>nr.</code> CI, <code>eliberat(ă) de</code>, <code>reprezentant legal al</code>, <code>sediul social</code> și <code>cod de înregistrare fiscală</code>. Se completează numai valorile existente în Setări / Date firmă.</p>
         <div class="nx-shortcuts">
           <span><code>{{company_name}}</code></span>
           <span><code>{{company_cui}}</code></span>
@@ -339,11 +347,13 @@ function renderNexoraDocumentsPage(options = {}) {
           <span><code>{{company_email}}</code></span>
           <span><code>{{capital_social}}</code></span>
           <span><code>{{legal_representative}}</code></span>
+          <span><code>{{legal_representative_cnp}}</code></span>
+          <span><code>{{legal_representative_role}}</code></span>
           <span><code>{{legal_representative_ci_series}}</code></span>
           <span><code>{{legal_representative_ci_number}}</code></span>
           <span><code>{{legal_representative_ci_issued_by}}</code></span>
         </div>
-        <p class="nx-field-hint">Un PDF scanat sau fără câmpuri editabile rămâne nemodificat; Nexora nu inserează date în zone incerte ale formularului.</p>
+        <p class="nx-field-hint">Pentru PDF-uri scanate sau documente imagine, folosește pagina OCR ca să extragi textul și să verifici câmpurile înainte de completare.</p>
       </section>
 
       <div class="nx-table-wrap" style="margin-top:18px">
@@ -453,6 +463,171 @@ function renderNexoraDocumentsPage(options = {}) {
     isCompanyAdmin,
     eyebrow: "Documente",
     pageTitle: "Documente / DMS",
+    body
+  });
+}
+
+function renderOcrStatus(status = {}) {
+  const pill = (active, label, detail = "") => `
+    <div class="nx-settings-note">
+      <b>${escapeHtml(label)}</b>
+      <span class="nx-status-pill ${active ? "success" : "danger"}">${active ? "activ" : "inactiv"}</span>
+      ${detail ? `<span>${escapeHtml(detail)}</span>` : ""}
+    </div>
+  `;
+  const languages = Array.isArray(status.tesseractLanguages) && status.tesseractLanguages.length
+    ? status.tesseractLanguages.join(", ")
+    : "fără limbi detectate";
+  return `
+    ${pill(status.pdftotextAvailable, "PDF text selectabil", "pdftotext")}
+    ${pill(status.pdftoppmAvailable, "Conversie PDF scanat", "pdftoppm")}
+    ${pill(status.tesseractAvailable, "OCR scanări", status.tesseractAvailable ? languages : "Tesseract neinstalat")}
+  `;
+}
+
+function renderNexoraDocumentsOcrPage(options = {}) {
+  const companyName = options.companyName || "Workspace";
+  const isCompanyAdmin = Number(options.isCompanyAdmin || 0) === 1;
+  const status = options.status || {};
+  const result = options.result || null;
+  const err = String(options.err || "");
+  const ok = String(options.ok || "");
+  const profile = options.profile || {};
+  const errorMessages = {
+    no_file: "Selectează un document pentru OCR.",
+    unsupported_type: "OCR acceptă DOCX, PDF sau imagini PNG/JPG/WEBP/TIFF.",
+    invalid_docx: "Fișierul DOCX nu poate fi citit.",
+    invalid_pdf: "Fișierul PDF nu poate fi citit.",
+    empty_text: "Nu am putut extrage text din document.",
+    ocr_unavailable: "Motorul OCR pentru scanări nu este instalat pe server.",
+    file_too_large: "Fișierul este prea mare pentru OCR.",
+    storage_full: "Spațiul de stocare este insuficient.",
+    upload: "Fișierul nu a putut fi încărcat.",
+    processing: "OCR-ul nu a putut procesa documentul."
+  };
+  const alertHtml = err
+    ? `<div class="nx-alert danger">${escapeHtml(errorMessages[err] || errorMessages.processing)}</div>`
+    : ok
+      ? `<div class="nx-alert success">Textul a fost extras.</div>`
+      : "";
+  const tesseractWarning = !status.tesseractAvailable
+    ? `<div class="nx-alert warn">Pentru PDF-uri scanate și imagini trebuie instalat Tesseract OCR pe server. DOCX și PDF-urile cu text selectabil pot fi citite deja.</div>`
+    : "";
+  const methodLabels = {
+    docx_text: "Text DOCX",
+    pdf_text: "Text PDF selectabil",
+    pdf_ocr: "OCR PDF scanat",
+    image_ocr: "OCR imagine"
+  };
+  const profileItems = [
+    ["Companie", profile.company_name],
+    ["CUI", profile.company_cui],
+    ["Adresă", profile.company_address],
+    ["Reprezentant", profile.legal_representative],
+    ["CNP", profile.legal_representative_cnp],
+    ["CI", [profile.legal_representative_ci_series, profile.legal_representative_ci_number, profile.legal_representative_ci_issued_by].filter(Boolean).join(" / ")]
+  ].map(([label, value]) => `
+    <div class="nx-settings-note">
+      <b>${escapeHtml(label)}</b>
+      <span>${escapeHtml(value || "Necompletat")}</span>
+    </div>
+  `).join("");
+  const suggestions = result && Array.isArray(result.suggestions) ? result.suggestions : [];
+  const suggestionRows = suggestions.length
+    ? suggestions.map((item) => `
+      <tr>
+        <td><b>${escapeHtml(item.label || "-")}</b><div class="nx-table-sub">${escapeHtml(item.reason || "")}</div></td>
+        <td>${escapeHtml(item.value || "-")}</td>
+      </tr>
+    `).join("")
+    : `<tr><td colspan="2"><div class="nx-empty-state">Nu au fost detectate etichete clare pentru datele firmei.</div></td></tr>`;
+  const warningsHtml = result?.warnings?.length
+    ? `<div class="nx-alert warn">${result.warnings.map((warning) => escapeHtml(warning)).join("<br>")}</div>`
+    : "";
+  const resultHtml = result ? `
+    <section class="nx-content-card">
+      <div class="nx-section-head">
+        <div>
+          <h1>Rezultat OCR</h1>
+          <p>${escapeHtml(result.fileName || "Document")} · ${escapeHtml(methodLabels[result.method] || result.method || "OCR")} · ${escapeHtml(result.textLength || 0)} caractere</p>
+        </div>
+        <a class="nx-btn" href="/nexora/documents/ocr">Curăță rezultat</a>
+      </div>
+      ${warningsHtml}
+      <div class="nx-two-column-grid">
+        <section class="nx-panel">
+          <div class="nx-panel-head"><div><h2>Date detectate</h2><span>din profilul firmei</span></div></div>
+          <div class="nx-table-wrap">
+            <table class="nx-table">
+              <thead><tr><th>Câmp</th><th>Valoare propusă</th></tr></thead>
+              <tbody>${suggestionRows}</tbody>
+            </table>
+          </div>
+        </section>
+        <section class="nx-panel">
+          <div class="nx-panel-head"><div><h2>Text extras</h2><span>previzualizare</span></div></div>
+          <pre style="white-space:pre-wrap;max-height:420px;overflow:auto;border:1px solid #e5e7eb;border-radius:8px;padding:12px;background:#fff;font-size:12px;line-height:1.5">${escapeHtml(result.text || "")}</pre>
+        </section>
+      </div>
+    </section>
+  ` : "";
+
+  const body = `
+    ${alertHtml}
+    ${tesseractWarning}
+    <section class="nx-content-card">
+      <div class="nx-section-head">
+        <div>
+          <h1>OCR documente</h1>
+          <p>Extrage text din formulare și verifică automat datele firmei înainte de completare.</p>
+        </div>
+        <div class="nx-form-actions">
+          <a class="nx-btn" href="/nexora/documents">Completare automată</a>
+          <a class="nx-btn" href="/nexora/settings?tab=company">Date firmă</a>
+        </div>
+      </div>
+      <div class="nx-two-column-grid">
+        <section class="nx-panel">
+          <div class="nx-panel-head">
+            <div><h2>Încarcă document</h2><span>DOCX, PDF sau imagine</span></div>
+          </div>
+          <form method="post" action="/nexora/documents/ocr" enctype="multipart/form-data" class="nx-form">
+            <label class="nx-field">
+              <span>Document</span>
+              <input type="file" name="document" accept=".docx,.pdf,.png,.jpg,.jpeg,.webp,.tif,.tiff,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*" required>
+            </label>
+            <div class="nx-form-actions"><button class="nx-btn primary" type="submit">Rulează OCR</button></div>
+          </form>
+        </section>
+        <section class="nx-panel">
+          <div class="nx-panel-head">
+            <div><h2>Motor OCR</h2><span>stare server</span></div>
+          </div>
+          <div class="nx-form">${renderOcrStatus(status)}</div>
+        </section>
+      </div>
+    </section>
+    <section class="nx-content-card">
+      <div class="nx-section-head">
+        <div>
+          <h1>Date folosite la verificare</h1>
+          <p>Valorile vin din Setări / Date firmă.</p>
+        </div>
+      </div>
+      <div class="nx-form">${profileItems}</div>
+    </section>
+    ${resultHtml}
+  `;
+
+  return renderNexoraShell({
+    title: "OCR documente",
+    appName: "Nexora ERP",
+    companyName,
+    user: options.user,
+    currentPath: "/nexora/documents/ocr",
+    isCompanyAdmin,
+    eyebrow: "Documente / DMS",
+    pageTitle: "OCR documente",
     body
   });
 }
@@ -748,6 +923,7 @@ export {
   renderNexoraClientDossierDetailPage,
   renderNexoraClientDossiersPage,
   renderNexoraDocumentsPage,
+  renderNexoraDocumentsOcrPage,
   renderNexoraDocumentsRegisterPage,
   renderNexoraDocumentsTemplatesPage
 };

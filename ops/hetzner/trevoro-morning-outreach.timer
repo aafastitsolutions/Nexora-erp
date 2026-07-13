@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Trevoro morning outreach campaign daily
+
+[Timer]
+OnCalendar=*-*-* 06:30:00 Europe/Bucharest
+AccuracySec=1m
+Persistent=false
+Unit=trevoro-morning-outreach.service
+
+[Install]
+WantedBy=timers.target

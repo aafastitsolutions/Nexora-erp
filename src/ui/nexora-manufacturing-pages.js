@@ -36,12 +36,12 @@ function statusBadge(value = "") {
 
 const TABS = [
   ["Dashboard", "/nexora/manufacturing"],
-  ["BOM", "/nexora/manufacturing/bom"],
+  ["Rețetar / materiale", "/nexora/manufacturing/bom"],
   ["Ordine producție", "/nexora/manufacturing/orders"],
-  ["Planificare", "/nexora/manufacturing/planning"],
+  ["Plan necesar", "/nexora/manufacturing/planning"],
   ["Consum materiale", "/nexora/manufacturing/materials"],
   ["Cost producție", "/nexora/manufacturing/costs"],
-  ["Quality control", "/nexora/manufacturing/quality"]
+  ["Control calitate", "/nexora/manufacturing/quality"]
 ];
 
 function tabs(activePath = "/nexora/manufacturing") {
@@ -57,7 +57,7 @@ function shell({ title, activePath, companyName, user, body }) {
     companyName,
     user,
     currentPath: activePath,
-    eyebrow: "Producție / MRP",
+    eyebrow: "Producție / plan necesar materiale",
     pageTitle: title,
     body: `${tabs(activePath)}${body}`
   });
@@ -98,7 +98,7 @@ function productOptions(products = [], selectedId = "", emptyLabel = "Alege prod
   ].join("");
 }
 
-function bomOptions(boms = [], selectedId = "", emptyLabel = "Alege BOM") {
+function bomOptions(boms = [], selectedId = "", emptyLabel = "Alege rețetar") {
   return [
     `<option value="">${escapeHtml(emptyLabel)}</option>`,
     ...boms.map((bom) => `<option value="${escapeHtml(bom.id)}" ${String(bom.id) === String(selectedId) ? "selected" : ""}>${escapeHtml(bom.bom_number || "-")} · ${escapeHtml(bom.product_name || "-")} · rev ${escapeHtml(bom.revision || "A")}</option>`)
@@ -155,28 +155,35 @@ function renderNexoraManufacturingHubPage(options = {}) {
       <td class="nx-right">${escapeHtml(row.planned_qty || 0)}</td>
       <td>${statusBadge(row.status)}</td>
     </tr>
-  `, "Nu există planuri MRP.");
+  `, "Nu există planuri de necesar.");
   const body = `
     ${alertHtml(options.ok, options.err)}
     <section class="nx-content-card">
       <div class="nx-section-head">
         <div>
-          <h1>Producție / MRP</h1>
-          <p>Rețete BOM, ordine de producție, plan necesar, consum materiale, costuri și quality control.</p>
+          <h1>Producție / plan necesar materiale</h1>
+          <p>Rețetare, ordine de producție, calcul necesar, consum materiale, costuri și control calitate.</p>
         </div>
         <div class="nx-form-actions">
           <a class="nx-btn primary" href="/nexora/manufacturing/orders">Ordin nou</a>
-          <a class="nx-btn" href="/nexora/manufacturing/bom">BOM</a>
-          <a class="nx-btn" href="/nexora/manufacturing/planning">MRP</a>
+          <a class="nx-btn" href="/nexora/manufacturing/bom">Rețetar</a>
+          <a class="nx-btn" href="/nexora/manufacturing/planning">Plan necesar</a>
         </div>
       </div>
     </section>
 
     <section class="nx-kpi-grid">
-      <div class="nx-kpi-card"><div class="nx-kpi-icon blue">BOM</div><div><div class="nx-kpi-label">BOM active</div><div class="nx-kpi-value">${escapeHtml(stats.activeBoms || 0)}</div></div></div>
+      <div class="nx-kpi-card"><div class="nx-kpi-icon blue">R</div><div><div class="nx-kpi-label">Rețetar / listă materiale</div><div class="nx-table-sub">Definește din ce componente se fabrică produsul și cât se consumă pe lot.</div></div></div>
+      <div class="nx-kpi-card"><div class="nx-kpi-icon orange">PN</div><div><div class="nx-kpi-label">Plan necesar materiale</div><div class="nx-table-sub">Calculează ce trebuie produs sau cumpărat pornind de la cerere și stoc disponibil.</div></div></div>
+      <div class="nx-kpi-card"><div class="nx-kpi-icon green">OP</div><div><div class="nx-kpi-label">Ordin de producție</div><div class="nx-table-sub">Transformă planul în execuție: lansare, consum materiale și intrare produs finit.</div></div></div>
+      <div class="nx-kpi-card"><div class="nx-kpi-icon purple">CC</div><div><div class="nx-kpi-label">Control calitate</div><div class="nx-table-sub">Înregistrează verificări, respingeri și neconformități pe ordin.</div></div></div>
+    </section>
+
+    <section class="nx-kpi-grid">
+      <div class="nx-kpi-card"><div class="nx-kpi-icon blue">R</div><div><div class="nx-kpi-label">Rețetare active</div><div class="nx-kpi-value">${escapeHtml(stats.activeBoms || 0)}</div></div></div>
       <div class="nx-kpi-card"><div class="nx-kpi-icon green">OP</div><div><div class="nx-kpi-label">Ordine deschise</div><div class="nx-kpi-value">${escapeHtml(stats.openOrders || 0)}</div></div></div>
-      <div class="nx-kpi-card"><div class="nx-kpi-icon orange">MRP</div><div><div class="nx-kpi-label">Planuri de generat</div><div class="nx-kpi-value">${escapeHtml(stats.pendingPlans || 0)}</div></div></div>
-      <div class="nx-kpi-card"><div class="nx-kpi-icon purple">QC</div><div><div class="nx-kpi-label">Verificări QC</div><div class="nx-kpi-value">${escapeHtml(stats.qualityChecks || 0)}</div></div></div>
+      <div class="nx-kpi-card"><div class="nx-kpi-icon orange">PN</div><div><div class="nx-kpi-label">Planuri de generat</div><div class="nx-kpi-value">${escapeHtml(stats.pendingPlans || 0)}</div></div></div>
+      <div class="nx-kpi-card"><div class="nx-kpi-icon purple">CC</div><div><div class="nx-kpi-label">Verificări calitate</div><div class="nx-kpi-value">${escapeHtml(stats.qualityChecks || 0)}</div></div></div>
     </section>
 
     <div class="nx-two-column-grid">
@@ -185,12 +192,12 @@ function renderNexoraManufacturingHubPage(options = {}) {
         <div class="nx-table-wrap"><table class="nx-table"><thead><tr><th>Ordin</th><th>Status</th><th class="nx-right">Cantitate</th><th>Termen</th><th>Prioritate</th></tr></thead><tbody>${orderRows}</tbody></table></div>
       </section>
       <section class="nx-content-card">
-        <div class="nx-section-head"><div><h1>Planificare MRP</h1><p>Cereri, disponibil și cantitate planificată.</p></div></div>
+        <div class="nx-section-head"><div><h1>Plan necesar materiale</h1><p>Cereri, disponibil și cantitate planificată.</p></div></div>
         <div class="nx-table-wrap"><table class="nx-table"><thead><tr><th>Plan</th><th>Sursă</th><th class="nx-right">Necesar</th><th class="nx-right">Planificat</th><th>Status</th></tr></thead><tbody>${planRows}</tbody></table></div>
       </section>
     </div>
   `;
-  return shell({ title: "Producție / MRP", activePath: "/nexora/manufacturing", companyName, user: options.user, body });
+  return shell({ title: "Producție / plan necesar", activePath: "/nexora/manufacturing", companyName, user: options.user, body });
 }
 
 function renderNexoraManufacturingBomPage(options = {}) {
@@ -215,7 +222,7 @@ function renderNexoraManufacturingBomPage(options = {}) {
         </form>
       </td>
     </tr>
-  `, "Nu există BOM-uri.");
+  `, "Nu există rețetare.");
   const itemRows = rowsOrEmpty(items, 7, (item) => `
     <tr>
       <td><b>${escapeHtml(item.component_name || "-")}</b><div class="nx-table-sub">${escapeHtml(item.component_code || "")}</div></td>
@@ -226,12 +233,12 @@ function renderNexoraManufacturingBomPage(options = {}) {
       <td class="nx-right">${escapeHtml(money((Number(item.quantity_per_batch || 0) * Number(item.unit_cost || 0)) || 0))}</td>
       <td>${escapeHtml(item.notes || "")}</td>
     </tr>
-  `, "BOM-ul selectat nu are componente.");
+  `, "Rețetarul selectat nu are componente.");
   const body = `
     ${alertHtml(options.ok, options.err)}
     <div class="nx-two-column-grid">
       <section class="nx-panel">
-        <div class="nx-panel-head"><div><h2>BOM nou</h2><span>Produs finit și revizie</span></div></div>
+        <div class="nx-panel-head"><div><h2>Rețetar nou</h2><span>Produs finit, revizie și lot</span></div></div>
         <form method="post" action="/nexora/manufacturing/bom/create" class="nx-form">
           <label class="nx-field"><span>Produs finit</span><select name="product_id" required>${productOptions(products)}</select></label>
           <div class="nx-two-column-grid compact">
@@ -240,13 +247,13 @@ function renderNexoraManufacturingBomPage(options = {}) {
           </div>
           <label class="nx-field"><span>Status</span><select name="status"><option value="DRAFT">Draft</option><option value="ACTIV">Activ</option><option value="BLOCAT">Blocat</option></select></label>
           <label class="nx-field"><span>Observații</span><textarea name="notes" rows="3"></textarea></label>
-          <button class="nx-btn primary" type="submit">Creează BOM</button>
+          <button class="nx-btn primary" type="submit">Creează rețetar</button>
         </form>
       </section>
       <section class="nx-panel">
-        <div class="nx-panel-head"><div><h2>Componentă BOM</h2><span>${selectedBom ? escapeHtml(selectedBom.bom_number || "") : "alege BOM"}</span></div></div>
+        <div class="nx-panel-head"><div><h2>Componentă rețetar</h2><span>${selectedBom ? escapeHtml(selectedBom.bom_number || "") : "alege rețetar"}</span></div></div>
         <form method="post" action="/nexora/manufacturing/bom/items/create" class="nx-form">
-          <label class="nx-field"><span>BOM</span><select name="bom_id" required>${bomOptions(boms, selectedBom?.id || "")}</select></label>
+          <label class="nx-field"><span>Rețetar / listă materiale</span><select name="bom_id" required>${bomOptions(boms, selectedBom?.id || "")}</select></label>
           <label class="nx-field"><span>Componentă din catalog</span><select name="component_product_id">${productOptions(products, "", "Linie manuală / din stoc")}</select></label>
           <label class="nx-field"><span>Sau componentă din stoc</span><select name="stock_item_id">${stockOptions(stockItems, "", "Fără stoc asociat")}</select></label>
           <div class="nx-two-column-grid compact">
@@ -263,15 +270,15 @@ function renderNexoraManufacturingBomPage(options = {}) {
       </section>
     </div>
     <section class="nx-content-card">
-      <div class="nx-section-head"><div><h1>BOM-uri</h1><p>Rețete de fabricație, revizii și cost estimat pe lot.</p></div></div>
-      <div class="nx-table-wrap"><table class="nx-table"><thead><tr><th>BOM</th><th>Produs finit</th><th class="nx-right">Lot</th><th>Status</th><th class="nx-right">Componente</th><th class="nx-right">Cost estimat</th><th></th></tr></thead><tbody>${bomRows}</tbody></table></div>
+      <div class="nx-section-head"><div><h1>Rețetare / liste materiale</h1><p>Definește componentele, pierderile tehnologice și costul estimat pe lot.</p></div></div>
+      <div class="nx-table-wrap"><table class="nx-table"><thead><tr><th>Rețetar</th><th>Produs finit</th><th class="nx-right">Lot</th><th>Status</th><th class="nx-right">Componente</th><th class="nx-right">Cost estimat</th><th></th></tr></thead><tbody>${bomRows}</tbody></table></div>
     </section>
     <section class="nx-content-card">
       <div class="nx-section-head"><div><h1>Componente ${selectedBom ? escapeHtml(selectedBom.bom_number || "") : ""}</h1><p>Materiale, pierderi tehnologice, costuri și operații.</p></div></div>
       <div class="nx-table-wrap"><table class="nx-table"><thead><tr><th>Componentă</th><th>Operație</th><th class="nx-right">Cantitate</th><th class="nx-right">Pierdere</th><th class="nx-right">Cost unitar</th><th class="nx-right">Cost lot</th><th>Note</th></tr></thead><tbody>${itemRows}</tbody></table></div>
     </section>
   `;
-  return shell({ title: "BOM", activePath: "/nexora/manufacturing/bom", companyName, user: options.user, body });
+  return shell({ title: "Rețetar / listă materiale", activePath: "/nexora/manufacturing/bom", companyName, user: options.user, body });
 }
 
 function renderNexoraManufacturingOrdersPage(options = {}) {
@@ -283,7 +290,7 @@ function renderNexoraManufacturingOrdersPage(options = {}) {
   const rowsHtml = rowsOrEmpty(rows, 9, (row) => `
     <tr>
       <td><b>${escapeHtml(row.order_number || "-")}</b><div class="nx-table-sub">${escapeHtml(row.client_name || "")}</div></td>
-      <td>${escapeHtml(row.product_name || "-")}<div class="nx-table-sub">${escapeHtml(row.bom_number || "fără BOM")}</div></td>
+      <td>${escapeHtml(row.product_name || "-")}<div class="nx-table-sub">${escapeHtml(row.bom_number || "fără rețetar")}</div></td>
       <td class="nx-right">${escapeHtml(row.quantity_completed || 0)} / ${escapeHtml(row.quantity_planned || 0)} ${escapeHtml(row.unit || "buc")}</td>
       <td>${statusBadge(row.status)}</td>
       <td>${escapeHtml(row.priority || "-")}</td>
@@ -299,10 +306,10 @@ function renderNexoraManufacturingOrdersPage(options = {}) {
   const body = `
     ${alertHtml(options.ok, options.err)}
     <section class="nx-content-card">
-      <div class="nx-section-head"><div><h1>Ordin de producție nou</h1><p>Generează necesarul de materiale din BOM și urmărește execuția.</p></div></div>
+      <div class="nx-section-head"><div><h1>Ordin de producție nou</h1><p>Generează necesarul de materiale din rețetar și urmărește execuția.</p></div></div>
       <form method="post" action="/nexora/manufacturing/orders/create" class="nx-inline-form nx-register-form">
-        <label class="nx-field"><span>BOM</span><select name="bom_id">${bomOptions(boms, "", "Fără BOM / manual")}</select></label>
-        <label class="nx-field"><span>Produs manual</span><select name="product_id">${productOptions(products, "", "Din BOM sau alege produs")}</select></label>
+        <label class="nx-field"><span>Rețetar</span><select name="bom_id">${bomOptions(boms, "", "Fără rețetar / manual")}</select></label>
+        <label class="nx-field"><span>Produs manual</span><select name="product_id">${productOptions(products, "", "Din rețetar sau alege produs")}</select></label>
         <label class="nx-field"><span>Cantitate</span><input name="quantity_planned" value="1"></label>
         <label class="nx-field"><span>Depozit produs finit</span><select name="warehouse_id">${warehouseOptions(warehouses)}</select></label>
         <label class="nx-field"><span>Start</span><input name="planned_start" type="date"></label>
@@ -337,11 +344,11 @@ function renderNexoraManufacturingPlanningPage(options = {}) {
       <td>${statusBadge(row.status)}</td>
       <td>${row.generated_order_id ? `<a class="nx-btn" href="/nexora/manufacturing/orders">Ordin generat</a>` : `<form method="post" action="/nexora/manufacturing/planning/${escapeHtml(row.id)}/generate-order"><button class="nx-btn primary" type="submit">Generează ordin</button></form>`}</td>
     </tr>
-  `, "Nu există planuri MRP.");
+  `, "Nu există planuri de necesar.");
   const body = `
     ${alertHtml(options.ok, options.err)}
     <section class="nx-content-card">
-      <div class="nx-section-head"><div><h1>Plan MRP nou</h1><p>Calculează necesarul din forecast, vânzări sau comandă internă.</p></div></div>
+      <div class="nx-section-head"><div><h1>Plan necesar materiale nou</h1><p>Calculează ce lipsește din forecast, vânzări, stoc minim sau comandă internă.</p></div></div>
       <form method="post" action="/nexora/manufacturing/planning/create" class="nx-inline-form nx-register-form">
         <label class="nx-field"><span>Produs</span><select name="product_id" required>${productOptions(products)}</select></label>
         <label class="nx-field"><span>Sursă necesar</span><select name="demand_source"><option value="FORECAST">Forecast</option><option value="SALES">Vânzări</option><option value="STOC_MINIM">Stoc minim</option><option value="CUSTOM">Manual</option></select></label>
@@ -354,11 +361,11 @@ function renderNexoraManufacturingPlanningPage(options = {}) {
       </form>
     </section>
     <section class="nx-content-card">
-      <div class="nx-section-head"><div><h1>Planificare MRP</h1><p>Necesar, stoc disponibil și cantitate de produs pentru ordin.</p></div></div>
+      <div class="nx-section-head"><div><h1>Plan necesar materiale</h1><p>Necesar, stoc disponibil și cantitate de produs pentru ordin.</p></div></div>
       <div class="nx-table-wrap"><table class="nx-table"><thead><tr><th>Plan</th><th>Produs</th><th>Perioadă</th><th class="nx-right">Necesar</th><th class="nx-right">Disponibil</th><th class="nx-right">Planificat</th><th>Status</th><th></th></tr></thead><tbody>${rowsHtml}</tbody></table></div>
     </section>
   `;
-  return shell({ title: "Planificare", activePath: "/nexora/manufacturing/planning", companyName, user: options.user, body });
+  return shell({ title: "Plan necesar materiale", activePath: "/nexora/manufacturing/planning", companyName, user: options.user, body });
 }
 
 function renderNexoraManufacturingMaterialsPage(options = {}) {
@@ -436,7 +443,7 @@ function renderNexoraManufacturingCostsPage(options = {}) {
         <label class="nx-field"><span>Regie</span><input name="overhead_cost" value="0"></label>
         <label class="nx-field"><span>Subcontractare</span><input name="subcontract_cost" value="0"></label>
         <label class="nx-field"><span>Cantitate bază</span><input name="quantity_basis" value="0"></label>
-        <label class="nx-check-field"><input type="checkbox" name="auto_material_cost" value="1"><span>Preia automat cost materiale din consum/BOM</span></label>
+        <label class="nx-check-field"><input type="checkbox" name="auto_material_cost" value="1"><span>Preia automat cost materiale din consum/rețetar</span></label>
         <label class="nx-field nx-field-wide"><span>Descriere</span><input name="description"></label>
         <label class="nx-field nx-field-wide"><span>Note</span><textarea name="notes" rows="2"></textarea></label>
         <div class="nx-form-actions"><button class="nx-btn primary" type="submit">Salvează cost</button></div>
@@ -466,7 +473,7 @@ function renderNexoraManufacturingQualityPage(options = {}) {
       <td>${statusBadge(row.result)}</td>
       <td>${escapeHtml(row.inspector_email || "-")}</td>
     </tr>
-  `, "Nu există verificări quality control.");
+  `, "Nu există verificări de control calitate.");
   const body = `
     ${alertHtml(options.ok, options.err)}
     <section class="nx-content-card">
@@ -481,15 +488,15 @@ function renderNexoraManufacturingQualityPage(options = {}) {
         <label class="nx-field"><span>Tip defect</span><input name="defect_type"></label>
         <label class="nx-field"><span>Rezultat</span><select name="result"><option value="PASS">Pass</option><option value="FAIL">Fail</option><option value="PENDING">Pending</option><option value="IN_CONTROL">În control</option></select></label>
         <label class="nx-field nx-field-wide"><span>Note</span><textarea name="notes" rows="2"></textarea></label>
-        <div class="nx-form-actions"><button class="nx-btn primary" type="submit">Salvează QC</button></div>
+        <div class="nx-form-actions"><button class="nx-btn primary" type="submit">Salvează control</button></div>
       </form>
     </section>
     <section class="nx-content-card">
-      <div class="nx-section-head"><div><h1>Quality control</h1><p>Rezultate, neconformități și trasabilitate pe ordin.</p></div></div>
-      <div class="nx-table-wrap"><table class="nx-table"><thead><tr><th>QC</th><th>Ordin</th><th>Tip</th><th class="nx-right">Eșantion</th><th class="nx-right">OK</th><th class="nx-right">Respins</th><th>Defect</th><th>Rezultat</th><th>Inspector</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>
+      <div class="nx-section-head"><div><h1>Control calitate</h1><p>Rezultate, neconformități și trasabilitate pe ordin.</p></div></div>
+      <div class="nx-table-wrap"><table class="nx-table"><thead><tr><th>Control</th><th>Ordin</th><th>Tip</th><th class="nx-right">Eșantion</th><th class="nx-right">OK</th><th class="nx-right">Respins</th><th>Defect</th><th>Rezultat</th><th>Inspector</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>
     </section>
   `;
-  return shell({ title: "Quality control", activePath: "/nexora/manufacturing/quality", companyName, user: options.user, body });
+  return shell({ title: "Control calitate", activePath: "/nexora/manufacturing/quality", companyName, user: options.user, body });
 }
 
 export {

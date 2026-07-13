@@ -18,6 +18,7 @@ function renderNexoraShell(options = {}) {
   const eyebrow = options.eyebrow || appName;
   const pageTitle = options.pageTitle || title;
   const actionsHtml = options.actionsHtml || "";
+  const language = String(options.language || options.user?.language || "ro").toLowerCase() === "en" ? "en" : "ro";
   const isSuperAdmin = Number(options.isSuperAdmin || options.user?.is_super_admin || 0) === 1;
   const isCompanyAdmin = Number(options.isCompanyAdmin || options.user?.is_company_admin || 0) === 1;
   const userModules = Array.isArray(options.user?.effective_module_permissions)
@@ -28,6 +29,15 @@ function renderNexoraShell(options = {}) {
   const logoutHtml = `
     <form method="post" action="/logout" class="nx-logout-form">
       <button class="nx-btn nx-logout-btn" type="submit">Logout</button>
+    </form>
+  `;
+  const languageHtml = `
+    <form method="post" action="/language" class="nx-language-form">
+      <input type="hidden" name="return_to" value="${escapeHtml(currentPath)}">
+      <select name="language" aria-label="Limbă aplicație" onchange="this.form.submit()">
+        <option value="ro" ${language === "ro" ? "selected" : ""}>RO</option>
+        <option value="en" ${language === "en" ? "selected" : ""}>EN</option>
+      </select>
     </form>
   `;
 
@@ -41,7 +51,7 @@ function renderNexoraShell(options = {}) {
   });
 
   return `<!doctype html>
-<html lang="ro">
+<html lang="${escapeHtml(language)}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -61,6 +71,7 @@ function renderNexoraShell(options = {}) {
 
         <div class="nx-actions">
           ${actionsHtml}
+          ${languageHtml}
           ${logoutHtml}
         </div>
       </header>

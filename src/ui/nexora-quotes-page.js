@@ -27,17 +27,26 @@ function formatFileSize(bytes = 0) {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function renderImportFlash(ok = "", err = "", registrationNumber = "") {
+function renderImportFlash(ok = "", err = "", registrationNumber = "", folderStats = {}) {
   if (ok === "imported") {
     return `<div class="nx-alert success">Document importat și înregistrat cu numărul ${escapeHtml(registrationNumber || "-")}.</div>`;
+  }
+  if (ok === "folder_imported") {
+    const imported = escapeHtml(folderStats.imported || "0");
+    const duplicates = escapeHtml(folderStats.duplicates || "0");
+    const skipped = escapeHtml(folderStats.skipped || "0");
+    return `<div class="nx-alert success">Import folder finalizat: ${imported} documente importate, ${duplicates} duplicate, ${skipped} fișiere sărite.</div>`;
   }
 
   const messages = {
     client_required: "Alege un client existent sau completează datele pentru client nou.",
     client_missing: "Clientul selectat nu mai există.",
     client_create_required: "Completează numele clientului nou.",
+    file_count: "Folderul conține prea multe fișiere pentru un singur import.",
     file_size: "Fișierul depășește limita permisă.",
     file_type: "Poți importa doar PDF, Word sau Excel.",
+    folder_empty: "Folderul selectat nu conține documente importabile.",
+    folder_structure: "Folderul trebuie să conțină documente în dosare de client.",
     no_file: "Alege un fișier pentru import.",
     save_failed: "Importul nu a putut fi salvat."
   };
@@ -56,6 +65,9 @@ function renderNexoraQuotesPage(ctx = {}) {
     ok = "",
     err = "",
     registrationNumber = "",
+    folderImportedCount = "",
+    folderDuplicateCount = "",
+    folderSkippedCount = "",
     fmtMoney = (v) => String(v ?? "")
   } = ctx;
 
@@ -102,7 +114,11 @@ function renderNexoraQuotesPage(ctx = {}) {
     </tr>
   `).join("");
 
-  const flashHtml = renderImportFlash(ok, err, registrationNumber);
+  const flashHtml = renderImportFlash(ok, err, registrationNumber, {
+    imported: folderImportedCount,
+    duplicates: folderDuplicateCount,
+    skipped: folderSkippedCount
+  });
 
   const body = `
     ${renderSalesNav("/nexora/quotes")}
@@ -114,6 +130,7 @@ function renderNexoraQuotesPage(ctx = {}) {
         <p>Creează, urmărește și convertește ofertele comerciale în contracte.</p>
       </div>
       <div class="nx-form-actions">
+        <a class="nx-btn primary" href="#import-folder-oferte">Import folder</a>
         <a class="nx-btn primary" href="/nexora/clients">Clienți</a>
       </div>
     </div>
@@ -185,6 +202,26 @@ function renderNexoraQuotesPage(ctx = {}) {
           <label class="nx-field"><span>Note</span><textarea name="notes" rows="3"></textarea></label>
           <div class="nx-form-actions">
             <button class="nx-btn primary" type="submit">Importă și înregistrează</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="nx-panel" id="import-folder-oferte">
+        <div class="nx-panel-head">
+          <div>
+            <h2>Import folder oferte</h2>
+            <p>Încarcă dosare organizate pe clienți și le înregistrează automat.</p>
+          </div>
+        </div>
+
+        <form method="post" action="/nexora/sales/import-foldere-oferte" enctype="multipart/form-data" class="nx-form">
+          <input type="hidden" name="folder_layout" value="client_folders">
+          <label class="nx-field">
+            <span>Folder</span>
+            <input type="file" name="quote_files" accept=".pdf,.doc,.docx,.xls,.xlsx" webkitdirectory directory multiple required>
+          </label>
+          <div class="nx-form-actions">
+            <button class="nx-btn primary" type="submit">Importă folder</button>
           </div>
         </form>
       </section>
@@ -446,7 +483,75 @@ function renderNexoraQuoteDetailPage(ctx = {}) {
   });
 }
 
+function renderNexoraQuoteFolderImportPage(ctx = {}) {
+  const {
+    currentPath = "/nexora/sales/import-foldere-oferte",
+    userEmail = "",
+    companyName = "",
+    ok = "",
+    err = "",
+    folderImportedCount = "",
+    folderDuplicateCount = "",
+    folderSkippedCount = ""
+  } = ctx;
+
+  const flashHtml = renderImportFlash(ok, err, "", {
+    imported: folderImportedCount,
+    duplicates: folderDuplicateCount,
+    skipped: folderSkippedCount
+  });
+
+  const body = `
+    ${renderSalesNav("/nexora/sales/import-foldere-oferte")}
+    ${flashHtml}
+    <section class="nx-content-card">
+      <div class="nx-section-head">
+        <div>
+          <h1>Import foldere oferte</h1>
+          <p>Încarcă dosare locale organizate pe clienți. Nexora creează clienții lipsă și înregistrează documentele în Vânzări.</p>
+        </div>
+        <div class="nx-form-actions">
+          <a class="nx-btn" href="/nexora/quotes">Înapoi la oferte</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="nx-panel">
+      <div class="nx-panel-head">
+        <div>
+          <h2>Folder de import</h2>
+          <span>PDF, Word sau Excel</span>
+        </div>
+      </div>
+
+      <form method="post" action="/nexora/sales/import-foldere-oferte" enctype="multipart/form-data" class="nx-form">
+        <input type="hidden" name="folder_layout" value="client_folders">
+        <label class="nx-field">
+          <span>Selectează folderul</span>
+          <input type="file" name="quote_files" accept=".pdf,.doc,.docx,.xls,.xlsx" webkitdirectory directory multiple required>
+        </label>
+        <div class="nx-form-actions">
+          <button class="nx-btn primary" type="submit">Importă folder</button>
+        </div>
+      </form>
+    </section>
+  `;
+
+  return renderNexoraShell({
+    title: "Import foldere oferte",
+    appName: "Nexora ERP",
+    companyName,
+    user: ctx.user,
+    userEmail,
+    currentPath,
+    eyebrow: "Vânzări",
+    pageTitle: "Import foldere oferte",
+    body
+  });
+}
+
 export {
   renderNexoraQuotesPage,
+  renderNexoraQuoteFolderImportPage,
   renderNexoraQuoteDetailPage
 };

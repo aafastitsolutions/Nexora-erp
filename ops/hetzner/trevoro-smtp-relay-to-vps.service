@@ -1,0 +1,13 @@
+[Unit]
+Description=Trevoro SMTP relay from local network to Hetzner
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/ssh -N -i /home/server/.ssh/integra_hetzner_migration_easy -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -R 127.0.0.1:2465:mail.zooku.ro:465 root@46.225.237.185
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

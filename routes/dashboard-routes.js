@@ -6,6 +6,7 @@ import {
 } from "../src/ui/nexora-dashboard-page.js";
 import { renderNexoraShell } from "../src/ui/nexora-shell.js";
 import { formatInvoiceDisplayNumber } from "../lib/invoice-numbering.js";
+import { ensureProcurementOpportunitiesSchema } from "../lib/procurement-opportunities.js";
 
 function renderSearchResultSection({ title, count, rows, emptyText }) {
   return `
@@ -637,6 +638,16 @@ ${crmShellEnd()}
       missingStatus: 0
     });
 
+    ensureProcurementOpportunitiesSchema(db);
+    const euOpportunityNotifications = db.prepare(`
+      SELECT n.id, n.message, o.id AS opportunity_id, o.title, o.relevance_score, o.submission_deadline
+      FROM procurement_opportunity_notifications n
+      JOIN procurement_opportunities o ON o.id=n.opportunity_id AND o.company_id=n.company_id
+      WHERE n.company_id=? AND n.status='new'
+      ORDER BY o.relevance_score DESC, n.id DESC
+      LIMIT 5
+    `).all(companyId);
+
     res.send(renderNexoraDashboardPage({
       user: req.session.user,
       totalRevenue: fmtMoney(totalRevenueValue),
@@ -648,6 +659,7 @@ ${crmShellEnd()}
       activities,
       recentInvoices,
       efacturaSummary,
+      euOpportunityNotifications,
       dashboardConfig: readDashboardConfig(db, req)
     }));
   });

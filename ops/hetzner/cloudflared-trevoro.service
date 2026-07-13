@@ -1,0 +1,14 @@
+[Unit]
+Description=Cloudflare Tunnel for Trevoro
+After=network-online.target nexora.service trevoro-site.service
+Wants=network-online.target
+Requires=nexora.service trevoro-site.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/cloudflared --no-autoupdate --config /home/server/.cloudflared/trevoro.yml tunnel run
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

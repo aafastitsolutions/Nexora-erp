@@ -1,5 +1,7 @@
 import multer from "multer";
-import { renderNexoraQuoteDetailPage, renderNexoraQuotesPage } from "../src/ui/nexora-quotes-page.js";
+import crypto from "crypto";
+import pathModule from "path";
+import { renderNexoraQuoteDetailPage, renderNexoraQuoteFolderImportPage, renderNexoraQuotesPage } from "../src/ui/nexora-quotes-page.js";
 
 const QUOTE_IMPORT_EXTENSIONS = new Set([".pdf", ".doc", ".docx", ".xls", ".xlsx"]);
 const QUOTE_IMPORT_ERROR_CODES = new Set([
@@ -7,9 +9,20 @@ const QUOTE_IMPORT_ERROR_CODES = new Set([
   "client_missing",
   "client_create_required",
   "file_size",
+  "file_count",
   "file_type",
+  "folder_empty",
+  "folder_structure",
   "no_file",
   "save_failed"
+]);
+
+const QUOTE_IMPORT_MIME_BY_EXTENSION = new Map([
+  [".pdf", "application/pdf"],
+  [".doc", "application/msword"],
+  [".docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+  [".xls", "application/vnd.ms-excel"],
+  [".xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]
 ]);
 
 function safeText(value = "") {
@@ -47,6 +60,39 @@ function generatedClientIdentifier() {
   return `CLI-${Date.now().toString(36).toUpperCase()}`;
 }
 
+function generatedFolderClientIdentifier(name = "") {
+  const slug = safeText(name)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/&/g, " AND ")
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 42);
+  return `DOSAR-${slug || Date.now().toString(36).toUpperCase()}`;
+}
+
+function titleFromFileName(fileName = "") {
+  return safeText(fileName.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ")) || "Oferta importata";
+}
+
+function hashFile(fs, filePath = "") {
+  const hash = crypto.createHash("sha256");
+  const fd = fs.openSync(filePath, "r");
+  const buffer = Buffer.allocUnsafe(1024 * 1024);
+  try {
+    let bytesRead = 0;
+    do {
+      bytesRead = fs.readSync(fd, buffer, 0, buffer.length, null);
+      if (bytesRead) hash.update(buffer.subarray(0, bytesRead));
+    } while (bytesRead);
+  } finally {
+    fs.closeSync(fd);
+  }
+  return hash.digest("hex");
+}
+
 function formatQuoteImportRegistrationNumber(year, seq) {
   return `OFE-${year}-${String(seq).padStart(5, "0")}`;
 }
@@ -77,6 +123,10 @@ function removeFileQuietly(fs, filePath = "") {
 
 function quoteImportStorageDirectory(path, __dirname, companyId) {
   return path.join(__dirname, "uploads", "sales", "offers", `company-${companyId}`);
+}
+
+function quoteImportStoredPath(companyId, storedFileName = "") {
+  return `uploads/sales/offers/company-${companyId}/${storedFileName}`;
 }
 
 function resolveQuoteImportFilePath(path, __dirname, companyId, storedPath = "") {
@@ -137,6 +187,97 @@ function resolveImportedQuoteClient(db, companyId, payload = {}) {
   }
 }
 
+function uploadedPathSegments(file = {}) {
+  const decoded = decodeUploadedFileName(file.originalname || "", "document").replaceAll("\\", "/");
+  return decoded.split("/").map((segment) => safeText(segment)).filter(Boolean);
+}
+
+function stripFolderUploadRoot(files = [], layout = "client_folders") {
+  if (layout !== "client_folders") return "";
+  const paths = files.map(uploadedPathSegments).filter((segments) => segments.length >= 3);
+  if (!paths.length || paths.length !== files.length) return "";
+  const root = paths[0][0];
+  return paths.every((segments) => segments[0] === root) ? root : "";
+}
+
+function folderCandidateFromFile(file = {}, rootToStrip = "") {
+  let segments = uploadedPathSegments(file);
+  if (rootToStrip && segments[0] === rootToStrip) segments = segments.slice(1);
+  if (segments.length < 2) return null;
+
+  const originalFileName = safeText(segments.at(-1)).slice(0, 255);
+  const clientName = safeText(segments[0]);
+  const relativePath = segments.join("/");
+  if (!clientName || !originalFileName) return null;
+
+  return {
+    clientName,
+    originalFileName,
+    relativePath,
+    extension: pathModule.posix.extname(originalFileName).toLowerCase()
+  };
+}
+
+function findClientByName(db, companyId, name = "") {
+  return db.prepare(`
+    SELECT id, name, cui
+    FROM clients
+    WHERE company_id=?
+      AND LOWER(TRIM(name)) = LOWER(TRIM(?))
+    ORDER BY id ASC
+    LIMIT 1
+  `).get(companyId, name);
+}
+
+function ensureFolderImportClient(db, companyId, clientName = "") {
+  const name = safeText(clientName);
+  if (!name) throw quoteImportError("folder_structure");
+
+  const byName = findClientByName(db, companyId, name);
+  if (byName) return byName;
+
+  const baseIdentifier = generatedFolderClientIdentifier(name);
+  let identifier = baseIdentifier;
+  let suffix = 2;
+  while (db.prepare("SELECT id FROM clients WHERE company_id=? AND cui=?").get(companyId, identifier)) {
+    identifier = `${baseIdentifier.slice(0, 48)}-${suffix}`;
+    suffix += 1;
+  }
+
+  const info = db.prepare(`
+    INSERT INTO clients (cui, name, vat, inactive, client_status, notes, company_id)
+    VALUES (?, ?, 0, 0, 'verde', ?, ?)
+  `).run(identifier, name, "Creat automat la importul din folder de oferte.", companyId);
+
+  return { id: info.lastInsertRowid, name, cui: identifier };
+}
+
+function findExistingQuoteImport(db, companyId, clientId, originalFileName, fileSize, checksum) {
+  const byChecksum = checksum
+    ? db.prepare(`
+        SELECT id, registration_number
+        FROM sales_quote_imports
+        WHERE company_id=?
+          AND client_id=?
+          AND notes LIKE ?
+        ORDER BY id ASC
+        LIMIT 1
+      `).get(companyId, clientId, `%sha256=${checksum}%`)
+    : null;
+  if (byChecksum) return byChecksum;
+
+  return db.prepare(`
+    SELECT id, registration_number
+    FROM sales_quote_imports
+    WHERE company_id=?
+      AND client_id=?
+      AND original_file_name=?
+      AND file_size=?
+    ORDER BY id ASC
+    LIMIT 1
+  `).get(companyId, clientId, originalFileName, Number(fileSize || 0));
+}
+
 export function registerQuotesRoutes(app, deps) {
   const {
     COMPANY,
@@ -162,11 +303,25 @@ export function registerQuotesRoutes(app, deps) {
   const quoteImportTempDir = path.join(__dirname, "uploads", "quote-import-temp");
   fs.mkdirSync(quoteImportTempDir, { recursive: true });
   const quoteImportUpload = multer({ dest: quoteImportTempDir, limits: { fileSize: 30 * 1024 * 1024 } });
+  const quoteFolderImportUpload = multer({
+    dest: quoteImportTempDir,
+    preservePath: true,
+    limits: { fileSize: 30 * 1024 * 1024, files: 1000 }
+  });
 
   function uploadQuoteImport(req, res, next) {
     quoteImportUpload.single("quote_file")(req, res, (error) => {
       if (error?.code === "LIMIT_FILE_SIZE") return res.redirect("/nexora/quotes?err=file_size");
       if (error) return res.redirect("/nexora/quotes?err=save_failed");
+      return next();
+    });
+  }
+
+  function uploadQuoteFolderImport(req, res, next) {
+    quoteFolderImportUpload.array("quote_files", 1000)(req, res, (error) => {
+      if (error?.code === "LIMIT_FILE_SIZE") return redirectQuotesImport(res, { err: "file_size" });
+      if (error?.code === "LIMIT_FILE_COUNT" || error?.code === "LIMIT_UNEXPECTED_FILE") return redirectQuotesImport(res, { err: "file_count" });
+      if (error) return redirectQuotesImport(res, { err: "save_failed" });
       return next();
     });
   }
@@ -273,6 +428,9 @@ export function registerQuotesRoutes(app, deps) {
       ok: safeText(req.query?.ok),
       err: safeText(req.query?.err),
       registrationNumber: safeText(req.query?.reg),
+      folderImportedCount: safeText(req.query?.imported),
+      folderDuplicateCount: safeText(req.query?.duplicates),
+      folderSkippedCount: safeText(req.query?.skipped),
       fmtMoney
     }));
   });
@@ -296,7 +454,7 @@ export function registerQuotesRoutes(app, deps) {
 
     const storedFileName = `${Date.now()}-${safeFileName(originalFileName)}`;
     const destination = path.join(directory, storedFileName);
-    const filePath = `uploads/sales/offers/company-${companyId}/${storedFileName}`;
+    const filePath = quoteImportStoredPath(companyId, storedFileName);
 
     try {
       fs.renameSync(tempPath, destination);
@@ -339,6 +497,137 @@ export function registerQuotesRoutes(app, deps) {
       const code = QUOTE_IMPORT_ERROR_CODES.has(error?.code || error?.message) ? (error.code || error.message) : "save_failed";
       return redirectQuotesImport(res, { err: code });
     }
+  });
+
+  function handleQuoteFolderImport(req, res) {
+    const companyId = Number(req.session.user.company_id || 0);
+    const files = Array.isArray(req.files) ? req.files : [];
+    if (!files.length) return redirectQuotesImport(res, { err: "no_file" });
+
+    const layout = safeText(req.body?.folder_layout) === "selected_folder_client"
+      ? "selected_folder_client"
+      : "client_folders";
+    const rootToStrip = stripFolderUploadRoot(files, layout);
+    const directory = quoteImportStorageDirectory(path, __dirname, companyId);
+    fs.mkdirSync(directory, { recursive: true });
+
+    const counters = { imported: 0, duplicates: 0, skipped: 0 };
+    const destinationPaths = [];
+
+    try {
+      const importFolder = db.transaction(() => {
+        for (const file of files) {
+          const candidate = folderCandidateFromFile(file, rootToStrip);
+          if (!candidate || !QUOTE_IMPORT_EXTENSIONS.has(candidate.extension)) {
+            counters.skipped += 1;
+            removeFileQuietly(fs, file.path);
+            continue;
+          }
+
+          const checksum = hashFile(fs, file.path);
+          const client = ensureFolderImportClient(db, companyId, candidate.clientName);
+          const duplicate = findExistingQuoteImport(
+            db,
+            companyId,
+            client.id,
+            candidate.originalFileName,
+            Number(file.size || 0),
+            checksum
+          );
+
+          if (duplicate) {
+            counters.duplicates += 1;
+            removeFileQuietly(fs, file.path);
+            continue;
+          }
+
+          const registration = nextQuoteImportRegistration(db, companyId);
+          const storedFileName = `${registration.registrationNumber}-${safeFileName(candidate.originalFileName)}`;
+          const destination = path.join(directory, storedFileName);
+          const filePath = quoteImportStoredPath(companyId, storedFileName);
+          fs.renameSync(file.path, destination);
+          destinationPaths.push(destination);
+
+          const notes = [
+            "Import folder oferte din interfața Nexora.",
+            `client_folder=${candidate.clientName}`,
+            `source_relative_path=${candidate.relativePath}`,
+            `sha256=${checksum}`
+          ].join(" | ");
+
+          db.prepare(`
+            INSERT INTO sales_quote_imports (
+              company_id, year, seq, registration_number, client_id, title,
+              original_file_name, stored_file_name, file_path, mime_type, file_size,
+              extension, notes, created_by_email
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            companyId,
+            registration.year,
+            registration.seq,
+            registration.registrationNumber,
+            client.id,
+            titleFromFileName(candidate.originalFileName),
+            candidate.originalFileName,
+            storedFileName,
+            filePath,
+            safeText(file.mimetype) || QUOTE_IMPORT_MIME_BY_EXTENSION.get(candidate.extension) || null,
+            Number(file.size || 0),
+            candidate.extension,
+            notes,
+            safeText(req.session.user.email)
+          );
+
+          counters.imported += 1;
+        }
+      });
+
+      importFolder();
+
+      if (!counters.imported && counters.skipped && !counters.duplicates) {
+        return redirectQuotesImport(res, { err: "folder_structure" });
+      }
+
+      return redirectQuotesImport(res, {
+        ok: "folder_imported",
+        imported: String(counters.imported),
+        duplicates: String(counters.duplicates),
+        skipped: String(counters.skipped)
+      });
+    } catch (error) {
+      for (const file of files) removeFileQuietly(fs, file.path);
+      for (const destination of destinationPaths) removeFileQuietly(fs, destination);
+      console.error("[Quotes] folder import failed", error);
+      const code = QUOTE_IMPORT_ERROR_CODES.has(error?.code || error?.message) ? (error.code || error.message) : "save_failed";
+      return redirectQuotesImport(res, { err: code });
+    }
+  }
+
+  app.post("/nexora/sales/import-foldere-oferte", requireAuth, uploadQuoteFolderImport, handleQuoteFolderImport);
+  app.post("/nexora/import-foldere-oferte", requireAuth, uploadQuoteFolderImport, handleQuoteFolderImport);
+  app.post("/nexora/quotes/import-folder", requireAuth, uploadQuoteFolderImport, handleQuoteFolderImport);
+
+  app.get("/nexora/sales/import-foldere-oferte", requireAuth, (req, res) => {
+    return res.type("html").send(renderNexoraQuoteFolderImportPage({
+      currentPath: "/nexora/sales/import-foldere-oferte",
+      user: req.session.user,
+      userEmail: req.session.user.email || "",
+      companyName: req.session.user.company_name || "",
+      ok: safeText(req.query?.ok),
+      err: safeText(req.query?.err),
+      folderImportedCount: safeText(req.query?.imported),
+      folderDuplicateCount: safeText(req.query?.duplicates),
+      folderSkippedCount: safeText(req.query?.skipped)
+    }));
+  });
+
+  app.get("/nexora/import-foldere-oferte", requireAuth, (req, res) => {
+    return res.redirect("/nexora/sales/import-foldere-oferte");
+  });
+
+  app.get("/nexora/quotes/folder-import", requireAuth, (req, res) => {
+    return res.redirect("/nexora/sales/import-foldere-oferte");
   });
 
   app.get("/nexora/quotes/imports/:id/download", requireAuth, (req, res) => {

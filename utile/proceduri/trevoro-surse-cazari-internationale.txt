@@ -1,0 +1,132 @@
+TREVORO - SURSE FREE / OPEN PENTRU CAZARI INTERNATIONALE
+Data: 2026-06-04
+
+TARI ADAUGATE IN NEXORA TRAVEL
+- Romania
+- Bulgaria
+- Greece
+- Albania
+
+STRUCTURA RECOMANDATA IN NEXORA
+Nu folosim foldere separate in baza de date.
+Folosim campul `country` pe:
+- travel_leads
+- travel_properties
+
+Astfel putem filtra/importa/exporta pe tara si putem crea pagini SEO:
+- /romania
+- /bulgaria
+- /grecia
+- /albania
+
+SURSA 1 - OPENSTREETMAP / OVERPASS
+Status: recomandata pentru prospectare initiala
+Tari: Romania, Bulgaria, Greece, Albania
+Tip date:
+- hotel
+- guest_house
+- apartment
+- chalet
+- camp_site
+- caravan_site
+- hostel
+- motel
+- alpine_hut
+- wilderness_hut
+- resort
+
+Avantaje:
+- global
+- gratuit
+- licenta open, dar necesita atribuire OSM
+- putem importa prin scriptul existent `scripts/import-osm-travel-leads.mjs`
+
+Atentie:
+- datele de contact sunt incomplete
+- trebuie deduplicare
+- nu trebuie prezentate ca date oficiale verificate
+
+Exemple rulare:
+Romania:
+  node scripts/import-osm-travel-leads.mjs --preset hotspots
+
+Bulgaria:
+  TRAVEL_IMPORT_COUNTRY=Bulgaria node scripts/import-osm-travel-leads.mjs --rows 5 --cols 5
+
+Greece:
+  TRAVEL_IMPORT_COUNTRY=Greece node scripts/import-osm-travel-leads.mjs --rows 6 --cols 6
+
+Albania:
+  TRAVEL_IMPORT_COUNTRY=Albania node scripts/import-osm-travel-leads.mjs --rows 4 --cols 4
+
+SURSA 2 - BULGARIA OPEN DATA
+Status: foarte promitatoare
+Dataset:
+- Register of Accommodation Places and Restaurants and Entertainment
+- Open Data Bulgaria / data.europa.eu
+
+Link:
+https://data.europa.eu/data/datasets/9483
+
+Observatie:
+- data.europa.eu indica datasetul, dar distributiile nu erau expuse direct in pagina verificata.
+- trebuie cautat/validat endpointul original in portalul bulgar opendata.government.bg.
+
+Actiune urmatoare:
+- verificam API CKAN Bulgaria pentru dataset
+- daca exista CSV/JSON, facem script dedicat `import-bulgaria-tourism-registry-leads.mjs`
+
+SURSA 3 - GRECIA OFICIAL / HELLENIC CHAMBER OF HOTELS
+Status: necesita validare pentru export/descarcare
+
+Visit Greece spune ca hotelurile/campingurile pot fi gasite prin Hellenic Chamber of Hotels.
+Link:
+https://www.visitgreece.gr/accommodation/
+https://www.grhotels.gr/
+
+Observatie:
+- sursa este oficiala ca directie, dar trebuie verificat daca exista listare descarcabila/API.
+- daca nu exista export permis, nu facem scraping agresiv.
+
+Actiune urmatoare:
+- cautam catalog/descarcare publica
+- daca nu exista, folosim OSM/OpenTripMap pentru prospectare si completam manual/API cu surse permise.
+
+SURSA 4 - ALBANIA
+Status: momentan fara registru public usor de importat identificat
+
+Surse utile pentru context:
+- INSTAT publica statistici despre accommodation establishments.
+- Nu am confirmat inca o lista publica de proprietati individuale descarcabila.
+
+Actiune urmatoare:
+- cautam portal oficial de licente/registru turism
+- pentru start folosim OSM/OpenTripMap
+
+SURSA 5 - OPENTRIPMAP
+Status: buna pentru POI/travel enrichment, nu neaparat baza principala de cazari
+Link:
+https://opentripmap.com/
+https://dev.opentripmap.org/
+
+Avantaje:
+- foloseste surse open precum OpenStreetMap, Wikidata, Wikipedia
+- are API
+- poate ajuta la imbogatire destinatii si SEO
+
+Atentie:
+- necesita API key
+- trebuie verificat planul free/rate limits
+- mai util pentru atractii/destinatii decat pentru contact direct proprietari
+
+DECIZIE RECOMANDATA
+1. Pas tehnic facut: camp `country` in Nexora Travel.
+2. Importam intai OSM pe Bulgaria/Grecia/Albania in mod dry-run/raport.
+3. Verificam cate lead-uri contactabile avem pe fiecare tara.
+4. Pentru Bulgaria incercam registrul oficial open-data.
+5. Nu importam Booking.com prin scraping.
+6. Nu publicam international in marketplace pana nu avem:
+   - country filters
+   - termeni legali platforma
+   - flux proprietar clar
+   - minim date contact verificate

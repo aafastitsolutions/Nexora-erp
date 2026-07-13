@@ -4,7 +4,22 @@
   "type": "module",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "nexora:check-public": "node scripts/check-nexora-public-origin.mjs",
+    "nexora:restart-public": "bash scripts/restart-nexora-public.sh",
+    "nexora:deploy-public": "bash scripts/deploy-nexora-public.sh",
+    "offers:import-folders": "node scripts/import-client-offer-folders.mjs --source utile/import-oferte-clienti",
+    "trevoro:import:vpt": "node scripts/import-vacante-pentru-toti-buzau.mjs",
+    "trevoro:property-lifecycle": "node scripts/process-trevoro-unpaid-property-deletions.mjs",
+    "emarqet:import:onrc": "node scripts/import-emarqet-onrc-caen-leads.mjs",
+    "emarqet:import:partners": "node scripts/import-emarqet-partner-leads.mjs",
+    "emarqet:enrich:contacts": "node scripts/enrich-emarqet-outbound-contacts.mjs",
+    "emarqet:social:launch-pack": "node scripts/create-emarqet-social-launch-pack.mjs",
+    "emarqet:outreach": "node scripts/send-emarqet-partner-outreach-emails.mjs",
+    "lead-builder:pilot:prahova": "node scripts/run-lead-builder-job.mjs --pilot-prahova",
+    "lead-builder:google-places": "node scripts/run-google-places-lead-builder.mjs",
+    "emarqet:pilot:auto-prahova": "node scripts/launch-emarqet-auto-prahova.mjs",
+    "procurement:sync:eu": "node scripts/sync-eu-opportunity-finder.mjs"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
@@ -12,6 +27,8 @@
     "dotenv": "^17.3.1",
     "express": "^4.19.2",
     "express-session": "^1.19.0",
+    "imapflow": "^1.3.5",
+    "mailparser": "^3.9.9",
     "multer": "^2.1.1",
     "mustache": "^4.2.0",
     "nodemailer": "^8.0.3",
@@ -19,6 +36,7 @@
     "pizzip": "^3.2.0",
     "playwright": "^1.60.0",
     "qrcode": "^1.5.4",
+    "read-excel-file": "^9.0.10",
     "stripe": "^21.0.1"
   }
 }

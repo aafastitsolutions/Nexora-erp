@@ -77,6 +77,7 @@ function opportunityOptions(opportunities = [], selectedId = "") {
 function renderCrmNav(activePath = "/nexora/crm") {
   const items = [
     ["General", "/nexora/crm"],
+    ["Lead Builder", "/nexora/lead-builder"],
     ["Lead-uri", "/nexora/crm/leads"],
     ["Pipeline", "/nexora/crm/pipeline"],
     ["Follow-up", "/nexora/crm/follow-up"],

@@ -2,7 +2,7 @@
 import path from "path";
 import Database from "better-sqlite3";
 import { fileURLToPath } from "url";
-import { ALL_MODULE_KEYS, DEFAULT_PLAN_DEFINITIONS } from "./lib/app-config.js";
+import { ALL_MODULE_KEYS, DEFAULT_PLAN_DEFINITIONS, parseModuleList, uniqueModuleKeys } from "./lib/app-config.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,6 +18,71 @@ function hasColumn(tableName, columnName) {
 function ensureColumn(tableName, columnName, definition) {
   if (!hasColumn(tableName, columnName)) {
     db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+  }
+}
+
+const TRAVEL_ACCESS_BACKFILL_BASELINE = ALL_MODULE_KEYS.filter((moduleKey) => !["travel", "emarqet"].includes(moduleKey));
+const EMARQET_ACCESS_BACKFILL_BASELINE = ALL_MODULE_KEYS.filter((moduleKey) => moduleKey !== "emarqet");
+
+function withTravelModuleForFullAccess(rawModuleList) {
+  const modules = uniqueModuleKeys(parseModuleList(rawModuleList, []));
+  if (!modules.length || modules.includes("travel")) return null;
+
+  const moduleSet = new Set(modules);
+  const hadFullAccessBeforeTravel = TRAVEL_ACCESS_BACKFILL_BASELINE.every((moduleKey) => moduleSet.has(moduleKey));
+  return hadFullAccessBeforeTravel ? uniqueModuleKeys([...modules, "travel"]) : null;
+}
+
+function withEmarqetModuleForFullAccess(rawModuleList) {
+  const modules = uniqueModuleKeys(parseModuleList(rawModuleList, []));
+  if (!modules.length || modules.includes("emarqet")) return null;
+
+  const moduleSet = new Set(modules);
+  const hadFullAccessBeforeEmarqet = EMARQET_ACCESS_BACKFILL_BASELINE.every((moduleKey) => moduleSet.has(moduleKey));
+  return hadFullAccessBeforeEmarqet ? uniqueModuleKeys([...modules, "emarqet"]) : null;
+}
+
+function backfillTravelModuleAccess() {
+  const updateSubscription = db.prepare(`
+    UPDATE company_subscriptions
+    SET module_overrides=?
+    WHERE id=?
+  `);
+  for (const subscription of db.prepare(`SELECT id, module_overrides FROM company_subscriptions`).all()) {
+    const modules = withTravelModuleForFullAccess(subscription.module_overrides);
+    if (modules) updateSubscription.run(JSON.stringify(modules), subscription.id);
+  }
+
+  const updateUser = db.prepare(`
+    UPDATE users
+    SET module_permissions=?
+    WHERE id=?
+  `);
+  for (const user of db.prepare(`SELECT id, module_permissions FROM users`).all()) {
+    const modules = withTravelModuleForFullAccess(user.module_permissions);
+    if (modules) updateUser.run(JSON.stringify(modules), user.id);
+  }
+}
+
+function backfillEmarqetModuleAccess() {
+  const updateSubscription = db.prepare(`
+    UPDATE company_subscriptions
+    SET module_overrides=?
+    WHERE id=?
+  `);
+  for (const subscription of db.prepare(`SELECT id, module_overrides FROM company_subscriptions`).all()) {
+    const modules = withEmarqetModuleForFullAccess(subscription.module_overrides);
+    if (modules) updateSubscription.run(JSON.stringify(modules), subscription.id);
+  }
+
+  const updateUser = db.prepare(`
+    UPDATE users
+    SET module_permissions=?
+    WHERE id=?
+  `);
+  for (const user of db.prepare(`SELECT id, module_permissions FROM users`).all()) {
+    const modules = withEmarqetModuleForFullAccess(user.module_permissions);
+    if (modules) updateUser.run(JSON.stringify(modules), user.id);
   }
 }
 
@@ -272,6 +337,48 @@ function repairLegacyClientForeignKeys() {
   `);
 }
 
+function repairTravelCalendarProviderCheck() {
+  const tableSql = getTableSql("travel_property_calendar_links");
+  if (!tableSql || tableSql.includes("'booking'")) return;
+
+  db.exec(`
+    PRAGMA foreign_keys=off;
+    BEGIN TRANSACTION;
+
+    CREATE TABLE travel_property_calendar_links__fix (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      property_id INTEGER NOT NULL,
+      provider TEXT NOT NULL DEFAULT 'ical'
+        CHECK (provider IN ('booking', 'airbnb', 'google', 'outlook', 'ical', 'other')),
+      calendar_url TEXT NOT NULL,
+      sync_status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (sync_status IN ('pending', 'active', 'error', 'paused')),
+      last_synced_at TEXT,
+      last_error TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (property_id) REFERENCES travel_properties(id) ON DELETE CASCADE
+    );
+
+    INSERT INTO travel_property_calendar_links__fix (
+      id, company_id, property_id, provider, calendar_url, sync_status,
+      last_synced_at, last_error, created_at, updated_at
+    )
+    SELECT
+      id, company_id, property_id, provider, calendar_url, sync_status,
+      last_synced_at, last_error, created_at, updated_at
+    FROM travel_property_calendar_links;
+
+    DROP TABLE travel_property_calendar_links;
+    ALTER TABLE travel_property_calendar_links__fix RENAME TO travel_property_calendar_links;
+
+    COMMIT;
+    PRAGMA foreign_keys=on;
+  `);
+}
+
 export function migrate() {
   db.pragma("journal_mode = WAL");
 
@@ -283,6 +390,7 @@ export function migrate() {
       cui TEXT,
       rc TEXT,
       address TEXT,
+      country TEXT NOT NULL DEFAULT 'Romania',
       bank TEXT,
       iban TEXT,
       representative TEXT,
@@ -399,6 +507,7 @@ export function migrate() {
       cui TEXT NOT NULL UNIQUE,
       name TEXT NOT NULL,
       address TEXT,
+      country TEXT NOT NULL DEFAULT 'Romania',
       reg_com TEXT,
       caen TEXT,
       vat INTEGER DEFAULT 0,
@@ -726,6 +835,64 @@ export function migrate() {
       FOREIGN KEY (order_id) REFERENCES sales_orders(id) ON DELETE SET NULL,
       FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL,
       UNIQUE(company_id, delivery_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS order_lifecycle_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      event_number TEXT NOT NULL,
+      order_id INTEGER NOT NULL,
+      from_status TEXT,
+      to_status TEXT NOT NULL,
+      event_type TEXT NOT NULL DEFAULT 'STATUS',
+      event_date TEXT NOT NULL DEFAULT (datetime('now')),
+      actor_email TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (order_id) REFERENCES sales_orders(id) ON DELETE CASCADE,
+      UNIQUE(company_id, event_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS order_fulfillment_tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      task_number TEXT NOT NULL,
+      order_id INTEGER NOT NULL,
+      delivery_id INTEGER,
+      task_type TEXT NOT NULL DEFAULT 'PICKING',
+      warehouse_id INTEGER,
+      assigned_to TEXT,
+      planned_date TEXT,
+      status TEXT NOT NULL DEFAULT 'PLANIFICAT',
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (order_id) REFERENCES sales_orders(id) ON DELETE CASCADE,
+      FOREIGN KEY (delivery_id) REFERENCES sales_deliveries(id) ON DELETE SET NULL,
+      FOREIGN KEY (warehouse_id) REFERENCES inventory_warehouses(id) ON DELETE SET NULL,
+      UNIQUE(company_id, task_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS order_tracking_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      tracking_number TEXT NOT NULL,
+      order_id INTEGER,
+      delivery_id INTEGER,
+      event_type TEXT NOT NULL DEFAULT 'STATUS',
+      event_date TEXT NOT NULL DEFAULT (datetime('now')),
+      location TEXT,
+      courier TEXT,
+      awb TEXT,
+      status TEXT,
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (order_id) REFERENCES sales_orders(id) ON DELETE CASCADE,
+      FOREIGN KEY (delivery_id) REFERENCES sales_deliveries(id) ON DELETE CASCADE,
+      UNIQUE(company_id, tracking_number)
     );
 
     CREATE TABLE IF NOT EXISTS sales_delivery_items (
@@ -1112,6 +1279,1261 @@ export function migrate() {
       FOREIGN KEY (order_id) REFERENCES manufacturing_orders(id) ON DELETE SET NULL,
       FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL,
       UNIQUE(company_id, qc_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS horeca_tables (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      table_code TEXT NOT NULL,
+      area TEXT NOT NULL DEFAULT 'Sală',
+      seats INTEGER NOT NULL DEFAULT 2,
+      status TEXT NOT NULL DEFAULT 'LIBERA',
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(company_id, table_code)
+    );
+
+    CREATE TABLE IF NOT EXISTS horeca_reservations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      reservation_number TEXT NOT NULL,
+      table_id INTEGER,
+      client_name TEXT NOT NULL,
+      phone TEXT,
+      guest_count INTEGER NOT NULL DEFAULT 2,
+      reservation_date TEXT NOT NULL DEFAULT (date('now')),
+      reservation_time TEXT,
+      status TEXT NOT NULL DEFAULT 'CONFIRMATA',
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (table_id) REFERENCES horeca_tables(id) ON DELETE SET NULL,
+      UNIQUE(company_id, reservation_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS horeca_menu_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      item_code TEXT NOT NULL,
+      name TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'Meniu',
+      course_type TEXT NOT NULL DEFAULT 'Preparat',
+      price REAL NOT NULL DEFAULT 0,
+      vat_percent REAL NOT NULL DEFAULT 9,
+      recipe_notes TEXT,
+      allergen_notes TEXT,
+      stock_policy TEXT NOT NULL DEFAULT 'CONSUM_RETETA',
+      status TEXT NOT NULL DEFAULT 'ACTIV',
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(company_id, item_code)
+    );
+
+    CREATE TABLE IF NOT EXISTS horeca_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      order_number TEXT NOT NULL,
+      table_id INTEGER,
+      channel TEXT NOT NULL DEFAULT 'SALA',
+      waiter_name TEXT,
+      opened_at TEXT NOT NULL DEFAULT (datetime('now')),
+      closed_at TEXT,
+      status TEXT NOT NULL DEFAULT 'DESCHISA',
+      subtotal REAL NOT NULL DEFAULT 0,
+      vat_amount REAL NOT NULL DEFAULT 0,
+      total REAL NOT NULL DEFAULT 0,
+      payment_method TEXT,
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (table_id) REFERENCES horeca_tables(id) ON DELETE SET NULL,
+      UNIQUE(company_id, order_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS horeca_order_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      order_id INTEGER NOT NULL,
+      menu_item_id INTEGER,
+      item_name TEXT NOT NULL,
+      quantity REAL NOT NULL DEFAULT 1,
+      unit_price REAL NOT NULL DEFAULT 0,
+      vat_percent REAL NOT NULL DEFAULT 9,
+      line_subtotal REAL NOT NULL DEFAULT 0,
+      line_vat REAL NOT NULL DEFAULT 0,
+      line_total REAL NOT NULL DEFAULT 0,
+      kitchen_status TEXT NOT NULL DEFAULT 'NOU',
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (order_id) REFERENCES horeca_orders(id) ON DELETE CASCADE,
+      FOREIGN KEY (menu_item_id) REFERENCES horeca_menu_items(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_leads (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      property_type TEXT,
+      tourist_zone TEXT,
+      description TEXT,
+      country TEXT NOT NULL DEFAULT 'Romania',
+      city TEXT,
+      county TEXT,
+      address TEXT,
+      phone TEXT,
+      whatsapp_phone TEXT,
+      whatsapp_opt_in_status TEXT NOT NULL DEFAULT 'unknown',
+      whatsapp_opt_in_source TEXT,
+      whatsapp_opt_in_at TEXT,
+      whatsapp_last_contacted_at TEXT,
+      whatsapp_status TEXT NOT NULL DEFAULT 'manual',
+      whatsapp_notes TEXT,
+      email TEXT,
+      website TEXT,
+      facebook TEXT,
+      instagram TEXT,
+      linkedin TEXT,
+      contact_page_url TEXT,
+      contact_person TEXT,
+      google_rating REAL,
+      google_reviews INTEGER NOT NULL DEFAULT 0,
+      google_place_id TEXT,
+      source TEXT,
+      enrichment_status TEXT NOT NULL DEFAULT 'pending',
+      last_enriched_at TEXT,
+      enrichment_error TEXT,
+      enrichment_source_url TEXT,
+      email_retry_priority INTEGER NOT NULL DEFAULT 0,
+      email_retry_reason TEXT,
+      email_retry_ready_at TEXT,
+      status TEXT NOT NULL DEFAULT 'nou'
+        CHECK (status IN ('nou', 'contactat', 'interesat', 'demo_programat', 'activ', 'respins')),
+      score INTEGER NOT NULL DEFAULT 0,
+      notes TEXT,
+      next_follow_up_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_properties (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      lead_id INTEGER,
+      name TEXT NOT NULL,
+      property_type TEXT,
+      description TEXT,
+      country TEXT NOT NULL DEFAULT 'Romania',
+      city TEXT,
+      county TEXT,
+      address TEXT,
+	      phone TEXT,
+	      email TEXT,
+	      website TEXT,
+	      google_place_id TEXT,
+	      amenities TEXT,
+	      meal_types TEXT,
+	      promo_enabled INTEGER NOT NULL DEFAULT 0,
+	      promo_badge TEXT,
+	      promo_title TEXT,
+	      promo_text TEXT,
+	      promo_valid_until TEXT,
+	      max_adults INTEGER NOT NULL DEFAULT 2,
+	      max_children INTEGER NOT NULL DEFAULT 0,
+	      child_free_age INTEGER NOT NULL DEFAULT 0,
+	      child_paid_from_age INTEGER NOT NULL DEFAULT 0,
+	      child_price_ron INTEGER NOT NULL DEFAULT 0,
+	      price_per_night INTEGER NOT NULL DEFAULT 0,
+	      price_currency TEXT NOT NULL DEFAULT 'RON',
+	      status TEXT NOT NULL DEFAULT 'activ',
+	      partner_plan TEXT NOT NULL DEFAULT 'standard_monthly',
+	      subscription_status TEXT NOT NULL DEFAULT 'active',
+	      monthly_price_ron INTEGER NOT NULL DEFAULT 0,
+	      monthly_price_amount INTEGER NOT NULL DEFAULT 0,
+	      monthly_price_currency TEXT NOT NULL DEFAULT 'RON',
+	      free_until TEXT,
+	      activation_source TEXT,
+	      account_email TEXT,
+	      password_salt TEXT,
+	      password_hash TEXT,
+		      account_status TEXT NOT NULL DEFAULT 'pending'
+		        CHECK (account_status IN ('pending', 'active', 'suspended')),
+		      last_login_at TEXT,
+		      deletion_notice_sent_at TEXT,
+		      deletion_scheduled_at TEXT,
+		      deleted_at TEXT,
+		      deletion_reason TEXT,
+		      deleted_by_email TEXT,
+		      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+		      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+		      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+		      FOREIGN KEY (lead_id) REFERENCES travel_leads(id) ON DELETE SET NULL
+	    );
+
+    CREATE TABLE IF NOT EXISTS travel_partner_property_mappings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      provider TEXT NOT NULL,
+      external_property_id TEXT NOT NULL,
+      property_id INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active'
+        CHECK (status IN ('active', 'inactive')),
+      payload_json TEXT,
+      last_synced_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(company_id, provider, external_property_id),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (property_id) REFERENCES travel_properties(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_partner_webhook_deliveries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      provider TEXT NOT NULL,
+      property_id INTEGER,
+      booking_request_id INTEGER,
+      event_type TEXT NOT NULL,
+      event_id TEXT NOT NULL,
+      target_url TEXT,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'sent', 'error', 'skipped')),
+      attempts INTEGER NOT NULL DEFAULT 0,
+      response_status INTEGER NOT NULL DEFAULT 0,
+      response_body TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (property_id) REFERENCES travel_properties(id) ON DELETE SET NULL,
+      FOREIGN KEY (booking_request_id) REFERENCES travel_booking_requests(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_agency_leads (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      country TEXT NOT NULL DEFAULT 'Romania',
+      city TEXT,
+      address TEXT,
+      phone TEXT,
+      email TEXT,
+      website TEXT,
+      facebook TEXT,
+      instagram TEXT,
+      slug TEXT,
+      display_name TEXT,
+      contact_name TEXT,
+      short_description TEXT,
+      description TEXT,
+      hero_image_url TEXT,
+      logo_image_url TEXT,
+      brand_color TEXT NOT NULL DEFAULT '#0f766e',
+      public_status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (public_status IN ('draft', 'published', 'hidden')),
+      account_email TEXT,
+      password_salt TEXT,
+      password_hash TEXT,
+      account_status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (account_status IN ('pending', 'active', 'suspended')),
+      published_at TEXT,
+      last_login_at TEXT,
+      offer_focus TEXT,
+      source TEXT,
+      status TEXT NOT NULL DEFAULT 'nou'
+        CHECK (status IN ('nou', 'contactat', 'interesat', 'demo_programat', 'activ', 'respins')),
+      subscription_status TEXT NOT NULL DEFAULT 'lead'
+        CHECK (subscription_status IN ('lead', 'trial', 'active', 'paused', 'cancelled')),
+      monthly_price_ron INTEGER NOT NULL DEFAULT 199,
+      monthly_price_amount REAL NOT NULL DEFAULT 199,
+      monthly_price_currency TEXT NOT NULL DEFAULT 'RON',
+      listing_limit INTEGER NOT NULL DEFAULT 0,
+      promotion_notes TEXT,
+      notes TEXT,
+      next_follow_up_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_agency_offers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      agency_id INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      destination TEXT,
+      country TEXT NOT NULL DEFAULT 'Romania',
+      city TEXT,
+      category TEXT,
+      amenities TEXT,
+      slug TEXT,
+      summary TEXT,
+      description TEXT,
+      image_url TEXT,
+      gallery_json TEXT,
+      departure_city TEXT,
+      duration_days INTEGER NOT NULL DEFAULT 0,
+      valid_from TEXT,
+      valid_until TEXT,
+      includes TEXT,
+      contact_phone TEXT,
+      contact_email TEXT,
+      price_from REAL,
+      currency TEXT NOT NULL DEFAULT 'RON',
+      offer_url TEXT,
+      status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft', 'ready', 'promoted', 'paused')),
+      promotion_priority TEXT NOT NULL DEFAULT 'normal'
+        CHECK (promotion_priority IN ('normal', 'priority', 'featured')),
+      social_status TEXT NOT NULL DEFAULT 'neprogramat',
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (agency_id) REFERENCES travel_agency_leads(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_agency_photos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      agency_id INTEGER NOT NULL,
+      offer_id INTEGER,
+      url TEXT NOT NULL,
+      caption TEXT,
+      photo_type TEXT NOT NULL DEFAULT 'gallery'
+        CHECK (photo_type IN ('hero', 'logo', 'gallery', 'offer')),
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      is_cover INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'active'
+        CHECK (status IN ('active', 'deleted')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (agency_id) REFERENCES travel_agency_leads(id) ON DELETE CASCADE,
+      FOREIGN KEY (offer_id) REFERENCES travel_agency_offers(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_agency_inquiries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      agency_id INTEGER NOT NULL,
+      offer_id INTEGER,
+      requester_name TEXT NOT NULL,
+      requester_email TEXT,
+      requester_phone TEXT,
+      subject TEXT,
+      message TEXT,
+      status TEXT NOT NULL DEFAULT 'nou'
+        CHECK (status IN ('nou', 'contactat', 'inchis')),
+      source TEXT NOT NULL DEFAULT 'agency_public_page',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (agency_id) REFERENCES travel_agency_leads(id) ON DELETE CASCADE,
+      FOREIGN KEY (offer_id) REFERENCES travel_agency_offers(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_agency_offer_clicks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      agency_id INTEGER NOT NULL,
+      offer_id INTEGER NOT NULL,
+      source TEXT NOT NULL DEFAULT 'trevoro_offer_click',
+      target_url TEXT,
+      referrer TEXT,
+      user_agent TEXT,
+      ip_hash TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (agency_id) REFERENCES travel_agency_leads(id) ON DELETE CASCADE,
+      FOREIGN KEY (offer_id) REFERENCES travel_agency_offers(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_agency_reviews (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      agency_id INTEGER NOT NULL,
+      offer_id INTEGER,
+      reviewer_name TEXT NOT NULL,
+      reviewer_email TEXT,
+      rating INTEGER NOT NULL DEFAULT 5,
+      comment TEXT,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'approved', 'rejected')),
+      source TEXT NOT NULL DEFAULT 'agency_public_page',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (agency_id) REFERENCES travel_agency_leads(id) ON DELETE CASCADE,
+      FOREIGN KEY (offer_id) REFERENCES travel_agency_offers(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_local_partners (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      partner_type TEXT NOT NULL DEFAULT 'tourist_info_center',
+      country TEXT NOT NULL DEFAULT 'Romania',
+      region TEXT,
+      city TEXT,
+      address TEXT,
+      administrator TEXT,
+      phone TEXT,
+      email TEXT,
+      website TEXT,
+      facebook TEXT,
+      instagram TEXT,
+      contact_name TEXT,
+      ad_title TEXT,
+      ad_summary TEXT,
+      ad_image_url TEXT,
+      ad_cta_url TEXT,
+      ad_cta_label TEXT,
+      promotion_tier TEXT NOT NULL DEFAULT 'standard',
+      featured_until TEXT,
+      potential_reach INTEGER NOT NULL DEFAULT 0,
+      source TEXT,
+      source_url TEXT,
+      status TEXT NOT NULL DEFAULT 'nou'
+        CHECK (status IN ('nou', 'contactat', 'interesat', 'partener', 'respins')),
+      notes TEXT,
+      social_enrichment_status TEXT NOT NULL DEFAULT 'pending',
+      social_enrichment_source TEXT,
+      social_enrichment_error TEXT,
+      social_enriched_at TEXT,
+      next_follow_up_at TEXT,
+      last_contacted_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_property_reviews (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      property_id INTEGER NOT NULL,
+      reviewer_name TEXT NOT NULL,
+      reviewer_email TEXT,
+      rating INTEGER NOT NULL DEFAULT 5,
+      comment TEXT,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'approved', 'rejected')),
+      source TEXT NOT NULL DEFAULT 'property_public_page',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (property_id) REFERENCES travel_properties(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_property_inquiries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      property_id INTEGER,
+      property_name TEXT,
+      room_id INTEGER,
+      room_name TEXT,
+      room_price_per_night REAL NOT NULL DEFAULT 0,
+      guest_name TEXT NOT NULL,
+      phone TEXT,
+      email TEXT,
+      check_in TEXT,
+      check_out TEXT,
+      guests INTEGER NOT NULL DEFAULT 1,
+      message TEXT,
+      source TEXT NOT NULL DEFAULT 'trevoro_site',
+      status TEXT NOT NULL DEFAULT 'nou'
+        CHECK (status IN ('nou', 'contactat', 'inchis')),
+      notified_at TEXT,
+      notification_error TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (property_id) REFERENCES travel_properties(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_booking_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      property_id INTEGER NOT NULL,
+      property_name TEXT,
+      room_id INTEGER,
+      room_name TEXT,
+      room_quantity INTEGER NOT NULL DEFAULT 1,
+      room_price_per_night REAL NOT NULL DEFAULT 0,
+      guest_name TEXT NOT NULL,
+      phone TEXT,
+      email TEXT,
+      check_in TEXT NOT NULL,
+      check_out TEXT NOT NULL,
+      nights INTEGER NOT NULL DEFAULT 1,
+      guests INTEGER NOT NULL DEFAULT 1,
+      adults INTEGER NOT NULL DEFAULT 1,
+      children INTEGER NOT NULL DEFAULT 0,
+      child_ages TEXT,
+      meal_type TEXT,
+      rate_package_id INTEGER,
+      rate_package_title TEXT,
+      rate_package_pricing_mode TEXT,
+      rate_package_total REAL NOT NULL DEFAULT 0,
+      rate_package_details TEXT,
+      message TEXT,
+      source TEXT NOT NULL DEFAULT 'trevoro_www',
+      booking_channel TEXT NOT NULL DEFAULT 'manual_request',
+      availability_provider TEXT NOT NULL DEFAULT 'trevoro',
+      payment_flow TEXT NOT NULL DEFAULT 'owner_policy',
+      external_provider TEXT,
+      external_reservation_id TEXT,
+      pynbooking_reservation_id TEXT,
+      external_reservation_status TEXT,
+      external_error TEXT,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'accepted', 'declined', 'cancelled', 'expired', 'payment_pending', 'paid')),
+      price_per_night REAL NOT NULL DEFAULT 0,
+      estimated_total REAL NOT NULL DEFAULT 0,
+      hold_expires_at TEXT,
+      owner_notified_at TEXT,
+      owner_email_status TEXT,
+      owner_email_error TEXT,
+      owner_whatsapp_status TEXT,
+      owner_whatsapp_url TEXT,
+      guest_notified_at TEXT,
+      guest_email_status TEXT,
+      guest_email_error TEXT,
+      accepted_at TEXT,
+      declined_at TEXT,
+      payment_due_at TEXT,
+      stripe_checkout_session_id TEXT,
+      stripe_payment_intent_id TEXT,
+      stripe_payment_status TEXT,
+      paid_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (property_id) REFERENCES travel_properties(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_property_photos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      property_id INTEGER NOT NULL,
+      file_path TEXT NOT NULL,
+      public_url TEXT NOT NULL,
+      room_id INTEGER,
+      room_name TEXT,
+      caption TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      is_cover INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (property_id) REFERENCES travel_properties(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_property_rooms (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      property_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      beds TEXT,
+      amenities TEXT,
+      size_sqm INTEGER NOT NULL DEFAULT 0,
+      max_adults INTEGER NOT NULL DEFAULT 2,
+      max_children INTEGER NOT NULL DEFAULT 0,
+      quantity INTEGER NOT NULL DEFAULT 1,
+      price_per_night INTEGER NOT NULL DEFAULT 0,
+      price_currency TEXT NOT NULL DEFAULT 'RON',
+      external_provider TEXT,
+      external_room_id TEXT,
+      external_rate_plan_id TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'active'
+        CHECK (status IN ('active', 'inactive')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (property_id) REFERENCES travel_properties(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_property_rate_packages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      property_id INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      meal_type TEXT NOT NULL DEFAULT 'mic-dejun',
+      pricing_mode TEXT NOT NULL DEFAULT 'per_person'
+        CHECK (pricing_mode IN ('per_person', 'per_room', 'package')),
+      adult_price INTEGER NOT NULL DEFAULT 0,
+      child_price INTEGER NOT NULL DEFAULT 0,
+      room_price INTEGER NOT NULL DEFAULT 0,
+      package_price INTEGER NOT NULL DEFAULT 0,
+      min_nights INTEGER NOT NULL DEFAULT 1,
+      included_nights INTEGER NOT NULL DEFAULT 0,
+      includes_treatment INTEGER NOT NULL DEFAULT 0,
+      child_paid_from_age INTEGER NOT NULL DEFAULT 0,
+      max_adults INTEGER NOT NULL DEFAULT 0,
+      max_children INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'active'
+        CHECK (status IN ('active', 'inactive')),
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (property_id) REFERENCES travel_properties(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_property_room_rate_periods (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      property_id INTEGER NOT NULL,
+      room_id INTEGER,
+      room_name TEXT,
+      start_date TEXT NOT NULL,
+      end_date TEXT NOT NULL,
+      price_per_night INTEGER NOT NULL DEFAULT 0,
+      price_currency TEXT NOT NULL DEFAULT 'RON',
+      available_quantity INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'available'
+        CHECK (status IN ('available', 'blocked')),
+      source TEXT NOT NULL DEFAULT 'manual',
+      external_provider TEXT,
+      external_room_id TEXT,
+      external_rate_plan_id TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (property_id) REFERENCES travel_properties(id) ON DELETE CASCADE,
+      FOREIGN KEY (room_id) REFERENCES travel_property_rooms(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_property_rate_plan_prices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      property_id INTEGER NOT NULL,
+      rate_package_id INTEGER NOT NULL,
+      room_id INTEGER NOT NULL,
+      rate_date TEXT NOT NULL,
+      price_1p INTEGER NOT NULL DEFAULT 0,
+      price_2p INTEGER NOT NULL DEFAULT 0,
+      extra_bed_price INTEGER NOT NULL DEFAULT 0,
+      child_price INTEGER NOT NULL DEFAULT 0,
+      child_extra_bed_price INTEGER NOT NULL DEFAULT 0,
+      available_quantity INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'available'
+        CHECK (status IN ('available', 'blocked')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (property_id) REFERENCES travel_properties(id) ON DELETE CASCADE,
+      FOREIGN KEY (rate_package_id) REFERENCES travel_property_rate_packages(id) ON DELETE CASCADE,
+      FOREIGN KEY (room_id) REFERENCES travel_property_rooms(id) ON DELETE CASCADE,
+      UNIQUE (company_id, property_id, rate_package_id, room_id, rate_date)
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_property_pynbooking_integrations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      property_id INTEGER NOT NULL,
+      provider TEXT NOT NULL DEFAULT 'pynbooking',
+      provider_label TEXT,
+      partner_status TEXT NOT NULL DEFAULT 'ready',
+      hotel_id TEXT NOT NULL,
+      client_id TEXT NOT NULL,
+      client_secret TEXT NOT NULL,
+      api_key TEXT,
+      api_base_url TEXT,
+      default_plan_id TEXT,
+      currency TEXT NOT NULL DEFAULT 'RON',
+      language TEXT NOT NULL DEFAULT 'RO',
+      sync_months INTEGER NOT NULL DEFAULT 6,
+      sync_status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (sync_status IN ('pending', 'active', 'error', 'paused')),
+      access_token TEXT,
+      token_expires_at TEXT,
+      last_tested_at TEXT,
+      last_synced_at TEXT,
+      last_imported_at TEXT,
+      last_error TEXT,
+      last_sync_summary TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(company_id, property_id),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (property_id) REFERENCES travel_properties(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_property_calendar_links (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      property_id INTEGER NOT NULL,
+      provider TEXT NOT NULL DEFAULT 'ical'
+        CHECK (provider IN ('booking', 'airbnb', 'google', 'outlook', 'ical', 'other')),
+      calendar_url TEXT NOT NULL,
+      sync_status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (sync_status IN ('pending', 'active', 'error', 'paused')),
+      last_synced_at TEXT,
+      last_error TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (property_id) REFERENCES travel_properties(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_property_calendar_blocks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      property_id INTEGER NOT NULL,
+      calendar_link_id INTEGER,
+      booking_request_id INTEGER,
+      block_date TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'ical',
+      summary TEXT,
+      hold_expires_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (property_id) REFERENCES travel_properties(id) ON DELETE CASCADE,
+      FOREIGN KEY (calendar_link_id) REFERENCES travel_property_calendar_links(id) ON DELETE CASCADE,
+      FOREIGN KEY (booking_request_id) REFERENCES travel_booking_requests(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_owner_account_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      property_id INTEGER,
+      lead_id INTEGER,
+      event_type TEXT NOT NULL,
+      severity TEXT NOT NULL DEFAULT 'info'
+        CHECK (severity IN ('info', 'success', 'warning', 'error')),
+      actor_email TEXT,
+      actor_role TEXT NOT NULL DEFAULT 'owner',
+      source TEXT NOT NULL DEFAULT 'owner_portal',
+      subject TEXT,
+      details TEXT,
+      metadata_json TEXT,
+      request_method TEXT,
+      request_path TEXT,
+      ip_address TEXT,
+      user_agent TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (property_id) REFERENCES travel_properties(id) ON DELETE SET NULL,
+      FOREIGN KEY (lead_id) REFERENCES travel_leads(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_owner_password_reset_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      property_id INTEGER NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE,
+      account_email TEXT NOT NULL,
+      requested_by_email TEXT,
+      requested_source TEXT NOT NULL DEFAULT 'owner_self_service',
+      expires_at TEXT NOT NULL,
+      used_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (property_id) REFERENCES travel_properties(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_site_pageviews (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      site TEXT NOT NULL DEFAULT 'trevoro.ro',
+      path TEXT NOT NULL,
+      page_type TEXT NOT NULL DEFAULT 'page',
+      property_id INTEGER,
+      visitor_hash TEXT NOT NULL,
+      session_id TEXT,
+      referrer TEXT,
+      user_agent TEXT,
+      country TEXT,
+      source TEXT,
+      medium TEXT,
+      campaign TEXT,
+      is_bot INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (property_id) REFERENCES travel_properties(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_lead_activities (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      lead_id INTEGER NOT NULL,
+      activity_type TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      details TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (lead_id) REFERENCES travel_leads(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_email_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      lead_id INTEGER,
+      mailbox TEXT NOT NULL DEFAULT 'contact@trevoro.ro',
+      direction TEXT NOT NULL DEFAULT 'inbound',
+      provider_message_id TEXT NOT NULL,
+      from_email TEXT,
+      to_email TEXT,
+      subject TEXT,
+      text_body TEXT,
+      detected_language TEXT,
+      detected_language_name TEXT,
+      translation_ro TEXT,
+      translation_status TEXT,
+      translation_model TEXT,
+      translation_updated_at TEXT,
+      reply_language TEXT,
+      reply_language_name TEXT,
+      received_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (lead_id) REFERENCES travel_leads(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_support_tickets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      ticket_number TEXT NOT NULL,
+      lead_id INTEGER,
+      property_id INTEGER,
+      inquiry_id INTEGER,
+      email_message_id INTEGER,
+      requester_name TEXT,
+      requester_email TEXT,
+      country TEXT NOT NULL DEFAULT 'Romania',
+      subject TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'nou'
+        CHECK (status IN ('nou', 'in_asteptare', 'rezolvat')),
+      priority TEXT NOT NULL DEFAULT 'normal',
+      source TEXT NOT NULL DEFAULT 'support_email',
+      opened_at TEXT,
+      first_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
+      last_activity_at TEXT NOT NULL DEFAULT (datetime('now')),
+      resolved_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (lead_id) REFERENCES travel_leads(id) ON DELETE SET NULL,
+      FOREIGN KEY (property_id) REFERENCES travel_properties(id) ON DELETE SET NULL,
+      FOREIGN KEY (inquiry_id) REFERENCES travel_property_inquiries(id) ON DELETE SET NULL,
+      FOREIGN KEY (email_message_id) REFERENCES travel_email_messages(id) ON DELETE SET NULL,
+      UNIQUE(company_id, ticket_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_support_ticket_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      ticket_id INTEGER NOT NULL,
+      email_message_id INTEGER,
+      direction TEXT NOT NULL DEFAULT 'inbound',
+      from_email TEXT,
+      to_email TEXT,
+      subject TEXT,
+      text_body TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (ticket_id) REFERENCES travel_support_tickets(id) ON DELETE CASCADE,
+      FOREIGN KEY (email_message_id) REFERENCES travel_email_messages(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_whatsapp_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL DEFAULT 0,
+      lead_id INTEGER,
+      provider_message_id TEXT,
+      direction TEXT NOT NULL DEFAULT 'webhook',
+      event_type TEXT NOT NULL DEFAULT 'webhook',
+      from_phone TEXT,
+      to_phone TEXT,
+      text_body TEXT,
+      status TEXT,
+      payload_json TEXT,
+      received_at TEXT NOT NULL DEFAULT (datetime('now')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (lead_id) REFERENCES travel_leads(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_scoring_settings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      phone_points INTEGER NOT NULL DEFAULT 20,
+      email_points INTEGER NOT NULL DEFAULT 20,
+      website_points INTEGER NOT NULL DEFAULT 15,
+      social_points INTEGER NOT NULL DEFAULT 10,
+      google_reviews_50_points INTEGER NOT NULL DEFAULT 10,
+      google_reviews_200_points INTEGER NOT NULL DEFAULT 20,
+      tourist_city_points INTEGER NOT NULL DEFAULT 10,
+      tourist_cities TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_content_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      template_type TEXT NOT NULL
+        CHECK (template_type IN ('seo_article', 'facebook_post', 'instagram_post', 'tiktok_script', 'newsletter')),
+      name TEXT NOT NULL,
+      prompt TEXT NOT NULL,
+      tone TEXT,
+      status TEXT NOT NULL DEFAULT 'activ',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_content_jobs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      property_id INTEGER,
+      job_type TEXT NOT NULL
+        CHECK (job_type IN ('seo_article', 'facebook_post', 'instagram_post', 'tiktok_script', 'newsletter')),
+      status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft', 'queued', 'generated', 'error')),
+      prompt TEXT,
+      result_summary TEXT,
+      model TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (property_id) REFERENCES travel_properties(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_blog_articles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      property_id INTEGER,
+      job_id INTEGER,
+      title TEXT NOT NULL,
+      slug TEXT NOT NULL,
+      meta_title TEXT,
+      meta_description TEXT,
+      content TEXT NOT NULL,
+      keywords TEXT,
+      category TEXT NOT NULL DEFAULT 'Ghiduri',
+      status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft', 'ready', 'published')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (property_id) REFERENCES travel_properties(id) ON DELETE SET NULL,
+      FOREIGN KEY (job_id) REFERENCES travel_content_jobs(id) ON DELETE SET NULL
+    );
+
+	    CREATE TABLE IF NOT EXISTS travel_social_posts (
+	      id INTEGER PRIMARY KEY AUTOINCREMENT,
+	      company_id INTEGER NOT NULL,
+	      property_id INTEGER,
+      job_id INTEGER,
+      platform TEXT NOT NULL,
+      content_type TEXT NOT NULL,
+      caption TEXT NOT NULL,
+      hashtags TEXT,
+      media_url TEXT,
+      status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft', 'ready', 'scheduled', 'published')),
+      scheduled_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+	      FOREIGN KEY (property_id) REFERENCES travel_properties(id) ON DELETE SET NULL,
+	      FOREIGN KEY (job_id) REFERENCES travel_content_jobs(id) ON DELETE SET NULL
+	    );
+
+	    CREATE TABLE IF NOT EXISTS travel_social_accounts (
+	      id INTEGER PRIMARY KEY AUTOINCREMENT,
+	      company_id INTEGER NOT NULL,
+	      platform TEXT NOT NULL
+	        CHECK (platform IN ('facebook', 'tiktok')),
+	      account_name TEXT NOT NULL,
+	      account_handle TEXT,
+	      external_id TEXT,
+	      page_id TEXT,
+	      posting_mode TEXT NOT NULL DEFAULT 'api'
+	        CHECK (posting_mode IN ('api', 'draft')),
+	      auto_publish INTEGER NOT NULL DEFAULT 0,
+	      access_token TEXT,
+	      refresh_token TEXT,
+	      token_expires_at TEXT,
+	      refresh_expires_at TEXT,
+	      scopes TEXT,
+	      profile_json TEXT,
+	      last_sync_at TEXT,
+	      status TEXT NOT NULL DEFAULT 'setup_required'
+	        CHECK (status IN ('setup_required', 'active', 'paused')),
+	      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+	      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+	      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+	      UNIQUE(company_id, platform)
+	    );
+
+	    CREATE TABLE IF NOT EXISTS travel_social_publish_jobs (
+	      id INTEGER PRIMARY KEY AUTOINCREMENT,
+	      company_id INTEGER NOT NULL,
+	      social_post_id INTEGER NOT NULL,
+	      account_id INTEGER,
+	      platform TEXT NOT NULL
+	        CHECK (platform IN ('facebook', 'tiktok')),
+	      status TEXT NOT NULL DEFAULT 'queued'
+	        CHECK (status IN ('queued', 'published', 'failed', 'manual_required')),
+	      scheduled_at TEXT,
+	      published_at TEXT,
+	      external_post_id TEXT,
+	      error TEXT,
+	      response_json TEXT,
+	      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+	      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+	      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+	      FOREIGN KEY (social_post_id) REFERENCES travel_social_posts(id) ON DELETE CASCADE,
+	      FOREIGN KEY (account_id) REFERENCES travel_social_accounts(id) ON DELETE SET NULL
+	    );
+
+    CREATE TABLE IF NOT EXISTS mobile_app_devices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      device_code TEXT NOT NULL,
+      device_name TEXT NOT NULL,
+      device_type TEXT NOT NULL DEFAULT 'Telefon',
+      assigned_role TEXT NOT NULL DEFAULT 'Ospătar',
+      pin_label TEXT,
+      status TEXT NOT NULL DEFAULT 'ACTIV',
+      last_seen_at TEXT,
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(company_id, device_code)
+    );
+
+    CREATE TABLE IF NOT EXISTS mobile_app_workflows (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      workflow_code TEXT NOT NULL,
+      workflow_name TEXT NOT NULL,
+      workflow_type TEXT NOT NULL DEFAULT 'COMENZI_SALA',
+      target_role TEXT NOT NULL DEFAULT 'Ospătar',
+      offline_enabled INTEGER NOT NULL DEFAULT 1,
+      requires_pin INTEGER NOT NULL DEFAULT 1,
+      status TEXT NOT NULL DEFAULT 'ACTIV',
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(company_id, workflow_code)
+    );
+
+    CREATE TABLE IF NOT EXISTS mobile_app_tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      task_number TEXT NOT NULL,
+      workflow_type TEXT NOT NULL DEFAULT 'INVENTARIERE',
+      title TEXT NOT NULL,
+      location TEXT,
+      assigned_role TEXT NOT NULL DEFAULT 'Operator',
+      due_date TEXT,
+      status TEXT NOT NULL DEFAULT 'DESCHIS',
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(company_id, task_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS mobile_app_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      session_number TEXT NOT NULL,
+      device_id INTEGER,
+      user_email TEXT,
+      opened_at TEXT NOT NULL DEFAULT (datetime('now')),
+      closed_at TEXT,
+      status TEXT NOT NULL DEFAULT 'ACTIVA',
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (device_id) REFERENCES mobile_app_devices(id) ON DELETE SET NULL,
+      UNIQUE(company_id, session_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS scm_logistics_tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      task_number TEXT NOT NULL,
+      task_type TEXT NOT NULL DEFAULT 'PICKING',
+      warehouse_id INTEGER,
+      source_location TEXT,
+      destination_location TEXT,
+      reference_doc TEXT,
+      product_id INTEGER,
+      product_name TEXT,
+      quantity REAL NOT NULL DEFAULT 0,
+      unit TEXT NOT NULL DEFAULT 'buc',
+      planned_date TEXT NOT NULL DEFAULT (date('now')),
+      status TEXT NOT NULL DEFAULT 'PLANIFICAT',
+      responsible TEXT,
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (warehouse_id) REFERENCES inventory_warehouses(id) ON DELETE SET NULL,
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL,
+      UNIQUE(company_id, task_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS scm_transport_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      transport_number TEXT NOT NULL,
+      carrier_name TEXT,
+      vehicle_number TEXT,
+      driver_name TEXT,
+      route_name TEXT,
+      origin TEXT,
+      destination TEXT,
+      pickup_date TEXT,
+      delivery_date TEXT,
+      status TEXT NOT NULL DEFAULT 'PLANIFICAT',
+      cost REAL NOT NULL DEFAULT 0,
+      currency TEXT NOT NULL DEFAULT 'RON',
+      client_name TEXT,
+      tracking_code TEXT,
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(company_id, transport_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS scm_distribution_plans (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      distribution_number TEXT NOT NULL,
+      warehouse_id INTEGER,
+      channel TEXT NOT NULL DEFAULT 'B2B',
+      destination_region TEXT,
+      route_name TEXT,
+      planned_date TEXT NOT NULL DEFAULT (date('now')),
+      delivery_window TEXT,
+      orders_count INTEGER NOT NULL DEFAULT 0,
+      parcels_count INTEGER NOT NULL DEFAULT 0,
+      total_weight REAL NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'PLANIFICAT',
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (warehouse_id) REFERENCES inventory_warehouses(id) ON DELETE SET NULL,
+      UNIQUE(company_id, distribution_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS scm_forecasts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      forecast_number TEXT NOT NULL,
+      product_id INTEGER,
+      product_name TEXT NOT NULL,
+      demand_source TEXT NOT NULL DEFAULT 'VANZARI',
+      period_start TEXT,
+      period_end TEXT,
+      forecast_qty REAL NOT NULL DEFAULT 0,
+      current_stock REAL NOT NULL DEFAULT 0,
+      recommended_qty REAL NOT NULL DEFAULT 0,
+      confidence_percent REAL NOT NULL DEFAULT 70,
+      status TEXT NOT NULL DEFAULT 'PLANIFICAT',
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL,
+      UNIQUE(company_id, forecast_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS report_dashboards (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      dashboard_number TEXT NOT NULL,
+      name TEXT NOT NULL,
+      scope TEXT NOT NULL DEFAULT 'GENERAL',
+      refresh_interval TEXT NOT NULL DEFAULT 'MANUAL',
+      layout_json TEXT NOT NULL DEFAULT '[]',
+      status TEXT NOT NULL DEFAULT 'ACTIV',
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(company_id, dashboard_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS report_kpis (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      kpi_code TEXT NOT NULL,
+      name TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'GENERAL',
+      metric_key TEXT NOT NULL DEFAULT 'manual',
+      target_value REAL NOT NULL DEFAULT 0,
+      current_value REAL NOT NULL DEFAULT 0,
+      unit TEXT,
+      trend_direction TEXT NOT NULL DEFAULT 'STABIL',
+      status TEXT NOT NULL DEFAULT 'ACTIV',
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(company_id, kpi_code)
+    );
+
+    CREATE TABLE IF NOT EXISTS report_saved_reports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      report_number TEXT NOT NULL,
+      name TEXT NOT NULL,
+      report_type TEXT NOT NULL DEFAULT 'VANZARI',
+      source_module TEXT NOT NULL DEFAULT 'sales',
+      period_start TEXT,
+      period_end TEXT,
+      filters_json TEXT NOT NULL DEFAULT '{}',
+      format TEXT NOT NULL DEFAULT 'TABLE',
+      status TEXT NOT NULL DEFAULT 'ACTIV',
+      last_run_at TEXT,
+      notes TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(company_id, report_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS report_exports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      export_number TEXT NOT NULL,
+      report_id INTEGER,
+      export_type TEXT NOT NULL DEFAULT 'RAPORT',
+      file_format TEXT NOT NULL DEFAULT 'CSV',
+      status TEXT NOT NULL DEFAULT 'GENERAT',
+      row_count INTEGER NOT NULL DEFAULT 0,
+      file_path TEXT,
+      requested_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (report_id) REFERENCES report_saved_reports(id) ON DELETE SET NULL,
+      UNIQUE(company_id, export_number)
     );
 
     CREATE TABLE IF NOT EXISTS facturi (
@@ -2251,6 +3673,13 @@ export function migrate() {
     CREATE INDEX IF NOT EXISTS idx_sales_deliveries_company_id ON sales_deliveries(company_id);
     CREATE INDEX IF NOT EXISTS idx_sales_deliveries_order_id ON sales_deliveries(order_id);
     CREATE INDEX IF NOT EXISTS idx_sales_deliveries_status ON sales_deliveries(status);
+    CREATE INDEX IF NOT EXISTS idx_order_lifecycle_company_order ON order_lifecycle_events(company_id, order_id);
+    CREATE INDEX IF NOT EXISTS idx_order_lifecycle_company_date ON order_lifecycle_events(company_id, event_date DESC);
+    CREATE INDEX IF NOT EXISTS idx_order_fulfillment_company_order ON order_fulfillment_tasks(company_id, order_id);
+    CREATE INDEX IF NOT EXISTS idx_order_fulfillment_company_status ON order_fulfillment_tasks(company_id, status);
+    CREATE INDEX IF NOT EXISTS idx_order_tracking_company_order ON order_tracking_events(company_id, order_id);
+    CREATE INDEX IF NOT EXISTS idx_order_tracking_company_delivery ON order_tracking_events(company_id, delivery_id);
+    CREATE INDEX IF NOT EXISTS idx_order_tracking_company_date ON order_tracking_events(company_id, event_date DESC);
     CREATE INDEX IF NOT EXISTS idx_sales_delivery_items_delivery_id ON sales_delivery_items(delivery_id);
     CREATE INDEX IF NOT EXISTS idx_procurement_suppliers_company_status ON procurement_suppliers(company_id, status);
     CREATE INDEX IF NOT EXISTS idx_procurement_orders_company_status ON procurement_orders(company_id, status);
@@ -2273,6 +3702,102 @@ export function migrate() {
     CREATE INDEX IF NOT EXISTS idx_manufacturing_issues_order ON manufacturing_material_issues(company_id, order_id, status);
     CREATE INDEX IF NOT EXISTS idx_manufacturing_costs_order ON manufacturing_costs(company_id, order_id, cost_date DESC);
     CREATE INDEX IF NOT EXISTS idx_manufacturing_quality_order ON manufacturing_quality_checks(company_id, order_id, check_date DESC);
+    CREATE INDEX IF NOT EXISTS idx_horeca_tables_status ON horeca_tables(company_id, status);
+    CREATE INDEX IF NOT EXISTS idx_horeca_reservations_date ON horeca_reservations(company_id, reservation_date, reservation_time);
+    CREATE INDEX IF NOT EXISTS idx_horeca_menu_status ON horeca_menu_items(company_id, status);
+    CREATE INDEX IF NOT EXISTS idx_horeca_orders_status ON horeca_orders(company_id, status, opened_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_horeca_order_items_order ON horeca_order_items(company_id, order_id);
+    CREATE INDEX IF NOT EXISTS idx_travel_leads_company_status ON travel_leads(company_id, status);
+    CREATE INDEX IF NOT EXISTS idx_travel_leads_company_followup ON travel_leads(company_id, next_follow_up_at, status);
+    CREATE INDEX IF NOT EXISTS idx_travel_leads_company_created ON travel_leads(company_id, created_at DESC);
+	    CREATE INDEX IF NOT EXISTS idx_travel_properties_company_status ON travel_properties(company_id, status);
+	    CREATE INDEX IF NOT EXISTS idx_travel_properties_company_lead ON travel_properties(company_id, lead_id);
+	    CREATE UNIQUE INDEX IF NOT EXISTS idx_travel_properties_company_lead_unique ON travel_properties(company_id, lead_id) WHERE lead_id IS NOT NULL;
+	    CREATE INDEX IF NOT EXISTS idx_travel_properties_company_created ON travel_properties(company_id, created_at DESC);
+	    CREATE INDEX IF NOT EXISTS idx_travel_agency_leads_company_status ON travel_agency_leads(company_id, status, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_travel_agency_leads_company_country ON travel_agency_leads(company_id, country, status);
+    CREATE INDEX IF NOT EXISTS idx_travel_agency_leads_company_email ON travel_agency_leads(company_id, email);
+    CREATE INDEX IF NOT EXISTS idx_travel_agency_leads_company_source ON travel_agency_leads(company_id, source, status);
+    CREATE INDEX IF NOT EXISTS idx_travel_agency_offers_company_agency ON travel_agency_offers(company_id, agency_id, status);
+    CREATE INDEX IF NOT EXISTS idx_travel_agency_offers_company_status ON travel_agency_offers(company_id, status, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_travel_agency_photos_agency ON travel_agency_photos(company_id, agency_id, photo_type, sort_order);
+    CREATE INDEX IF NOT EXISTS idx_travel_agency_inquiries_agency ON travel_agency_inquiries(company_id, agency_id, status, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_travel_agency_offer_clicks_agency ON travel_agency_offer_clicks(company_id, agency_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_travel_agency_offer_clicks_offer ON travel_agency_offer_clicks(company_id, offer_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_travel_agency_reviews_agency ON travel_agency_reviews(company_id, agency_id, status, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_travel_agency_reviews_offer ON travel_agency_reviews(company_id, offer_id, status, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_travel_local_partners_status ON travel_local_partners(company_id, status, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_travel_local_partners_type ON travel_local_partners(company_id, partner_type, status);
+    CREATE INDEX IF NOT EXISTS idx_travel_local_partners_contact ON travel_local_partners(company_id, email, website);
+    CREATE INDEX IF NOT EXISTS idx_travel_local_partners_region ON travel_local_partners(company_id, region, city);
+    CREATE INDEX IF NOT EXISTS idx_travel_property_reviews_property ON travel_property_reviews(company_id, property_id, status, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_travel_property_inquiries_company_status ON travel_property_inquiries(company_id, status, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_travel_property_inquiries_company_created ON travel_property_inquiries(company_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_travel_property_inquiries_property ON travel_property_inquiries(company_id, property_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_travel_booking_requests_company_status ON travel_booking_requests(company_id, status, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_travel_booking_requests_property_created ON travel_booking_requests(company_id, property_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_travel_booking_requests_email ON travel_booking_requests(company_id, email, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_travel_booking_requests_room_period ON travel_booking_requests(company_id, property_id, room_id, status, check_in, check_out);
+    CREATE INDEX IF NOT EXISTS idx_travel_property_photos_property_order ON travel_property_photos(company_id, property_id, sort_order, id);
+    CREATE INDEX IF NOT EXISTS idx_travel_property_rooms_property_order ON travel_property_rooms(company_id, property_id, status, sort_order, id);
+    CREATE INDEX IF NOT EXISTS idx_travel_property_rate_packages_property ON travel_property_rate_packages(company_id, property_id, status, sort_order, id);
+    CREATE INDEX IF NOT EXISTS idx_travel_property_room_rate_periods_property_dates ON travel_property_room_rate_periods(company_id, property_id, start_date, end_date);
+    CREATE INDEX IF NOT EXISTS idx_travel_property_room_rate_periods_room_dates ON travel_property_room_rate_periods(company_id, property_id, room_id, start_date, end_date);
+    CREATE INDEX IF NOT EXISTS idx_travel_property_rate_plan_prices_lookup ON travel_property_rate_plan_prices(company_id, property_id, rate_package_id, room_id, rate_date);
+    CREATE INDEX IF NOT EXISTS idx_travel_property_pynbooking_property ON travel_property_pynbooking_integrations(company_id, property_id, sync_status);
+    CREATE INDEX IF NOT EXISTS idx_travel_property_calendar_links_property ON travel_property_calendar_links(company_id, property_id, sync_status);
+    CREATE INDEX IF NOT EXISTS idx_travel_property_calendar_blocks_property_date ON travel_property_calendar_blocks(company_id, property_id, block_date);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_travel_property_calendar_blocks_link_date ON travel_property_calendar_blocks(company_id, property_id, calendar_link_id, block_date) WHERE calendar_link_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_travel_owner_events_company_created ON travel_owner_account_events(company_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_travel_owner_events_property_created ON travel_owner_account_events(company_id, property_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_travel_owner_events_severity_created ON travel_owner_account_events(company_id, severity, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_travel_owner_events_type_created ON travel_owner_account_events(company_id, event_type, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_travel_owner_password_reset_token ON travel_owner_password_reset_tokens(token_hash);
+    CREATE INDEX IF NOT EXISTS idx_travel_owner_password_reset_property ON travel_owner_password_reset_tokens(company_id, property_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_travel_owner_password_reset_email ON travel_owner_password_reset_tokens(company_id, account_email, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_travel_site_pageviews_company_created ON travel_site_pageviews(company_id, site, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_travel_site_pageviews_visitor_created ON travel_site_pageviews(company_id, visitor_hash, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_travel_site_pageviews_path_created ON travel_site_pageviews(company_id, path, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_travel_site_pageviews_property_created ON travel_site_pageviews(company_id, property_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_travel_lead_activities_lead_created ON travel_lead_activities(company_id, lead_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_travel_lead_activities_type ON travel_lead_activities(company_id, activity_type, created_at DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_travel_email_messages_provider_unique ON travel_email_messages(company_id, mailbox, provider_message_id);
+    CREATE INDEX IF NOT EXISTS idx_travel_email_messages_company_received ON travel_email_messages(company_id, received_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_travel_email_messages_lead_received ON travel_email_messages(company_id, lead_id, received_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_travel_email_messages_lead_direction ON travel_email_messages(company_id, lead_id, direction, received_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_travel_email_messages_direction_email_norm ON travel_email_messages(company_id, direction, lower(trim(to_email)));
+    CREATE INDEX IF NOT EXISTS idx_travel_support_tickets_company_status ON travel_support_tickets(company_id, status, opened_at, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_travel_support_tickets_company_email ON travel_support_tickets(company_id, requester_email, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_travel_support_ticket_messages_ticket ON travel_support_ticket_messages(company_id, ticket_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_travel_whatsapp_events_company_received ON travel_whatsapp_events(company_id, received_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_travel_whatsapp_events_message ON travel_whatsapp_events(company_id, provider_message_id);
+    CREATE INDEX IF NOT EXISTS idx_travel_whatsapp_events_phone ON travel_whatsapp_events(company_id, from_phone, to_phone);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_travel_scoring_settings_company_unique ON travel_scoring_settings(company_id);
+    CREATE INDEX IF NOT EXISTS idx_travel_content_templates_company_type ON travel_content_templates(company_id, template_type, status);
+    CREATE INDEX IF NOT EXISTS idx_travel_content_jobs_company_created ON travel_content_jobs(company_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_travel_content_jobs_company_property ON travel_content_jobs(company_id, property_id, job_type);
+	    CREATE INDEX IF NOT EXISTS idx_travel_blog_articles_company_property ON travel_blog_articles(company_id, property_id, status);
+	    CREATE INDEX IF NOT EXISTS idx_travel_blog_articles_company_slug ON travel_blog_articles(company_id, slug);
+	    CREATE INDEX IF NOT EXISTS idx_travel_social_posts_company_platform ON travel_social_posts(company_id, platform, status);
+	    CREATE INDEX IF NOT EXISTS idx_travel_social_posts_company_property ON travel_social_posts(company_id, property_id, created_at DESC);
+	    CREATE UNIQUE INDEX IF NOT EXISTS idx_travel_social_accounts_company_platform_unique ON travel_social_accounts(company_id, platform);
+	    CREATE INDEX IF NOT EXISTS idx_travel_social_publish_jobs_status ON travel_social_publish_jobs(company_id, status, scheduled_at);
+	    CREATE INDEX IF NOT EXISTS idx_travel_social_publish_jobs_post ON travel_social_publish_jobs(company_id, social_post_id, created_at DESC);
+	    CREATE INDEX IF NOT EXISTS idx_mobile_devices_status ON mobile_app_devices(company_id, status);
+    CREATE INDEX IF NOT EXISTS idx_mobile_workflows_type ON mobile_app_workflows(company_id, workflow_type, status);
+    CREATE INDEX IF NOT EXISTS idx_mobile_tasks_status ON mobile_app_tasks(company_id, status, due_date);
+    CREATE INDEX IF NOT EXISTS idx_mobile_sessions_status ON mobile_app_sessions(company_id, status, opened_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_scm_logistics_status ON scm_logistics_tasks(company_id, status, planned_date);
+    CREATE INDEX IF NOT EXISTS idx_scm_logistics_warehouse ON scm_logistics_tasks(company_id, warehouse_id);
+    CREATE INDEX IF NOT EXISTS idx_scm_transport_status ON scm_transport_orders(company_id, status, pickup_date);
+    CREATE INDEX IF NOT EXISTS idx_scm_distribution_status ON scm_distribution_plans(company_id, status, planned_date);
+    CREATE INDEX IF NOT EXISTS idx_scm_distribution_warehouse ON scm_distribution_plans(company_id, warehouse_id);
+    CREATE INDEX IF NOT EXISTS idx_scm_forecasts_product ON scm_forecasts(company_id, product_id, period_start);
+    CREATE INDEX IF NOT EXISTS idx_scm_forecasts_status ON scm_forecasts(company_id, status, period_start);
+    CREATE INDEX IF NOT EXISTS idx_report_dashboards_status ON report_dashboards(company_id, status);
+    CREATE INDEX IF NOT EXISTS idx_report_kpis_category ON report_kpis(company_id, category, status);
+    CREATE INDEX IF NOT EXISTS idx_report_saved_type ON report_saved_reports(company_id, report_type, status);
+    CREATE INDEX IF NOT EXISTS idx_report_exports_report ON report_exports(company_id, report_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_facturi_client_id ON facturi(client_id);
     CREATE INDEX IF NOT EXISTS idx_facturi_an_seq ON facturi(an, seq);
     CREATE INDEX IF NOT EXISTS idx_facturi_status ON facturi(status);
@@ -2328,6 +3853,7 @@ export function migrate() {
   ensureColumn("users", "totp_last_used_step", "INTEGER");
   ensureColumn("users", "totp_failed_attempts", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn("users", "totp_locked_until", "TEXT");
+  ensureColumn("users", "language", "TEXT NOT NULL DEFAULT 'ro'");
   ensureColumn("companies", "stripe_customer_id", "TEXT");
   ensureColumn("companies", "is_demo", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn("companies", "demo_expires_at", "TEXT");
@@ -2338,6 +3864,212 @@ export function migrate() {
   ensureColumn("companies", "archived_by_email", "TEXT");
   ensureColumn("companies", "archived_previous_status", "TEXT");
   ensureColumn("companies", "archive_reason", "TEXT");
+  ensureColumn("companies", "country", "TEXT NOT NULL DEFAULT 'Romania'");
+  ensureColumn("travel_properties", "amenities", "TEXT");
+  ensureColumn("travel_properties", "description", "TEXT");
+  ensureColumn("travel_properties", "tourist_zone", "TEXT");
+  ensureColumn("travel_properties", "meal_types", "TEXT");
+  ensureColumn("travel_properties", "promo_enabled", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("travel_properties", "promo_badge", "TEXT");
+  ensureColumn("travel_properties", "promo_title", "TEXT");
+  ensureColumn("travel_properties", "promo_text", "TEXT");
+  ensureColumn("travel_properties", "promo_valid_until", "TEXT");
+  ensureColumn("travel_properties", "max_adults", "INTEGER NOT NULL DEFAULT 2");
+  ensureColumn("travel_properties", "max_children", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("travel_properties", "child_free_age", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("travel_properties", "child_paid_from_age", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("travel_properties", "child_price_ron", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("travel_properties", "price_per_night", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("travel_properties", "price_currency", "TEXT NOT NULL DEFAULT 'RON'");
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS travel_partner_property_mappings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      provider TEXT NOT NULL,
+      external_property_id TEXT NOT NULL,
+      property_id INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active'
+        CHECK (status IN ('active', 'inactive')),
+      payload_json TEXT,
+      last_synced_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(company_id, provider, external_property_id),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (property_id) REFERENCES travel_properties(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_partner_webhook_deliveries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      provider TEXT NOT NULL,
+      property_id INTEGER,
+      booking_request_id INTEGER,
+      event_type TEXT NOT NULL,
+      event_id TEXT NOT NULL,
+      target_url TEXT,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'sent', 'error', 'skipped')),
+      attempts INTEGER NOT NULL DEFAULT 0,
+      response_status INTEGER NOT NULL DEFAULT 0,
+      response_body TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (property_id) REFERENCES travel_properties(id) ON DELETE SET NULL,
+      FOREIGN KEY (booking_request_id) REFERENCES travel_booking_requests(id) ON DELETE SET NULL
+    );
+  `);
+  db.exec("CREATE INDEX IF NOT EXISTS idx_travel_partner_mappings_property ON travel_partner_property_mappings(company_id, provider, property_id)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_travel_partner_webhook_deliveries_booking ON travel_partner_webhook_deliveries(company_id, provider, booking_request_id, event_type)");
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS travel_property_rooms (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      property_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      beds TEXT,
+      amenities TEXT,
+      size_sqm INTEGER NOT NULL DEFAULT 0,
+      max_adults INTEGER NOT NULL DEFAULT 2,
+      max_children INTEGER NOT NULL DEFAULT 0,
+      quantity INTEGER NOT NULL DEFAULT 1,
+      price_per_night INTEGER NOT NULL DEFAULT 0,
+      price_currency TEXT NOT NULL DEFAULT 'RON',
+      external_provider TEXT,
+      external_room_id TEXT,
+      external_rate_plan_id TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'active'
+        CHECK (status IN ('active', 'inactive')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (property_id) REFERENCES travel_properties(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_travel_property_rooms_property_order ON travel_property_rooms(company_id, property_id, status, sort_order, id);
+  `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS travel_property_rate_packages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      property_id INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      meal_type TEXT NOT NULL DEFAULT 'mic-dejun',
+      pricing_mode TEXT NOT NULL DEFAULT 'per_person'
+        CHECK (pricing_mode IN ('per_person', 'per_room', 'package')),
+      adult_price INTEGER NOT NULL DEFAULT 0,
+      child_price INTEGER NOT NULL DEFAULT 0,
+      room_price INTEGER NOT NULL DEFAULT 0,
+      package_price INTEGER NOT NULL DEFAULT 0,
+      min_nights INTEGER NOT NULL DEFAULT 1,
+      included_nights INTEGER NOT NULL DEFAULT 0,
+      includes_treatment INTEGER NOT NULL DEFAULT 0,
+      child_paid_from_age INTEGER NOT NULL DEFAULT 0,
+      max_adults INTEGER NOT NULL DEFAULT 0,
+      max_children INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'active'
+        CHECK (status IN ('active', 'inactive')),
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (property_id) REFERENCES travel_properties(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_travel_property_rate_packages_property ON travel_property_rate_packages(company_id, property_id, status, sort_order, id);
+  `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS travel_property_rate_plan_prices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      property_id INTEGER NOT NULL,
+      rate_package_id INTEGER NOT NULL,
+      room_id INTEGER NOT NULL,
+      rate_date TEXT NOT NULL,
+      price_1p INTEGER NOT NULL DEFAULT 0,
+      price_2p INTEGER NOT NULL DEFAULT 0,
+      extra_bed_price INTEGER NOT NULL DEFAULT 0,
+      child_price INTEGER NOT NULL DEFAULT 0,
+      child_extra_bed_price INTEGER NOT NULL DEFAULT 0,
+      available_quantity INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'available'
+        CHECK (status IN ('available', 'blocked')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (property_id) REFERENCES travel_properties(id) ON DELETE CASCADE,
+      FOREIGN KEY (rate_package_id) REFERENCES travel_property_rate_packages(id) ON DELETE CASCADE,
+      FOREIGN KEY (room_id) REFERENCES travel_property_rooms(id) ON DELETE CASCADE,
+      UNIQUE (company_id, property_id, rate_package_id, room_id, rate_date)
+    );
+    CREATE INDEX IF NOT EXISTS idx_travel_property_rate_plan_prices_lookup ON travel_property_rate_plan_prices(company_id, property_id, rate_package_id, room_id, rate_date);
+  `);
+  ensureColumn("travel_property_rate_packages", "child_paid_from_age", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("travel_property_rooms", "size_sqm", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("travel_property_rooms", "external_provider", "TEXT");
+  ensureColumn("travel_property_rooms", "external_room_id", "TEXT");
+  ensureColumn("travel_property_rooms", "external_rate_plan_id", "TEXT");
+  ensureColumn("travel_property_rate_packages", "external_provider", "TEXT");
+  ensureColumn("travel_property_rate_packages", "external_rate_plan_id", "TEXT");
+  ensureColumn("travel_property_rate_packages", "cancellation_policy_json", "TEXT");
+  ensureColumn("travel_property_rate_packages", "payment_policy_json", "TEXT");
+  ensureColumn("travel_property_room_rate_periods", "external_provider", "TEXT");
+  ensureColumn("travel_property_room_rate_periods", "external_room_id", "TEXT");
+  ensureColumn("travel_property_room_rate_periods", "external_rate_plan_id", "TEXT");
+  ensureColumn("travel_booking_requests", "rate_package_id", "INTEGER");
+  ensureColumn("travel_booking_requests", "rate_package_title", "TEXT");
+  ensureColumn("travel_booking_requests", "rate_package_pricing_mode", "TEXT");
+  ensureColumn("travel_booking_requests", "rate_package_total", "REAL NOT NULL DEFAULT 0");
+  ensureColumn("travel_booking_requests", "rate_package_details", "TEXT");
+  ensureColumn("travel_booking_requests", "booking_channel", "TEXT NOT NULL DEFAULT 'manual_request'");
+  ensureColumn("travel_booking_requests", "availability_provider", "TEXT NOT NULL DEFAULT 'trevoro'");
+  ensureColumn("travel_booking_requests", "payment_flow", "TEXT NOT NULL DEFAULT 'owner_policy'");
+  ensureColumn("travel_booking_requests", "external_provider", "TEXT");
+  ensureColumn("travel_booking_requests", "external_reservation_id", "TEXT");
+  ensureColumn("travel_booking_requests", "pynbooking_reservation_id", "TEXT");
+  ensureColumn("travel_booking_requests", "external_reservation_status", "TEXT");
+  ensureColumn("travel_booking_requests", "external_error", "TEXT");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_travel_property_rooms_external ON travel_property_rooms(company_id, property_id, external_provider, external_room_id)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_travel_room_rate_periods_external ON travel_property_room_rate_periods(company_id, property_id, external_provider, external_room_id)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_travel_booking_requests_external ON travel_booking_requests(company_id, external_provider, external_reservation_id)");
+  ensureColumn("travel_leads", "enrichment_status", "TEXT NOT NULL DEFAULT 'pending'");
+  ensureColumn("travel_leads", "last_enriched_at", "TEXT");
+  ensureColumn("travel_leads", "enrichment_error", "TEXT");
+  ensureColumn("travel_leads", "enrichment_source_url", "TEXT");
+  ensureColumn("travel_leads", "email_retry_priority", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("travel_leads", "email_retry_reason", "TEXT");
+  ensureColumn("travel_leads", "email_retry_ready_at", "TEXT");
+  ensureColumn("travel_leads", "whatsapp_phone", "TEXT");
+  ensureColumn("travel_leads", "whatsapp_opt_in_status", "TEXT NOT NULL DEFAULT 'unknown'");
+  ensureColumn("travel_leads", "whatsapp_opt_in_source", "TEXT");
+  ensureColumn("travel_leads", "whatsapp_opt_in_at", "TEXT");
+  ensureColumn("travel_leads", "whatsapp_last_contacted_at", "TEXT");
+  ensureColumn("travel_leads", "whatsapp_status", "TEXT NOT NULL DEFAULT 'manual'");
+  ensureColumn("travel_leads", "whatsapp_notes", "TEXT");
+  ensureColumn("travel_leads", "linkedin", "TEXT");
+  ensureColumn("travel_leads", "contact_page_url", "TEXT");
+  ensureColumn("travel_leads", "contact_person", "TEXT");
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_travel_leads_enrichment ON travel_leads(company_id, enrichment_status, last_enriched_at);
+    CREATE INDEX IF NOT EXISTS idx_travel_leads_retry_priority ON travel_leads(company_id, email_retry_priority DESC, email_retry_ready_at, status);
+    CREATE INDEX IF NOT EXISTS idx_travel_leads_whatsapp ON travel_leads(company_id, whatsapp_opt_in_status, whatsapp_last_contacted_at);
+  `);
+  ensureColumn("travel_social_posts", "media_url", "TEXT");
+  ensureColumn("travel_social_accounts", "refresh_expires_at", "TEXT");
+  ensureColumn("travel_social_accounts", "scopes", "TEXT");
+  ensureColumn("travel_social_accounts", "profile_json", "TEXT");
+  ensureColumn("travel_social_accounts", "last_sync_at", "TEXT");
+  ensureColumn("travel_email_messages", "detected_language", "TEXT");
+  ensureColumn("travel_email_messages", "detected_language_name", "TEXT");
+  ensureColumn("travel_email_messages", "translation_ro", "TEXT");
+  ensureColumn("travel_email_messages", "translation_status", "TEXT");
+  ensureColumn("travel_email_messages", "translation_model", "TEXT");
+  ensureColumn("travel_email_messages", "translation_updated_at", "TEXT");
+  ensureColumn("travel_email_messages", "reply_language", "TEXT");
+  ensureColumn("travel_email_messages", "reply_language_name", "TEXT");
   ensureColumn("plans", "pricing_model", "TEXT NOT NULL DEFAULT 'flat'");
   ensureColumn("plans", "max_modules_per_user", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn("plans", "max_active_modules", "INTEGER NOT NULL DEFAULT 0");
@@ -2382,6 +4114,7 @@ export function migrate() {
   ensureColumn("clients", "client_status", "TEXT DEFAULT 'verde'");
   ensureColumn("clients", "notes", "TEXT");
   ensureColumn("clients", "company_id", "INTEGER");
+  ensureColumn("clients", "country", "TEXT NOT NULL DEFAULT 'Romania'");
 
   const legacyClientsUniqueIndex = db.prepare(`PRAGMA index_list('clients')`).all()
     .some((index) => index.name === "sqlite_autoindex_clients_1");
@@ -2584,6 +4317,40 @@ export function migrate() {
   ensureColumn("sales_deliveries", "notes", "TEXT");
   ensureColumn("sales_deliveries", "created_by_email", "TEXT");
   ensureColumn("sales_deliveries", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
+  ensureColumn("order_lifecycle_events", "company_id", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("order_lifecycle_events", "event_number", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("order_lifecycle_events", "order_id", "INTEGER");
+  ensureColumn("order_lifecycle_events", "from_status", "TEXT");
+  ensureColumn("order_lifecycle_events", "to_status", "TEXT NOT NULL DEFAULT 'NOUA'");
+  ensureColumn("order_lifecycle_events", "event_type", "TEXT NOT NULL DEFAULT 'STATUS'");
+  ensureColumn("order_lifecycle_events", "event_date", "TEXT");
+  ensureColumn("order_lifecycle_events", "actor_email", "TEXT");
+  ensureColumn("order_lifecycle_events", "notes", "TEXT");
+  ensureColumn("order_fulfillment_tasks", "company_id", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("order_fulfillment_tasks", "task_number", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("order_fulfillment_tasks", "order_id", "INTEGER");
+  ensureColumn("order_fulfillment_tasks", "delivery_id", "INTEGER");
+  ensureColumn("order_fulfillment_tasks", "task_type", "TEXT NOT NULL DEFAULT 'PICKING'");
+  ensureColumn("order_fulfillment_tasks", "warehouse_id", "INTEGER");
+  ensureColumn("order_fulfillment_tasks", "assigned_to", "TEXT");
+  ensureColumn("order_fulfillment_tasks", "planned_date", "TEXT");
+  ensureColumn("order_fulfillment_tasks", "status", "TEXT NOT NULL DEFAULT 'PLANIFICAT'");
+  ensureColumn("order_fulfillment_tasks", "notes", "TEXT");
+  ensureColumn("order_fulfillment_tasks", "created_by_email", "TEXT");
+  ensureColumn("order_fulfillment_tasks", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
+  ensureColumn("order_tracking_events", "company_id", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("order_tracking_events", "tracking_number", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("order_tracking_events", "order_id", "INTEGER");
+  ensureColumn("order_tracking_events", "delivery_id", "INTEGER");
+  ensureColumn("order_tracking_events", "event_type", "TEXT NOT NULL DEFAULT 'STATUS'");
+  ensureColumn("order_tracking_events", "event_date", "TEXT");
+  ensureColumn("order_tracking_events", "location", "TEXT");
+  ensureColumn("order_tracking_events", "courier", "TEXT");
+  ensureColumn("order_tracking_events", "awb", "TEXT");
+  ensureColumn("order_tracking_events", "status", "TEXT");
+  ensureColumn("order_tracking_events", "notes", "TEXT");
+  ensureColumn("order_tracking_events", "created_by_email", "TEXT");
+  ensureColumn("order_tracking_events", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
   ensureColumn("sales_delivery_items", "delivery_id", "INTEGER");
   ensureColumn("sales_delivery_items", "company_id", "INTEGER");
   ensureColumn("sales_delivery_items", "order_item_id", "INTEGER");
@@ -3040,6 +4807,211 @@ export function migrate() {
   ensureColumn("inventory_barcodes", "notes", "TEXT");
   ensureColumn("inventory_barcodes", "created_by_email", "TEXT");
   ensureColumn("inventory_barcodes", "updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))");
+	  ensureColumn("travel_properties", "partner_plan", "TEXT NOT NULL DEFAULT 'standard_monthly'");
+	  ensureColumn("travel_properties", "subscription_status", "TEXT NOT NULL DEFAULT 'active'");
+	  ensureColumn("travel_properties", "monthly_price_ron", "INTEGER NOT NULL DEFAULT 0");
+	  ensureColumn("travel_properties", "monthly_price_amount", "INTEGER NOT NULL DEFAULT 0");
+	  ensureColumn("travel_properties", "monthly_price_currency", "TEXT NOT NULL DEFAULT 'RON'");
+	  ensureColumn("travel_properties", "free_until", "TEXT");
+	  ensureColumn("travel_properties", "activation_source", "TEXT");
+	  ensureColumn("travel_properties", "billing_company_id", "INTEGER");
+	  ensureColumn("travel_properties", "account_email", "TEXT");
+	  ensureColumn("travel_properties", "password_salt", "TEXT");
+		  ensureColumn("travel_properties", "password_hash", "TEXT");
+		  ensureColumn("travel_properties", "account_status", "TEXT NOT NULL DEFAULT 'pending'");
+		  ensureColumn("travel_properties", "last_login_at", "TEXT");
+		  ensureColumn("travel_properties", "deletion_notice_sent_at", "TEXT");
+		  ensureColumn("travel_properties", "deletion_scheduled_at", "TEXT");
+		  ensureColumn("travel_properties", "deleted_at", "TEXT");
+		  ensureColumn("travel_properties", "deletion_reason", "TEXT");
+		  ensureColumn("travel_properties", "deleted_by_email", "TEXT");
+		  db.exec("CREATE INDEX IF NOT EXISTS idx_travel_properties_company_deletion ON travel_properties(company_id, deletion_scheduled_at, status)");
+		  ensureColumn("travel_leads", "country", "TEXT NOT NULL DEFAULT 'Romania'");
+	  ensureColumn("travel_properties", "country", "TEXT NOT NULL DEFAULT 'Romania'");
+	  ensureColumn("travel_properties", "tourist_zone", "TEXT");
+	  ensureColumn("travel_leads", "google_place_id", "TEXT");
+	  ensureColumn("travel_properties", "google_place_id", "TEXT");
+	  ensureColumn("travel_agency_leads", "country", "TEXT NOT NULL DEFAULT 'Romania'");
+	  ensureColumn("travel_agency_leads", "slug", "TEXT");
+	  ensureColumn("travel_agency_leads", "display_name", "TEXT");
+	  ensureColumn("travel_agency_leads", "contact_name", "TEXT");
+	  ensureColumn("travel_agency_leads", "short_description", "TEXT");
+	  ensureColumn("travel_agency_leads", "description", "TEXT");
+	  ensureColumn("travel_agency_leads", "hero_image_url", "TEXT");
+	  ensureColumn("travel_agency_leads", "logo_image_url", "TEXT");
+	  ensureColumn("travel_agency_leads", "brand_color", "TEXT NOT NULL DEFAULT '#0f766e'");
+	  ensureColumn("travel_agency_leads", "public_status", "TEXT NOT NULL DEFAULT 'draft'");
+	  ensureColumn("travel_agency_leads", "account_email", "TEXT");
+	  ensureColumn("travel_agency_leads", "password_salt", "TEXT");
+	  ensureColumn("travel_agency_leads", "password_hash", "TEXT");
+	  ensureColumn("travel_agency_leads", "account_status", "TEXT NOT NULL DEFAULT 'pending'");
+	  ensureColumn("travel_agency_leads", "published_at", "TEXT");
+	  ensureColumn("travel_agency_leads", "last_login_at", "TEXT");
+	  ensureColumn("travel_agency_leads", "offer_focus", "TEXT");
+	  ensureColumn("travel_agency_leads", "subscription_status", "TEXT NOT NULL DEFAULT 'lead'");
+	  ensureColumn("travel_agency_leads", "monthly_price_ron", "INTEGER NOT NULL DEFAULT 199");
+	  ensureColumn("travel_agency_leads", "monthly_price_amount", "REAL NOT NULL DEFAULT 199");
+	  ensureColumn("travel_agency_leads", "monthly_price_currency", "TEXT NOT NULL DEFAULT 'RON'");
+	  ensureColumn("travel_agency_leads", "listing_limit", "INTEGER NOT NULL DEFAULT 0");
+	  ensureColumn("travel_agency_leads", "promotion_notes", "TEXT");
+	  ensureColumn("travel_agency_leads", "next_follow_up_at", "TEXT");
+	  ensureColumn("travel_agency_offers", "slug", "TEXT");
+	  ensureColumn("travel_agency_offers", "amenities", "TEXT");
+	  ensureColumn("travel_agency_offers", "summary", "TEXT");
+	  ensureColumn("travel_agency_offers", "description", "TEXT");
+	  ensureColumn("travel_agency_offers", "image_url", "TEXT");
+	  ensureColumn("travel_agency_offers", "gallery_json", "TEXT");
+	  ensureColumn("travel_agency_offers", "departure_city", "TEXT");
+	  ensureColumn("travel_agency_offers", "duration_days", "INTEGER NOT NULL DEFAULT 0");
+	  ensureColumn("travel_agency_offers", "valid_from", "TEXT");
+	  ensureColumn("travel_agency_offers", "valid_until", "TEXT");
+	  ensureColumn("travel_agency_offers", "includes", "TEXT");
+	  ensureColumn("travel_agency_offers", "contact_phone", "TEXT");
+	  ensureColumn("travel_agency_offers", "contact_email", "TEXT");
+	  ensureColumn("travel_agency_photos", "offer_id", "INTEGER");
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS travel_agency_offer_clicks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        company_id INTEGER NOT NULL,
+        agency_id INTEGER NOT NULL,
+        offer_id INTEGER NOT NULL,
+        source TEXT NOT NULL DEFAULT 'trevoro_offer_click',
+        target_url TEXT,
+        referrer TEXT,
+        user_agent TEXT,
+        ip_hash TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+        FOREIGN KEY (agency_id) REFERENCES travel_agency_leads(id) ON DELETE CASCADE,
+        FOREIGN KEY (offer_id) REFERENCES travel_agency_offers(id) ON DELETE CASCADE
+      );
+    `);
+	  ensureColumn("travel_local_partners", "partner_type", "TEXT NOT NULL DEFAULT 'tourist_info_center'");
+	  ensureColumn("travel_local_partners", "country", "TEXT NOT NULL DEFAULT 'Romania'");
+	  ensureColumn("travel_local_partners", "region", "TEXT");
+	  ensureColumn("travel_local_partners", "city", "TEXT");
+	  ensureColumn("travel_local_partners", "address", "TEXT");
+	  ensureColumn("travel_local_partners", "administrator", "TEXT");
+	  ensureColumn("travel_local_partners", "phone", "TEXT");
+	  ensureColumn("travel_local_partners", "email", "TEXT");
+	  ensureColumn("travel_local_partners", "website", "TEXT");
+	  ensureColumn("travel_local_partners", "facebook", "TEXT");
+	  ensureColumn("travel_local_partners", "instagram", "TEXT");
+	  ensureColumn("travel_local_partners", "contact_name", "TEXT");
+	  ensureColumn("travel_local_partners", "ad_title", "TEXT");
+	  ensureColumn("travel_local_partners", "ad_summary", "TEXT");
+	  ensureColumn("travel_local_partners", "ad_image_url", "TEXT");
+	  ensureColumn("travel_local_partners", "ad_cta_url", "TEXT");
+	  ensureColumn("travel_local_partners", "ad_cta_label", "TEXT");
+	  ensureColumn("travel_local_partners", "promotion_tier", "TEXT NOT NULL DEFAULT 'standard'");
+	  ensureColumn("travel_local_partners", "featured_until", "TEXT");
+	  ensureColumn("travel_local_partners", "potential_reach", "INTEGER NOT NULL DEFAULT 0");
+	  ensureColumn("travel_local_partners", "source", "TEXT");
+	  ensureColumn("travel_local_partners", "source_url", "TEXT");
+	  ensureColumn("travel_local_partners", "status", "TEXT NOT NULL DEFAULT 'nou'");
+	  ensureColumn("travel_local_partners", "notes", "TEXT");
+	  ensureColumn("travel_local_partners", "social_enrichment_status", "TEXT NOT NULL DEFAULT 'pending'");
+	  ensureColumn("travel_local_partners", "social_enrichment_source", "TEXT");
+	  ensureColumn("travel_local_partners", "social_enrichment_error", "TEXT");
+	  ensureColumn("travel_local_partners", "social_enriched_at", "TEXT");
+	  ensureColumn("travel_local_partners", "next_follow_up_at", "TEXT");
+	  ensureColumn("travel_local_partners", "last_contacted_at", "TEXT");
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_travel_properties_account_email ON travel_properties(company_id, account_email);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_travel_agency_leads_company_slug ON travel_agency_leads(company_id, slug) WHERE slug IS NOT NULL AND slug <> '';
+      CREATE INDEX IF NOT EXISTS idx_travel_agency_leads_account_email ON travel_agency_leads(company_id, account_email);
+      CREATE INDEX IF NOT EXISTS idx_travel_agency_leads_public ON travel_agency_leads(company_id, public_status, subscription_status);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_travel_agency_offers_company_agency_slug ON travel_agency_offers(company_id, agency_id, slug) WHERE slug IS NOT NULL AND slug <> '';
+      CREATE INDEX IF NOT EXISTS idx_travel_agency_photos_agency ON travel_agency_photos(company_id, agency_id, photo_type, sort_order);
+      CREATE INDEX IF NOT EXISTS idx_travel_agency_photos_offer ON travel_agency_photos(company_id, agency_id, offer_id, status, sort_order);
+      CREATE INDEX IF NOT EXISTS idx_travel_agency_inquiries_agency ON travel_agency_inquiries(company_id, agency_id, status, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_travel_agency_offer_clicks_agency ON travel_agency_offer_clicks(company_id, agency_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_travel_agency_offer_clicks_offer ON travel_agency_offer_clicks(company_id, offer_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_travel_agency_reviews_agency ON travel_agency_reviews(company_id, agency_id, status, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_travel_agency_reviews_offer ON travel_agency_reviews(company_id, offer_id, status, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_travel_local_partners_status ON travel_local_partners(company_id, status, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_travel_local_partners_type ON travel_local_partners(company_id, partner_type, status);
+      CREATE INDEX IF NOT EXISTS idx_travel_local_partners_contact ON travel_local_partners(company_id, email, website);
+      CREATE INDEX IF NOT EXISTS idx_travel_local_partners_region ON travel_local_partners(company_id, region, city);
+      CREATE INDEX IF NOT EXISTS idx_travel_local_partners_public_ads ON travel_local_partners(company_id, status, promotion_tier, city);
+      CREATE INDEX IF NOT EXISTS idx_travel_local_partners_social_enrichment ON travel_local_partners(company_id, social_enrichment_status, social_enriched_at);
+      CREATE INDEX IF NOT EXISTS idx_travel_property_reviews_property ON travel_property_reviews(company_id, property_id, status, created_at DESC);
+    `);
+	  ensureColumn("travel_property_inquiries", "notified_at", "TEXT");
+	  ensureColumn("travel_property_inquiries", "notification_error", "TEXT");
+	  ensureColumn("travel_property_calendar_blocks", "booking_request_id", "INTEGER");
+	  ensureColumn("travel_property_calendar_blocks", "hold_expires_at", "TEXT");
+	  db.exec(`
+	    CREATE TABLE IF NOT EXISTS travel_property_pynbooking_integrations (
+	      id INTEGER PRIMARY KEY AUTOINCREMENT,
+	      company_id INTEGER NOT NULL,
+	      property_id INTEGER NOT NULL,
+	      provider TEXT NOT NULL DEFAULT 'pynbooking',
+	      provider_label TEXT,
+	      partner_status TEXT NOT NULL DEFAULT 'ready',
+	      hotel_id TEXT NOT NULL,
+	      client_id TEXT NOT NULL,
+	      client_secret TEXT NOT NULL,
+	      api_key TEXT,
+	      api_base_url TEXT,
+	      default_plan_id TEXT,
+	      currency TEXT NOT NULL DEFAULT 'RON',
+	      language TEXT NOT NULL DEFAULT 'RO',
+	      sync_months INTEGER NOT NULL DEFAULT 6,
+	      sync_status TEXT NOT NULL DEFAULT 'pending',
+	      access_token TEXT,
+	      token_expires_at TEXT,
+	      last_tested_at TEXT,
+	      last_synced_at TEXT,
+	      last_imported_at TEXT,
+	      last_error TEXT,
+	      last_sync_summary TEXT,
+	      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+	      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+	      UNIQUE(company_id, property_id)
+	    );
+	    CREATE INDEX IF NOT EXISTS idx_travel_property_pynbooking_property ON travel_property_pynbooking_integrations(company_id, property_id, sync_status);
+	  `);
+	  ensureColumn("travel_property_pynbooking_integrations", "provider", "TEXT NOT NULL DEFAULT 'pynbooking'");
+	  ensureColumn("travel_property_pynbooking_integrations", "provider_label", "TEXT");
+	  ensureColumn("travel_property_pynbooking_integrations", "partner_status", "TEXT NOT NULL DEFAULT 'ready'");
+	  ensureColumn("travel_property_pynbooking_integrations", "api_key", "TEXT");
+	  ensureColumn("travel_property_pynbooking_integrations", "api_base_url", "TEXT");
+	  ensureColumn("travel_property_pynbooking_integrations", "default_plan_id", "TEXT");
+	  ensureColumn("travel_property_pynbooking_integrations", "currency", "TEXT NOT NULL DEFAULT 'RON'");
+	  ensureColumn("travel_property_pynbooking_integrations", "language", "TEXT NOT NULL DEFAULT 'RO'");
+	  ensureColumn("travel_property_pynbooking_integrations", "sync_months", "INTEGER NOT NULL DEFAULT 6");
+	  ensureColumn("travel_property_pynbooking_integrations", "sync_status", "TEXT NOT NULL DEFAULT 'pending'");
+	  ensureColumn("travel_property_pynbooking_integrations", "access_token", "TEXT");
+	  ensureColumn("travel_property_pynbooking_integrations", "token_expires_at", "TEXT");
+	  ensureColumn("travel_property_pynbooking_integrations", "last_tested_at", "TEXT");
+	  ensureColumn("travel_property_pynbooking_integrations", "last_synced_at", "TEXT");
+	  ensureColumn("travel_property_pynbooking_integrations", "last_imported_at", "TEXT");
+	  ensureColumn("travel_property_pynbooking_integrations", "last_error", "TEXT");
+	  ensureColumn("travel_property_pynbooking_integrations", "last_sync_summary", "TEXT");
+	  repairTravelCalendarProviderCheck();
+	  ensureColumn("travel_property_photos", "room_id", "INTEGER");
+	  ensureColumn("travel_property_photos", "room_name", "TEXT");
+	  ensureColumn("travel_booking_requests", "room_id", "INTEGER");
+	  ensureColumn("travel_booking_requests", "room_name", "TEXT");
+	  ensureColumn("travel_booking_requests", "room_quantity", "INTEGER NOT NULL DEFAULT 1");
+	  ensureColumn("travel_booking_requests", "room_price_per_night", "REAL NOT NULL DEFAULT 0");
+	  ensureColumn("travel_booking_requests", "stripe_checkout_session_id", "TEXT");
+	  ensureColumn("travel_booking_requests", "stripe_payment_intent_id", "TEXT");
+	  ensureColumn("travel_booking_requests", "stripe_payment_status", "TEXT");
+	  ensureColumn("travel_booking_requests", "paid_at", "TEXT");
+	  ensureColumn("travel_booking_requests", "guest_notified_at", "TEXT");
+	  ensureColumn("travel_booking_requests", "guest_email_status", "TEXT");
+	  ensureColumn("travel_booking_requests", "guest_email_error", "TEXT");
+	  db.exec("CREATE INDEX IF NOT EXISTS idx_travel_booking_requests_room_period ON travel_booking_requests(company_id, property_id, room_id, status, check_in, check_out)");
+	  ensureColumn("travel_support_tickets", "country", "TEXT NOT NULL DEFAULT 'Romania'");
+	  ensureColumn("travel_support_tickets", "opened_at", "TEXT");
+	  ensureColumn("travel_support_tickets", "resolved_at", "TEXT");
+	  db.exec("CREATE INDEX IF NOT EXISTS idx_travel_property_calendar_blocks_booking ON travel_property_calendar_blocks(company_id, property_id, booking_request_id)");
+	  db.exec("CREATE INDEX IF NOT EXISTS idx_travel_leads_company_country ON travel_leads(company_id, country, status)");
+	  db.exec("CREATE INDEX IF NOT EXISTS idx_travel_properties_company_country ON travel_properties(company_id, country, status)");
+	  db.exec("CREATE INDEX IF NOT EXISTS idx_travel_leads_company_google_place ON travel_leads(company_id, google_place_id)");
+	  ensureColumn("travel_blog_articles", "category", "TEXT NOT NULL DEFAULT 'Ghiduri'");
   ensureColumn("facturi", "efactura_upload_index", "TEXT");
   ensureColumn("facturi", "efactura_download_id", "TEXT");
   ensureColumn("facturi", "efactura_response_zip_path", "TEXT");
@@ -3128,6 +5100,9 @@ export function migrate() {
     CREATE INDEX IF NOT EXISTS idx_sales_price_items_company_list ON sales_price_items(company_id, price_list_id);
     CREATE INDEX IF NOT EXISTS idx_sales_discounts_company_status ON sales_discounts(company_id, status);
     CREATE INDEX IF NOT EXISTS idx_sales_deliveries_company_status ON sales_deliveries(company_id, status);
+    CREATE INDEX IF NOT EXISTS idx_order_lifecycle_company_order_status ON order_lifecycle_events(company_id, order_id, to_status);
+    CREATE INDEX IF NOT EXISTS idx_order_fulfillment_company_date ON order_fulfillment_tasks(company_id, planned_date DESC);
+    CREATE INDEX IF NOT EXISTS idx_order_tracking_company_status ON order_tracking_events(company_id, status);
     CREATE INDEX IF NOT EXISTS idx_sales_delivery_items_company_delivery ON sales_delivery_items(company_id, delivery_id);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_procurement_suppliers_company_code_unique ON procurement_suppliers(company_id, supplier_code);
     CREATE INDEX IF NOT EXISTS idx_procurement_suppliers_company_status ON procurement_suppliers(company_id, status);
@@ -3181,6 +5156,7 @@ export function migrate() {
     CREATE INDEX IF NOT EXISTS idx_inventory_picking_items_picking ON inventory_picking_items(company_id, picking_id);
     CREATE INDEX IF NOT EXISTS idx_inventory_barcodes_company_status ON inventory_barcodes(company_id, status);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_barcodes_company_value_unique ON inventory_barcodes(company_id, barcode_value);
+    CREATE INDEX IF NOT EXISTS idx_travel_blog_articles_company_category ON travel_blog_articles(company_id, category, status);
   `);
 
   const legacyStarterPlan = db.prepare(`SELECT id FROM plans WHERE code='crm-starter'`).get();
@@ -3249,6 +5225,9 @@ export function migrate() {
       Number(plan.sort_order || 100)
     );
   }
+
+  backfillTravelModuleAccess();
+  backfillEmarqetModuleAccess();
 
   const companyName = String(
     db.prepare(`SELECT value FROM app_settings WHERE key='company_name'`).get()?.value ||

@@ -7,6 +7,7 @@ import {
   renderNexoraClientDossiersPage,
   renderNexoraDocumentTemplateFormPage,
   renderNexoraDocumentsPage,
+  renderNexoraDocumentsOcrPage,
   renderNexoraDocumentsRegisterPage,
   renderNexoraDocumentsTemplatesPage
 } from "./src/ui/nexora-documents-page.js";
@@ -35,8 +36,10 @@ import { fetchAnafCompany } from "./lib/anaf.js";
 import { anafCheckUploadStatus, anafDownloadMessage, anafUploadFactura, syncAnafInbox } from "./lib/anaf-efactura.js";
 import { COMPANY, CORE_ALWAYS_INCLUDED_MODULES, MODULE_DEFINITIONS, MODULE_GROUPS, ROLE_MODULES, hasModuleKeyAccess, normalizeCompanyModules, normalizeUserModules, planChargeAmount, planChargeQuantity, registerRoleModules } from "./lib/app-config.js";
 import { createTransporter, initApplication, loadTemplates, setupAppMiddleware } from "./lib/bootstrap.js";
+import { i18nMiddleware, normalizeLanguage } from "./lib/i18n.js";
 import { maybeGenerateBillingInvoice } from "./lib/billing-invoices.js";
 import { processDmsTemplate } from "./lib/dms-autofill.js";
+import { extractDmsOcrText, getDmsOcrRuntimeStatus, suggestDmsOcrProfileFields } from "./lib/dms-ocr.js";
 import { buildDraftInvoiceNumber, ensureOfficialInvoiceNumber, formatInvoiceDisplayNumber, nextConfiguredInvoiceNumber } from "./lib/invoice-numbering.js";
 import { escapeHtml, fmt2, fmtMoney, hasModuleAccess, normalizeCui, todayISO } from "./lib/helpers.js";
 import { renderPlanCards } from "./lib/plan-cards.js";
@@ -53,10 +56,18 @@ import { registerDashboardRoutes } from "./routes/dashboard-routes.js";
 import { registerFacturiRoutes } from "./routes/facturi-routes.js";
 import { registerHrRoutes } from "./routes/hr-routes.js";
 import { registerInventoryRoutes } from "./routes/inventory-routes.js";
+import { registerLeadBuilderRoutes } from "./routes/lead-builder-routes.js";
 import { registerManufacturingRoutes } from "./routes/manufacturing-routes.js";
+import { registerHorecaRoutes } from "./routes/horeca-routes.js";
+import { registerTravelRoutes, registerTrevoroLaunchRoutes } from "./routes/travel-routes.js";
+import { registerEmarqetRoutes } from "./routes/emarqet-routes.js";
+import { registerEmarqetPublicRoutes } from "./routes/emarqet-public-routes.js";
+import { registerMobileAppsRoutes } from "./routes/mobile-apps-routes.js";
 import { registerProcurementRoutes } from "./routes/procurement-routes.js";
 import { registerProjectsRoutes } from "./routes/projects-routes.js";
 import { registerQuotesRoutes } from "./routes/quotes-routes.js";
+import { registerReportsRoutes } from "./routes/reports-routes.js";
+import { registerScmRoutes } from "./routes/scm-routes.js";
 import { registerSalesRoutes } from "./routes/sales-routes.js";
 import { registerWorkflowRoutes } from "./routes/workflow-routes.js";
 import { db, migrate } from "./db.js";
@@ -73,12 +84,34 @@ const transporter = createTransporter();
 
 registerRoleModules();
 initApplication({ app, isProduction, sessionSecret, migrate, seedAdminFromEnv });
-registerBillingWebhook(app, { db });
+registerBillingWebhook(app, { db, ensureFacturaXmlGenerated, transporter });
 setupAppMiddleware({ app, dirname: __dirname, sessionSecret, isProduction });
 app.use((req, res, next) => requestContext.run({ req }, next));
+app.use(i18nMiddleware());
 registerAnafRoutes(app, { fetchAnafCompany, normalizeCui });
 registerAnafOAuthRoutes(app, { canAccessSpvUser, db, getSetting, requireAuth, requireSpvAccess, setSetting, transporter });
 registerAuthRoutes(app, { db, verifyUser, verifyUserAttempt });
+registerEmarqetPublicRoutes(app, { db, ensureFacturaXmlGenerated, transporter });
+registerTrevoroLaunchRoutes(app, { db, transporter });
+app.post("/language", (req, res) => {
+  const language = normalizeLanguage(req.body?.language || "ro");
+  const returnTo = String(req.body?.return_to || req.get("referer") || "/nexora-dashboard");
+  const safeReturnTo = returnTo.startsWith("/") && !returnTo.startsWith("//") ? returnTo : "/nexora-dashboard";
+
+  if (req.session?.user?.id) {
+    db.prepare(`UPDATE users SET language=? WHERE id=?`).run(language, Number(req.session.user.id || 0));
+    req.session.user.language = language;
+    req.session.language = language;
+  }
+
+  res.cookie("nexora_lang", language, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: isProduction,
+    maxAge: 365 * 24 * 60 * 60 * 1000
+  });
+  res.redirect(safeReturnTo);
+});
 registerBillingRoutes(app, { db, requireAuth, requireRole, getSetting, refreshSessionCompanyAccess });
 registerDashboardRoutes(app, { db, requireAuth, todayISO, escapeHtml, fmtMoney, crmShellStart, crmShellEnd });
 
@@ -161,6 +194,7 @@ registerClientsRoutes(app, {
   syncCompanySeatUsage
 });
 registerCrmRoutes(app, { db, requireAuth, fmtMoney });
+registerLeadBuilderRoutes(app, { db, requireAuth });
 registerSalesRoutes(app, { db, requireAuth, fmtMoney });
 
 function nextQuoteNumber(){
@@ -1231,20 +1265,38 @@ function uiShellStyles(){
       border-radius:var(--radius);
       box-shadow:var(--shadow-soft);
       backdrop-filter:blur(8px);
-      padding:16px;
+      padding:14px;
     }
 
-    .crm-card + .crm-card{ margin-top:14px; }
+    .crm-card + .crm-card{ margin-top:12px; }
 
     .crm-grid{
       display:grid;
-      gap:14px;
+      gap:10px;
     }
 
     .crm-grid-2{
       display:grid;
       grid-template-columns:repeat(2,minmax(0,1fr));
-      gap:14px;
+      gap:10px;
+    }
+
+    .crm-grid-3{
+      display:grid;
+      grid-template-columns:repeat(3,minmax(0,1fr));
+      gap:10px;
+    }
+
+    .crm-grid-4{
+      display:grid;
+      grid-template-columns:repeat(4,minmax(0,1fr));
+      gap:10px;
+    }
+
+    .crm-grid-2 > div,
+    .crm-grid-3 > div,
+    .crm-grid-4 > div{
+      min-width:0;
     }
 
     .crm-kpis{
@@ -1303,7 +1355,7 @@ function uiShellStyles(){
     .crm-table-wrap{
       background:var(--panel);
       border:1px solid var(--line);
-      border-radius:14px;
+      border-radius:12px;
       overflow:hidden;
       box-shadow:var(--shadow-soft);
     }
@@ -1316,19 +1368,24 @@ function uiShellStyles(){
 
     .crm-table th,
     .crm-table td{
-      padding:11px 12px;
+      padding:10px 12px;
       border-bottom:1px solid #eef2f7;
       text-align:left;
-      vertical-align:top;
+      vertical-align:middle;
     }
 
     .crm-table th{
       background:var(--table-head);
       color:var(--muted);
-      font-size:11px;
+      font-size:10.5px;
       text-transform:uppercase;
       letter-spacing:.05em;
       font-weight:800;
+    }
+
+    .crm-table td{
+      font-size:12.5px;
+      line-height:1.35;
     }
 
     .crm-table tbody tr:hover td{
@@ -1339,15 +1396,38 @@ function uiShellStyles(){
     .crm-select,
     .crm-textarea{
       width:100%;
-      padding:9px 11px;
+      min-height:34px;
+      padding:7px 9px;
       border:1px solid var(--line-2);
-      border-radius:10px;
+      border-radius:9px;
       background:rgba(255,255,255,.88);
       color:var(--text);
-      font-size:13px;
-      line-height:1.35;
+      font-size:12.5px;
+      line-height:1.25;
       outline:none;
+      box-sizing:border-box;
       transition:border-color .15s ease, box-shadow .15s ease, background .15s ease;
+    }
+
+    .crm-textarea,
+    textarea.crm-input{
+      min-height:72px;
+      resize:vertical;
+    }
+
+    .crm-input[type="file"]{
+      padding:5px 8px;
+      font-size:12px;
+    }
+
+    .crm-input[type="file"]::file-selector-button{
+      margin-right:8px;
+      border:1px solid var(--line);
+      border-radius:7px;
+      background:rgba(248,250,252,.92);
+      color:#334155;
+      padding:4px 8px;
+      font-weight:800;
     }
 
     body.crm-body[data-theme="midnight-neon"] .crm-input,
@@ -1366,10 +1446,13 @@ function uiShellStyles(){
 
     .crm-label{
       display:block;
-      margin-bottom:6px;
-      font-weight:700;
-      color:#334155;
-      font-size:13px;
+      margin-bottom:4px;
+      font-weight:850;
+      color:#64748b;
+      font-size:10.5px;
+      letter-spacing:.035em;
+      line-height:1.15;
+      text-transform:uppercase;
     }
 
     .crm-btn{
@@ -1377,13 +1460,18 @@ function uiShellStyles(){
       border:none;
       background:var(--primary);
       color:#fff;
-      padding:8px 12px;
-      border-radius:10px;
-      font-weight:700;
-      font-size:13px;
+      min-height:32px;
+      padding:0 10px;
+      border-radius:9px;
+      font-weight:780;
+      font-size:11.5px;
       line-height:1.2;
       cursor:pointer;
       box-shadow:0 8px 18px rgba(37,99,235,.18);
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:6px;
       transition:transform .12s ease, box-shadow .12s ease, background .12s ease;
     }
 
@@ -1467,8 +1555,8 @@ function uiShellStyles(){
 
     .crm-muted{color:var(--muted)}
     .crm-right{text-align:right}
-    .crm-stack{display:flex;flex-direction:column;gap:14px}
-    .crm-row{display:flex;gap:10px;flex-wrap:wrap;align-items:end}
+    .crm-stack{display:flex;flex-direction:column;gap:9px}
+    .crm-row{display:flex;gap:8px;flex-wrap:wrap;align-items:end}
 
     .crm-mobile-nav{
       display:none;
@@ -1673,6 +1761,7 @@ function uiShellStyles(){
     @media (max-width: 1100px){
       .crm-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
       .crm-grid-2{grid-template-columns:1fr}
+      .crm-grid-3,.crm-grid-4{grid-template-columns:repeat(2,minmax(0,1fr))}
       .crm-hero-grid{grid-template-columns:1fr}
       .crm-hero-side{border-left:none;border-top:1px solid var(--line)}
       .crm-layout{grid-template-columns:1fr}
@@ -1709,6 +1798,7 @@ function uiShellStyles(){
 
     @media (max-width: 720px){
       .crm-kpis{grid-template-columns:1fr}
+      .crm-grid-3,.crm-grid-4{grid-template-columns:1fr}
       .crm-hero-metrics{grid-template-columns:1fr}
       .crm-topbar{
         flex-direction:column;
@@ -3621,11 +3711,18 @@ function renderPublicLandingPage(req, res) {
       gap:12px;
       flex-wrap:wrap;
     }
-    .landing-footer{
-      padding:24px 0 48px;
-      color:var(--muted);
-      font-size:14px;
-    }
+	    .landing-footer{
+	      padding:24px 0 48px;
+	      color:var(--muted);
+	      font-size:14px;
+	    }
+	    .landing-beta-banner{
+	      background:#0f766e;
+	      color:#ecfeff;
+	      text-align:center;
+	      padding:10px 16px;
+	      font-weight:900;
+	    }
     @media (max-width: 1080px){
       .landing-hero-grid,
       .pricing-card{grid-template-columns:1fr}
@@ -3652,11 +3749,12 @@ function renderPublicLandingPage(req, res) {
       .pricing-body{padding:22px}
     }
   </style>
-</head>
-<body>
-  <header class="landing-header">
+	</head>
+	<body>
+	  <div class="landing-beta-banner">Platforma Trevoro este în dezvoltare. Căutăm parteneri fondatori.</div>
+	  <header class="landing-header">
     <div class="landing-header-inner">
-      <a class="landing-brand" href="/">
+      <a class="landing-brand" href="/beta">
         <span class="landing-brand-mark"></span>
         <span>MiniCRM</span>
       </a>
@@ -3824,7 +3922,7 @@ function renderPublicLandingPage(req, res) {
     <section class="landing-section">
       <div class="landing-final">
         <h2>Vrei să vezi exact cum ar arăta MiniCRM în business-ul tău?</h2>
-        <p>Poți intra acum în demo, poți porni direct cu un workspace nou sau poți reveni în contul tău existent. Landing page-ul acesta este deja legat direct în site-ul aplicației, pe ruta principală.</p>
+        <p>Poți intra acum în demo, poți porni direct cu un workspace nou sau poți reveni în contul tău existent. Zona aceasta rămâne disponibilă ca platformă beta, separată de homepage-ul Trevoro.</p>
         <div class="landing-final-actions">
           <form method="post" action="/signup/demo" style="margin:0">
             <button class="landing-btn-ghost" type="submit">Creează cont demo</button>
@@ -3843,11 +3941,15 @@ function renderPublicLandingPage(req, res) {
 </html>`);
 }
 
-app.get(["/", "/landing"], (req, res) => {
+app.get("/beta", (req, res) => {
   if (req.session?.user) {
     return res.redirect(resolveWorkspaceHome(req.session.user));
   }
-  return res.redirect("/login");
+  return renderPublicLandingPage(req, res);
+});
+
+app.get("/landing", (req, res) => {
+  return res.redirect("/beta");
 });
 
 app.get("/contract-form", requireAuth, (req, res) => {
@@ -4094,7 +4196,8 @@ app.post("/api/contract/pdf", requireAuth, async (req, res) => {
     res.status(500).json({ error: "PDF/CRM error", details: String(e?.message ?? e) });
   }
 });
-app.listen(3000, "0.0.0.0", () => console.log("MiniCRM running on :3000"));
+const listenPort = Number(process.env.PORT || 3000);
+app.listen(listenPort, "0.0.0.0", () => console.log(`MiniCRM running on :${listenPort}`));
 
 
 
@@ -4102,7 +4205,7 @@ app.listen(3000, "0.0.0.0", () => console.log("MiniCRM running on :3000"));
 function buildFacturaXmlContent(id, companyId = null){
   const hasTenantScope = Number.isFinite(Number(companyId)) && Number(companyId) > 0;
   const f = db.prepare(`
-    SELECT f.*, c.name AS client_name, c.cui AS client_cui, c.address AS client_address, c.reg_com AS client_reg_com, c.vat AS client_vat
+    SELECT f.*, c.name AS client_name, c.cui AS client_cui, c.address AS client_address, c.reg_com AS client_reg_com, c.vat AS client_vat, c.country AS client_country
     FROM facturi f
     JOIN clients c ON c.id=f.client_id AND c.company_id=f.company_id
     WHERE f.id=?${hasTenantScope ? " AND f.company_id=?" : ""}
@@ -4231,6 +4334,23 @@ function buildFacturaXmlContent(id, companyId = null){
     if (!normalized) return "";
     return countyCodeMap[normalized] || countyCodeByAbbrev[normalized] || "";
   };
+  const localityCountyCodeMap = {
+    CHITORANI: "RO-PH",
+    BUCOV: "RO-PH",
+    PLOIESTI: "RO-PH",
+    VOLUNTARI: "RO-IF"
+  };
+  const lookupCountyCodeFromAddress = (value) => {
+    const normalized = normalizeKey(value);
+    if (!normalized) return "";
+    for (const [label, code] of Object.entries(countyCodeMap)) {
+      if (normalized.includes(label)) return code;
+    }
+    for (const [label, code] of Object.entries(localityCountyCodeMap)) {
+      if (normalized.includes(label)) return code;
+    }
+    return "";
+  };
   const parseRomanianAddress = (value) => {
     const raw = String(value || "").trim().replace(/\s+/g, " ").replace(/\s*,\s*/g, ", ");
     if (!raw) {
@@ -4290,7 +4410,7 @@ function buildFacturaXmlContent(id, companyId = null){
       }
     }
 
-    const countrySubentity = lookupCountyCode(countyLabel);
+    const countrySubentity = lookupCountyCode(countyLabel) || lookupCountyCodeFromAddress(raw);
     const streetName = streetSegments.join(", ") || raw;
     return {
       streetName,
@@ -4318,6 +4438,13 @@ function buildFacturaXmlContent(id, companyId = null){
   const customerRegistration = String(f.client_reg_com || "").trim();
   const supplierAddress = parseRomanianAddress(company_address);
   const customerAddress = parseRomanianAddress(f.client_address || "");
+  const customerCountry = String(f.client_country || "Romania").trim().toLowerCase();
+  const isRomanianCustomer = !customerCountry || ["romania", "ro", "rou"].includes(customerCountry);
+  if (isRomanianCustomer && !customerAddress.countrySubentity) {
+    return {
+      error: "Judetul clientului lipseste sau nu poate fi convertit in cod ISO 3166-2:RO pentru e-Factura. Completeaza adresa cu judetul, ex. JUD. PRAHOVA sau RO-PH."
+    };
+  }
   const supplierBankCode = company_iban.length >= 8 ? company_iban.slice(4, 8).toUpperCase() : "";
   const bankBranchIdByCode = {
     BACX: "BACXROBU",
@@ -4584,11 +4711,48 @@ import multer from "multer";
 const upload = multer({ dest: "uploads/" });
 const dmsAutofillUpload = multer({ dest: "uploads/", limits: { fileSize: 20 * 1024 * 1024 } });
 const dmsClientUpload = multer({ dest: "uploads/", limits: { fileSize: 30 * 1024 * 1024 } });
+const dmsOcrUpload = multer({ dest: "uploads/", limits: { fileSize: 30 * 1024 * 1024 } });
+
+function handleDmsAutofillUpload(req, res, next) {
+  return dmsAutofillUpload.single("template")(req, res, (error) => {
+    if (!error) return next();
+    const code = String(error?.code || "");
+    const message = String(error?.message || error || "");
+    const errorCode = code === "LIMIT_FILE_SIZE"
+      ? "file_too_large"
+      : code === "ENOSPC" || /no space left/i.test(message)
+        ? "storage_full"
+        : "upload";
+    console.error("DMS autofill upload failed:", error);
+    return res.redirect(`/nexora/documents?err=${encodeURIComponent(errorCode)}#autofill`);
+  });
+}
+
+function handleDmsOcrUpload(req, res, next) {
+  return dmsOcrUpload.single("document")(req, res, (error) => {
+    if (!error) return next();
+    const code = String(error?.code || "");
+    const message = String(error?.message || error || "");
+    const errorCode = code === "LIMIT_FILE_SIZE"
+      ? "file_too_large"
+      : code === "ENOSPC" || /no space left/i.test(message)
+        ? "storage_full"
+        : "upload";
+    console.error("DMS OCR upload failed:", error);
+    return res.redirect(`/nexora/documents/ocr?err=${encodeURIComponent(errorCode)}`);
+  });
+}
 
 registerAccountingRoutes(app, { db, requireAuth, requireSpvAccess, canAccessSpvUser, escapeHtml, fmtMoney, crmShellStart, crmShellEnd, fs, path, __dirname, upload });
 registerInventoryRoutes(app, { db, requireAuth, escapeHtml, fmtMoney, crmShellStart, crmShellEnd, fs, path, __dirname, upload });
 registerProcurementRoutes(app, { db, requireAuth, fmtMoney, fs, path, __dirname, upload });
 registerManufacturingRoutes(app, { db, requireAuth });
+registerHorecaRoutes(app, { db, requireAuth });
+registerTravelRoutes(app, { db, requireAuth, upload, transporter });
+registerEmarqetRoutes(app, { db, requireAuth });
+registerMobileAppsRoutes(app, { db, requireAuth });
+registerScmRoutes(app, { db, requireAuth });
+registerReportsRoutes(app, { db, requireAuth, fs, path, __dirname });
 registerProjectsRoutes(app, { db, requireAuth, fs, path, __dirname });
 registerClientPortalRoutes(app, { db, requireAuth, fs, path, __dirname, upload });
 registerHrRoutes(app, { db, requireAuth });
@@ -4997,6 +5161,8 @@ function getDmsAutofillProfile(companyId) {
     company_email: String(getCompanySetting(normalizedCompanyId, "company_email", "") || "").trim(),
     capital_social: String(getCompanySetting(normalizedCompanyId, "capital_social", "") || "").trim(),
     legal_representative: String(company.representative || getCompanySetting(normalizedCompanyId, "company_rep", "") || "").trim(),
+    legal_representative_cnp: String(getCompanySetting(normalizedCompanyId, "company_rep_cnp", "") || "").trim(),
+    legal_representative_role: String(getCompanySetting(normalizedCompanyId, "company_rep_role", "Administrator") || "").trim(),
     legal_representative_ci_series: String(getCompanySetting(normalizedCompanyId, "company_rep_ci_series", "") || "").trim(),
     legal_representative_ci_number: String(getCompanySetting(normalizedCompanyId, "company_rep_ci_number", "") || "").trim(),
     legal_representative_ci_issued_by: String(getCompanySetting(normalizedCompanyId, "company_rep_ci_issued_by", "") || "").trim()
@@ -6037,6 +6203,80 @@ app.get("/nexora/documents", requireAuth, (req, res) => {
   }));
 });
 
+app.get("/nexora/documents/ocr", requireAuth, (req, res) => {
+  const companyId = Number(req.session.user.company_id || 0);
+  return res.type("html").send(renderNexoraDocumentsOcrPage({
+    companyName: req.session.user.company_name || "",
+    user: req.session.user,
+    isCompanyAdmin: isCompanyAdminUser(req.session.user),
+    profile: getDmsAutofillProfile(companyId),
+    status: getDmsOcrRuntimeStatus(),
+    err: String(req.query?.err || "")
+  }));
+});
+
+app.post("/nexora/documents/ocr", requireAuth, handleDmsOcrUpload, async (req, res) => {
+  const companyId = Number(req.session.user.company_id || 0);
+  const file = req.file;
+  const baseOptions = {
+    companyName: req.session.user.company_name || "",
+    user: req.session.user,
+    isCompanyAdmin: isCompanyAdminUser(req.session.user),
+    profile: getDmsAutofillProfile(companyId),
+    status: getDmsOcrRuntimeStatus()
+  };
+
+  if (!file) {
+    return res.redirect("/nexora/documents/ocr?err=no_file");
+  }
+
+  const originalName = String(file.originalname || "document");
+  const extension = path.extname(originalName).toLowerCase();
+  const allowedExtensions = new Set([".docx", ".pdf", ".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff"]);
+  if (!allowedExtensions.has(extension)) {
+    try { fs.unlinkSync(file.path); } catch {}
+    return res.redirect("/nexora/documents/ocr?err=unsupported_type");
+  }
+
+  try {
+    const ocrResult = await extractDmsOcrText({
+      buffer: fs.readFileSync(file.path),
+      extension
+    });
+    const text = String(ocrResult.text || "");
+    const result = {
+      ...ocrResult,
+      fileName: originalName,
+      text: text.length > 20000 ? `${text.slice(0, 20000)}\n\n[Textul a fost scurtat în previzualizare.]` : text,
+      suggestions: suggestDmsOcrProfileFields(text, baseOptions.profile)
+    };
+    try { fs.unlinkSync(file.path); } catch {}
+    return res.type("html").send(renderNexoraDocumentsOcrPage({
+      ...baseOptions,
+      status: getDmsOcrRuntimeStatus(),
+      result,
+      ok: "processed"
+    }));
+  } catch (error) {
+    try { fs.unlinkSync(file.path); } catch {}
+    const errorCode = [
+      "invalid_docx",
+      "invalid_pdf",
+      "empty_text",
+      "ocr_unavailable",
+      "unsupported_type"
+    ].includes(String(error?.code || ""))
+      ? String(error.code)
+      : "processing";
+    if (errorCode === "processing") console.error("DMS OCR failed:", error);
+    return res.type("html").send(renderNexoraDocumentsOcrPage({
+      ...baseOptions,
+      status: getDmsOcrRuntimeStatus(),
+      err: errorCode
+    }));
+  }
+});
+
 app.get("/nexora/documents/templates", requireAuth, (req, res) => {
   return res.type("html").send(renderNexoraDocumentsTemplatesPage({
     companyName: req.session.user.company_name || "",
@@ -6493,7 +6733,7 @@ app.get("/nexora/documents/client-files/:clientId/uploads/:fileId/download", req
   return res.download(absolutePath, String(file.original_file_name || "document"));
 });
 
-app.post("/nexora/documents/autofill", requireAuth, dmsAutofillUpload.single("template"), async (req, res) => {
+app.post("/nexora/documents/autofill", requireAuth, handleDmsAutofillUpload, async (req, res) => {
   const companyId = Number(req.session.user.company_id || 0);
   const file = req.file;
   const requestedClientId = Number(req.body?.client_id || 0) || null;
@@ -10592,9 +10832,6 @@ app.get("/nexora/settings", requireAuth, (req, res) => {
 const companyId = Number(req.session.user.company_id || 0);
 const isCompanyAdmin = String(req.session.user.role || "").toLowerCase() === "admin" || Number(req.session.user.is_company_admin || 0) === 1;
 const canAccessSpvSettings = canAccessSpvUser(req.session.user);
-if (String(req.query?.tab || "").trim().toLowerCase() === "spv" && canAccessSpvSettings) {
-  return res.redirect("/nexora/anaf/status");
-}
 const companyContext = getCompanySubscriptionContext(companyId);
 const companyDetails = companyContext.company || {};
 const activeSubscription = companyContext.subscription || null;
@@ -10612,16 +10849,19 @@ const settings = {
   company_iban: companyDetails.iban || getSetting("company_iban", ""),
   company_bank: companyDetails.bank || getSetting("company_bank", ""),
   company_rep: companyDetails.representative || getSetting("company_rep", ""),
+  company_rep_cnp: getSetting("company_rep_cnp", ""),
+  company_rep_role: getSetting("company_rep_role", "Administrator"),
   company_rep_ci_series: getSetting("company_rep_ci_series", ""),
   company_rep_ci_number: getSetting("company_rep_ci_number", ""),
   company_rep_ci_issued_by: getSetting("company_rep_ci_issued_by", ""),
   company_phone: getSetting("company_phone", ""),
   company_email: getSetting("company_email", ""),
-  company_vat: getSetting("company_vat", "0"),
-  company_vat_exemption_reason: getSetting("company_vat_exemption_reason", "Nu face obiectul TVA"),
-  invoice_series: getSetting("invoice_series", "INV"),
-  invoice_color: getSetting("invoice_color", "#39a935"),
-  capital_social: getSetting("capital_social", ""),
+	  company_vat: getSetting("company_vat", "0"),
+	  company_vat_exemption_reason: getSetting("company_vat_exemption_reason", "Nu face obiectul TVA"),
+	  invoice_series: getSetting("invoice_series", "INV"),
+	  invoice_last_issued_number: getSetting("invoice_last_issued_number", ""),
+	  invoice_color: getSetting("invoice_color", "#39a935"),
+	  capital_social: getSetting("capital_social", ""),
   invoice_footer: getSetting("invoice_footer", "Factura este valabila fara semnatura conform legii."),
   anaf_environment: getSetting("anaf_environment", "test"),
   anaf_redirect_uri: getSetting("anaf_redirect_uri", "https://nexora.aafastitsolutions.ro/oauth/anaf/callback"),
@@ -10665,10 +10905,29 @@ res.type("html").send(renderNexoraSettingsPage({
   activeOptionalModuleCount,
   stripeBillingConfigured,
   stripeWebhookConfigured,
+  language: req.session.user.language || "ro",
   activeTab: String(req.query?.tab || "company"),
   ok: String(req.query?.ok || ""),
   err: String(req.query?.err || "")
 }));
+});
+
+app.post("/nexora/settings/language", requireAuth, (req, res) => {
+  const language = normalizeLanguage(req.body?.language || "ro");
+  db.prepare(`
+    UPDATE users
+    SET language=?
+    WHERE id=?
+  `).run(language, Number(req.session.user.id || 0));
+  req.session.user.language = language;
+  req.session.language = language;
+  res.cookie("nexora_lang", language, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: isProduction,
+    maxAge: 365 * 24 * 60 * 60 * 1000
+  });
+  res.redirect("/nexora/settings?tab=language&ok=language");
 });
 
 
@@ -10676,9 +10935,6 @@ app.get("/setari", requireAuth,(req,res)=>{
 const companyId = Number(req.session.user.company_id || 0);
 const isCompanyAdmin = String(req.session.user.role || "").toLowerCase() === "admin" || Number(req.session.user.is_company_admin || 0) === 1;
 const canAccessSpvSettings = canAccessSpvUser(req.session.user);
-if (String(req.query?.tab || "").trim().toLowerCase() === "spv" && canAccessSpvSettings) {
-  return res.redirect("/anaf/status");
-}
 const companyContext = getCompanySubscriptionContext(companyId);
 const companyDetails = companyContext.company || {};
 const activeSubscription = companyContext.subscription || null;
@@ -10989,17 +11245,26 @@ ${crmShellStart("setari", "Setări", "Configurare firmă, facturi și identitate
           <input class="crm-input" name="company_rep" value="${escapeHtml(companyDetails.representative || getSetting("company_rep",""))}">
         </div>
 
-        <div class="crm-grid-2" style="overflow:visible">
-          <div>
-            <label class="crm-label">Serie / număr de pornire facturi</label>
-            <input class="crm-input" name="invoice_series" value="${getSetting("invoice_series","INV")}">
-            <div class="crm-muted" style="margin-top:6px">Exemple: <code>INV</code> pentru formatul clasic sau <code>FITS-049</code> pentru numerotare directă dintr-un număr ales.</div>
-          </div>
-          <div>
-            <label class="crm-label">Culoare temă</label>
-            <input class="crm-input" type="color" name="invoice_color" value="${getSetting("invoice_color","#39a935")}" style="min-height:46px;padding:6px">
-          </div>
-        </div>
+	        <div class="crm-grid-2" style="overflow:visible">
+	          <div>
+	            <label class="crm-label">Serie / număr de pornire facturi</label>
+	            <input class="crm-input" name="invoice_series" value="${getSetting("invoice_series","INV")}">
+	            <div class="crm-muted" style="margin-top:6px">Exemple: <code>INV</code> pentru formatul clasic sau <code>FITS-049</code> pentru numerotare directă dintr-un număr ales.</div>
+	          </div>
+	          <div>
+	            <label class="crm-label">Ultima factură emisă</label>
+	            <input class="crm-input" name="invoice_last_issued_number" value="${escapeHtml(getSetting("invoice_last_issued_number",""))}" placeholder="Ex: FITS-055">
+	            <div class="crm-muted" style="margin-top:6px">Factura automată pornește după acest număr și după maximul existent în Nexora.</div>
+	          </div>
+	        </div>
+
+	        <div class="crm-grid-2" style="overflow:visible">
+	          <div>
+	            <label class="crm-label">Culoare temă</label>
+	            <input class="crm-input" type="color" name="invoice_color" value="${getSetting("invoice_color","#39a935")}" style="min-height:46px;padding:6px">
+	          </div>
+	          <div></div>
+	        </div>
 
         <div>
           <label class="crm-label">Capital social</label>
@@ -12524,10 +12789,12 @@ const NEXORA_FALLBACK_MODULES = {
   inventory: ["Inventar & Gestiune", "/nexora/inventory"],
   procurement: ["Achiziții", "/nexora/procurement"],
   hr: ["Resurse Umane", "/nexora/employees"],
-  manufacturing: ["Producție / MRP", "/nexora/manufacturing"],
+  manufacturing: ["Producție / plan necesar", "/nexora/manufacturing"],
+  horeca: ["Restaurant / Horeca", "/nexora/horeca"],
+  "mobile-apps": ["Aplicații mobile", "/nexora/mobile-apps"],
   "supply-chain": ["Supply Chain", "/nexora/supply-chain"],
   projects: ["Proiecte", "/nexora/projects"],
-  reports: ["Rapoarte & BI", "/nexora/reports"],
+  reports: ["Rapoarte & BI (Business Intelligence)", "/nexora/reports"],
   orders: ["Order Management", "/nexora/orders"],
   documents: ["Documente / DMS", "/nexora/documents"],
   workflow: ["Workflow & Automatizări", "/nexora/workflow"],

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Trevoro unpaid property lifecycle daily
+
+[Timer]
+OnCalendar=*-*-* 07:10:00 Europe/Bucharest
+AccuracySec=5m
+Persistent=false
+Unit=trevoro-property-lifecycle.service
+
+[Install]
+WantedBy=timers.target

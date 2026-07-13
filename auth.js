@@ -2,6 +2,7 @@
 import bcrypt from "bcrypt";
 import { db } from "./db.js";
 import { ALL_MODULE_KEYS, ROLE_MODULES, expandModuleKeysForAccess, isDemoExpired, normalizeCompanyModules, normalizeUserModules, parseModuleList } from "./lib/app-config.js";
+import { normalizeLanguage } from "./lib/i18n.js";
 
 function superAdminEmails() {
   return String(process.env.SUPER_ADMIN_EMAILS || process.env.ADMIN_EMAIL || "")
@@ -81,6 +82,7 @@ function resolveRequestModule(req) {
   if (path.startsWith("/nexora/quotes")) return "quotes";
   if (path.startsWith("/nexora/contracts")) return "contracts";
   if (path.startsWith("/nexora/sales")) return "sales";
+  if (path.startsWith("/nexora/lead-builder")) return "crm";
   if (path.startsWith("/nexora/crm")) return "crm";
   if (path.startsWith("/nexora/products")) return "produse";
   if (path.startsWith("/nexora/facturi")) return "facturi";
@@ -93,8 +95,12 @@ function resolveRequestModule(req) {
   if (path.startsWith("/nexora/documents")) return "tipizate";
   if (path.startsWith("/nexora/employees")) return "employees";
   if (path.startsWith("/nexora/manufacturing")) return "manufacturing";
+  if (path.startsWith("/nexora/horeca")) return "restaurant";
+  if (path.startsWith("/nexora/e-marqet")) return "emarqet";
+  if (path.startsWith("/nexora/mobile-apps")) return "mobile_apps";
   if (path.startsWith("/nexora/supply-chain")) return "scm";
   if (path.startsWith("/nexora/reports")) return "reports";
+  if (path.startsWith("/nexora/travel")) return "travel";
   if (path.startsWith("/nexora/orders")) return "orders";
   if (path.startsWith("/nexora/workflow")) return "workflow";
   if (path.startsWith("/nexora/ecommerce") || path.startsWith("/nexora/pos")) return "ecommerce";
@@ -132,7 +138,7 @@ function refreshSessionUserAccess(sessionUser) {
   if (!sessionUser?.id) return sessionUser;
 
   const dbUser = db.prepare(`
-    SELECT id, email, role, module_permissions, company_id, status, is_company_admin, client_id
+    SELECT id, email, role, module_permissions, company_id, status, is_company_admin, client_id, language
     FROM users
     WHERE id=?
   `).get(sessionUser.id);
@@ -172,6 +178,7 @@ function refreshSessionUserAccess(sessionUser) {
     role: dbUser.role,
     company_id: dbUser.company_id || null,
     client_id: dbUser.client_id || null,
+    language: normalizeLanguage(dbUser.language || sessionUser.language || "ro"),
     company_name: companyAccess.company?.name || null,
     company_is_demo: Number(companyAccess.company?.is_demo || 0),
     demo_expires_at: companyAccess.company?.demo_expires_at || null,
@@ -256,7 +263,7 @@ export function seedAdminFromEnv() {
 
 export function verifyUserAttempt(email, password) {
   const u = db.prepare(`
-    SELECT id,email,password_hash,role,module_permissions,company_id,status,is_company_admin,client_id
+    SELECT id,email,password_hash,role,module_permissions,company_id,status,is_company_admin,client_id,language
     FROM users
     WHERE email=?
   `).get(email);
@@ -311,6 +318,7 @@ export function verifyUserAttempt(email, password) {
       role: u.role,
       company_id: u.company_id || null,
       client_id: u.client_id || null,
+      language: normalizeLanguage(u.language || "ro"),
       company_name: companyAccess.company?.name || null,
       company_is_demo: Number(companyAccess.company?.is_demo || 0),
       demo_expires_at: companyAccess.company?.demo_expires_at || null,

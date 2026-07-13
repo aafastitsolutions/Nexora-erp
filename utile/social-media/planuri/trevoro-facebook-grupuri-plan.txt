@@ -1,0 +1,124 @@
+TREVORO - PLAN FACEBOOK GRUPURI SI PROMOVARE
+Data: 2026-06-04
+
+OBIECTIV
+Construim prezenta Trevoro fara spam:
+1. postam constant pe pagina Trevoro
+2. cream grupurile proprii Trevoro
+3. intram manual in grupuri relevante
+4. folosim ads mici pentru proprietari si turisti
+
+IMPORTANT
+Nu automatizam join/post in grupurile altora.
+Risc: Facebook poate limita pagina sau profilul pentru comportament de spam.
+
+CE FACEM ACUM IN NEXORA
+1. Intra in Nexora:
+   Travel > Social Posts
+2. Vezi postari ready pentru:
+   - Facebook
+   - TikTok script
+3. Dupa ce avem Page Access Token:
+   - Facebook poate publica automat pe pagina Trevoro
+   - TikTok ramane draft/manual pana la aprobarea Direct Post
+
+GRUPURI PROPRII DE CREAT
+1. Vacante Romania by Trevoro
+2. Cabane Romania
+3. Cazari la mare Romania
+4. Weekend la munte
+5. Pensiuni si hoteluri Romania
+
+DESCRIERE GRUP - EXEMPLU
+Comunitate pentru recomandari de cazari, destinatii si idei de vacanta in Romania.
+Trevoro promoveaza proprietati romanesti, cereri directe de rezervare si turism local.
+Fara spam, fara linkuri agresive, fara postari inselatoare.
+
+REGULI GRUP - EXEMPLU
+1. Recomandari reale si intrebari despre vacante in Romania.
+2. Proprietarii pot posta cazari doar cu detalii clare: locatie, pret orientativ, poze, contact.
+3. Fara spam repetitiv.
+4. Fara oferte false sau poze care nu apartin proprietatii.
+5. Respect intre membri.
+
+RITM DE POSTARE PE PAGINA TREVORO
+Zilnic:
+- 1 postare destinatie
+- 1 postare proprietate
+- 1 intrebare pentru comunitate
+
+De 2-3 ori pe saptamana:
+- postare pentru proprietari care vor cost predictibil
+- postare despre 0% comision pe rezervari
+- postare despre planuri fixe Basic 99 lei/luna, Premium 149 lei/luna si Business 249 lei/luna
+
+TIPURI DE POSTARI CARE MERG IN GRUPURI
+Nu incepem cu reclama directa.
+
+Postari bune:
+- "Ce destinatii recomandati pentru weekend cu copii?"
+- "Unde mergeti vara asta: litoral, munte sau Delta?"
+- "Facem o lista cu pensiuni romanesti bune. Ce zone sa acoperim primele?"
+- "Ai cazare si vrei cost predictibil? Trevoro are planuri fixe de la 99 lei/luna si 0% comision pe rezervari."
+
+Postari riscante:
+- acelasi link in multe grupuri
+- acelasi text copy-paste in aceeasi zi
+- mesaje comerciale fara context
+- comentarii automate
+
+LISTA GRUPURI DE CAUTAT MANUAL
+Cauta pe Facebook:
+- vacante romania
+- cazare romania
+- cabane romania
+- cazare litoral
+- cazare munte
+- pensiuni romania
+- vacante cu copii
+- weekend la munte
+- glamping romania
+- apartamente regim hotelier
+
+Selectie:
+- grupuri active
+- postari recente
+- reguli care permit recomandari sau proprietari
+- minim cateva mii de membri
+- fara spam excesiv
+
+RITM MANUAL SIGUR
+Ziua 1:
+- cream 2 grupuri proprii
+- postam 3 postari pe pagina Trevoro
+- cerem acces in 5-10 grupuri relevante
+
+Ziua 2:
+- cream inca 2 grupuri
+- raspundem in grupuri cu comentarii utile
+- postam maxim 2 postari in grupuri unde regulile permit
+
+Ziua 3-7:
+- 2-5 postari/zi pe pagina Trevoro
+- 1-2 postari/zi in grupurile proprii
+- 1-3 interactiuni utile/zi in grupuri externe
+
+ADS MINIM RECOMANDAT
+Campanie 1 - proprietari:
+- buget: 20-50 lei/zi
+- target: Romania, interese hoteluri, pensiuni, antreprenori, turism
+- mesaj: planuri fixe de la 99 lei/luna si 0% comision pe rezervari
+- landing: https://www.trevoro.ro/proprietari
+
+Campanie 2 - turisti:
+- buget: 20-50 lei/zi
+- target: Romania, travel, litoral, munte, familie
+- mesaj: cauta cazari romanesti pe Trevoro
+- landing: https://www.trevoro.ro/search
+
+PASUL URMATOR TEHNIC
+1. Adaugam Page Access Token in:
+   Nexora > Travel > Social Posts > Facebook
+2. Activam Auto queue.
+3. Verificam publicarea unei postari de test.
+4. Dupa test, programam 2-5 postari/zi.

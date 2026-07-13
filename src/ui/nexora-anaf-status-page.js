@@ -22,7 +22,9 @@ function connectionState(connection) {
 }
 
 function renderConnectionCard(title, connection, { active = false } = {}) {
-  const state = connectionState(connection);
+  const state = active || !connection
+    ? connectionState(connection)
+    : { label: "inactiv", tone: "neutral", title: "Conexiune salvată" };
 
   return `
     <article class="nx-spv-connection ${active ? "active" : ""}">
@@ -123,7 +125,8 @@ function renderNexoraAnafStatusPage(options = {}) {
   const actionsHtml = `
     <a class="nx-btn" href="/nexora/facturi">Facturi</a>
     <a class="nx-btn" href="/nexora/anaf/inbox">Inbox</a>
-    <a class="nx-btn primary" href="/oauth/anaf/start?return_to=nexora">Conectează SPV</a>
+    <a class="nx-btn" href="/nexora/settings?tab=spv">Configurează OAuth</a>
+    <a class="nx-btn primary" href="/oauth/anaf/start?return_to=nexora&launch=1">Conectează SPV</a>
   `;
 
   const body = `
@@ -138,7 +141,7 @@ function renderNexoraAnafStatusPage(options = {}) {
           <p>${escapeHtml(companyName)}</p>
         </div>
         <div class="nx-spv-hero-actions">
-          <a class="nx-btn primary" href="/oauth/anaf/start?return_to=nexora">Conectează direct</a>
+          <a class="nx-btn primary" href="/oauth/anaf/start?return_to=nexora&launch=1">Deschide ANAF</a>
           <a class="nx-btn" href="/nexora/anaf/inbox">Sincronizează inbox</a>
         </div>
       </section>
@@ -200,7 +203,8 @@ function renderNexoraAnafStatusPage(options = {}) {
                 ? "Conectează compania cu un certificat digital care are drept SPV pe CUI-ul firmei."
                 : "Poți trimite facturi și sincroniza inbox-ul pe mediul activ."}</p>
               <div class="nx-form-actions">
-                <a class="nx-btn primary" href="/oauth/anaf/start?return_to=nexora">Conectează</a>
+                <a class="nx-btn primary" href="/oauth/anaf/start?return_to=nexora&launch=1">Deschide ANAF</a>
+                <a class="nx-btn" href="/nexora/settings?tab=spv">Editează credențiale</a>
                 <a class="nx-btn" href="/nexora/anaf/inbox">Inbox</a>
               </div>
             </div>
@@ -242,6 +246,9 @@ function renderNexoraAnafStatusPage(options = {}) {
               ${renderConfigItem("Client Secret", hasClientSecret ? "setat" : "neconfigurat", { configured: hasClientSecret })}
               ${renderConfigItem("Redirect URI", redirectUri, { configured: Boolean(redirectUri && redirectUri !== "-") })}
               ${renderConfigItem("API e-Factura", efacturaApiBase, { configured: Boolean(efacturaApiBase && efacturaApiBase !== "-") })}
+            </div>
+            <div class="nx-form-actions" style="margin-top:12px">
+              <a class="nx-btn primary" href="/nexora/settings?tab=spv">Configurează Client ID / Secret</a>
             </div>
           </section>
         </aside>

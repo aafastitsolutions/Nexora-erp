@@ -10,7 +10,7 @@ function escapeHtml(value = "") {
 }
 
 function normalizeTab(value = "", canAccessSpv = false) {
-  const allowed = new Set(["company", "subscription", "invoice", "logo"]);
+  const allowed = new Set(["company", "subscription", "language", "invoice", "logo"]);
   if (canAccessSpv) allowed.add("spv");
   const tab = String(value || "").trim().toLowerCase();
   return allowed.has(tab) ? tab : "company";
@@ -43,7 +43,8 @@ function renderFlash(ok = "", err = "") {
     saved: "Setările au fost salvate.",
     subscription: "Abonamentul a fost actualizat.",
     modules: "Modulele active au fost actualizate.",
-    logo: "Logo-ul de factură a fost actualizat."
+    logo: "Logo-ul de factură a fost actualizat.",
+    language: "Limba aplicației a fost actualizată."
   };
   const errMessages = {
     no_file: "Alege un fișier înainte de upload.",
@@ -155,6 +156,7 @@ function renderNexoraSettingsPage(options = {}) {
   const company = options.company || {};
   const subscription = options.subscription || {};
   const settings = options.settings || {};
+  const language = String(options.language || options.user?.language || "ro").toLowerCase() === "en" ? "en" : "ro";
   const canAccessSpvSettings = Boolean(options.canAccessSpvSettings);
   const activeTab = normalizeTab(options.activeTab, canAccessSpvSettings);
   const companyStatus = String(options.companyStatus || company.status || subscription.status || "active").toLowerCase();
@@ -170,6 +172,7 @@ function renderNexoraSettingsPage(options = {}) {
   const tabs = [
     { key: "company", label: "Date firmă", meta: "Identitate, reprezentant, CUI, TVA" },
     { key: "subscription", label: "Abonament & module", meta: "Plan, locuri, acces module" },
+    { key: "language", label: "Interfață", meta: "Limbă aplicație" },
     { key: "invoice", label: "Factură", meta: "Serie, culoare, footer PDF" },
     { key: "logo", label: "Logo", meta: "Logo folosit pe facturi" },
     ...(canAccessSpvSettings ? [{ key: "spv", label: "SPV / e-Factura", meta: "ANAF, OAuth, inbox/outbox" }] : [])
@@ -215,6 +218,8 @@ function renderNexoraSettingsPage(options = {}) {
           <label class="nx-field"><span>CUI</span><input name="company_cui" value="${escapeHtml(fieldValue(settings, "company_cui"))}"></label>
           <label class="nx-field"><span>Registrul Comerțului</span><input name="company_rc" value="${escapeHtml(fieldValue(settings, "company_rc"))}"></label>
           <label class="nx-field"><span>Reprezentant</span><input name="company_rep" value="${escapeHtml(fieldValue(settings, "company_rep"))}"></label>
+          <label class="nx-field"><span>CNP reprezentant</span><input name="company_rep_cnp" value="${escapeHtml(fieldValue(settings, "company_rep_cnp"))}"></label>
+          <label class="nx-field"><span>Funcția reprezentantului</span><input name="company_rep_role" value="${escapeHtml(fieldValue(settings, "company_rep_role", "Administrator"))}"></label>
           <label class="nx-field"><span>Seria CI reprezentant</span><input name="company_rep_ci_series" value="${escapeHtml(fieldValue(settings, "company_rep_ci_series"))}"></label>
           <label class="nx-field"><span>Număr CI reprezentant</span><input name="company_rep_ci_number" value="${escapeHtml(fieldValue(settings, "company_rep_ci_number"))}"></label>
           <label class="nx-field"><span>CI eliberată de</span><input name="company_rep_ci_issued_by" value="${escapeHtml(fieldValue(settings, "company_rep_ci_issued_by"))}"></label>
@@ -281,6 +286,31 @@ function renderNexoraSettingsPage(options = {}) {
       </div>
     </section>
 
+    <section class="nx-settings-panel ${activeTab === "language" ? "active" : ""}">
+      <form method="post" action="/nexora/settings/language" class="nx-form nx-content-card">
+        <div class="nx-panel-head compact-head">
+          <div><h2>Limbă aplicație</h2><span>Preferință personală pentru limbă</span></div>
+        </div>
+        <div class="nx-two-column-grid compact">
+          <label class="nx-field">
+            <span>Limba aplicației</span>
+            <select name="language">
+              <option value="ro" ${selected(language, "ro")}>Română</option>
+              <option value="en" ${selected(language, "en")}>Engleză</option>
+            </select>
+            <small class="nx-field-hint">Alege limba în care vrei să vezi interfața Nexora.</small>
+          </label>
+          <div class="nx-settings-note">
+            <b>Contul tău</b>
+            <span>Schimbarea se aplică acestui utilizator și se păstrează după autentificare.</span>
+          </div>
+        </div>
+        <div class="nx-form-actions">
+          <button class="nx-btn primary" type="submit">Salvează limba</button>
+        </div>
+      </form>
+    </section>
+
     <section class="nx-settings-panel ${activeTab === "invoice" ? "active" : ""}">
       <form method="post" action="/setari" class="nx-form nx-content-card">
         <input type="hidden" name="return_to" value="nexora">
@@ -288,11 +318,12 @@ function renderNexoraSettingsPage(options = {}) {
         <div class="nx-panel-head compact-head">
           <div><h2>Setări factură</h2><span>Numerotare, culoare PDF și footer</span></div>
         </div>
-        <div class="nx-two-column-grid compact">
-          <label class="nx-field"><span>Serie / număr de pornire</span><input name="invoice_series" value="${escapeHtml(fieldValue(settings, "invoice_series", "INV"))}"><small class="nx-field-hint">Exemple: INV sau FITS-049.</small></label>
-          <label class="nx-field"><span>Culoare factură</span><input type="color" name="invoice_color" value="${escapeHtml(fieldValue(settings, "invoice_color", "#39a935"))}"></label>
-        </div>
-        <label class="nx-field"><span>Footer factură</span><textarea name="invoice_footer">${escapeHtml(fieldValue(settings, "invoice_footer", "Factura este valabila fara semnatura conform legii."))}</textarea></label>
+	        <div class="nx-two-column-grid compact">
+	          <label class="nx-field"><span>Serie / număr de pornire</span><input name="invoice_series" value="${escapeHtml(fieldValue(settings, "invoice_series", "INV"))}"><small class="nx-field-hint">Exemple: INV sau FITS-049.</small></label>
+	          <label class="nx-field"><span>Ultima factură emisă</span><input name="invoice_last_issued_number" value="${escapeHtml(fieldValue(settings, "invoice_last_issued_number", ""))}" placeholder="Ex: FITS-055"><small class="nx-field-hint">Automatele pornesc după acest număr și după maximul existent în Nexora.</small></label>
+	        </div>
+	        <label class="nx-field"><span>Culoare factură</span><input type="color" name="invoice_color" value="${escapeHtml(fieldValue(settings, "invoice_color", "#39a935"))}"></label>
+	        <label class="nx-field"><span>Footer factură</span><textarea name="invoice_footer">${escapeHtml(fieldValue(settings, "invoice_footer", "Factura este valabila fara semnatura conform legii."))}</textarea></label>
         <div class="nx-form-actions">
           <button class="nx-btn primary" type="submit">Salvează factura</button>
         </div>
@@ -328,7 +359,7 @@ function renderNexoraSettingsPage(options = {}) {
           <label class="nx-field"><span>Client Secret</span><input type="password" name="anaf_client_secret" value="${escapeHtml(fieldValue(settings, "anaf_client_secret"))}"></label>
           <div class="nx-form-actions">
             <button class="nx-btn primary" type="submit">Salvează ANAF</button>
-            <a class="nx-btn" href="/oauth/anaf/start?return_to=nexora">Conectează SPV</a>
+            <a class="nx-btn" href="/oauth/anaf/start?return_to=nexora&launch=1">Deschide ANAF</a>
             <a class="nx-btn" href="/nexora/anaf/status">Status ANAF</a>
             <a class="nx-btn" href="/nexora/anaf/inbox">Inbox / sincronizare</a>
             <a class="nx-btn" href="/nexora/anaf/outbox">Outbox</a>

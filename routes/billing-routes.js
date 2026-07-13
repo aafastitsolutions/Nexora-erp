@@ -1,6 +1,15 @@
 import express from "express";
 import Stripe from "stripe";
+import { maybeSendBillingInvoiceToEfactura } from "../lib/billing-efactura.js";
+import { maybeEmailBillingInvoice } from "../lib/billing-invoice-email.js";
+import { maybeGenerateBillingInvoicePdf } from "../lib/billing-invoice-pdf.js";
 import { maybeGenerateBillingInvoice } from "../lib/billing-invoices.js";
+import {
+  emarqetStripeBillingDetails,
+  finalizeEmarqetStripePayment,
+  findEmarqetListingForStripe,
+  findEmarqetPlanForListing
+} from "../lib/emarqet-billing.js";
 import { planChargeAmount, planChargeQuantity } from "../lib/app-config.js";
 
 function escapeHtml(value) {
@@ -26,6 +35,41 @@ function stripeWebhookConfigured() {
   return Boolean(String(process.env.STRIPE_WEBHOOK_SECRET || "").trim());
 }
 
+function stripeWebhookSecrets() {
+  return [
+    process.env.STRIPE_WEBHOOK_SECRET,
+    process.env.EMARQET_STRIPE_WEBHOOK_SECRET
+  ]
+    .map((value) => String(value || "").trim())
+    .filter((value, index, all) => value && all.indexOf(value) === index);
+}
+
+function constructStripeWebhookEvent(stripe, body, signature, secrets = []) {
+  let lastError = null;
+  for (const secret of secrets) {
+    try {
+      return stripe.webhooks.constructEvent(body, signature, secret);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error("Invalid signature");
+}
+
+function envEnabled(name, defaultValue = false) {
+  const raw = String(process.env[name] ?? "").trim().toLowerCase();
+  if (!raw) return Boolean(defaultValue);
+  return ["1", "true", "yes", "on"].includes(raw);
+}
+
+function stripeAutomaticTaxEnabled() {
+  return envEnabled("STRIPE_AUTOMATIC_TAX_ENABLED", false);
+}
+
+function stripeTaxIdCollectionEnabled() {
+  return envEnabled("STRIPE_TAX_ID_COLLECTION_ENABLED", true);
+}
+
 function appBaseUrl(req) {
   const envUrl = String(process.env.APP_URL || "").trim();
   if (envUrl) return envUrl.replace(/\/+$/, "");
@@ -44,6 +88,198 @@ function isoFromStripeTimestamp(value) {
   const timestamp = Number(value || 0);
   if (!timestamp) return null;
   return new Date(timestamp * 1000).toISOString();
+}
+
+function normalizeStripeCountry(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  return raw.toUpperCase() === "RO" ? "Romania" : raw.toUpperCase();
+}
+
+function stripeAddressLines(address = {}) {
+  return [
+    address.line1,
+    address.line2,
+    address.postal_code,
+    address.city,
+    address.state,
+    normalizeStripeCountry(address.country)
+  ].map((part) => String(part || "").trim()).filter(Boolean).join(", ");
+}
+
+function firstStripeTaxId(source = {}) {
+  const candidates = [
+    source?.customer_details?.tax_ids,
+    source?.customer_tax_ids,
+    source?.tax_ids
+  ];
+  for (const item of candidates) {
+    if (Array.isArray(item)) {
+      const found = item.find((taxId) => String(taxId?.value || "").trim());
+      if (found) return {
+        type: String(found.type || "").trim(),
+        value: String(found.value || "").replace(/\s+/g, "").toUpperCase()
+      };
+    }
+  }
+  return { type: "", value: "" };
+}
+
+function stripeBillingDetails(source = {}) {
+  const details = source?.customer_details || {};
+  const taxId = firstStripeTaxId(source);
+  const address = details.address || source?.customer_address || {};
+  return {
+    name: String(details.name || source?.customer_name || "").trim(),
+    email: String(details.email || source?.customer_email || "").trim().toLowerCase(),
+    tax_id_type: taxId.type,
+    tax_id: taxId.value,
+    address: stripeAddressLines(address),
+    country: normalizeStripeCountry(address.country)
+  };
+}
+
+function stripeSubscriptionMetadata(source = {}) {
+  const candidates = [
+    source?.metadata,
+    source?.subscription_details?.metadata,
+    source?.parent?.subscription_details?.metadata,
+    source?.lines?.data?.[0]?.metadata
+  ];
+  for (const metadata of candidates) {
+    if (metadata && typeof metadata === "object" && Object.keys(metadata).length) return metadata;
+  }
+  return {};
+}
+
+function trevoroBillingMetadata(source = {}, billingDetails = {}, extra = {}) {
+  const metadata = stripeSubscriptionMetadata(source);
+  const propertyCount = Number(metadata.billing_property_count || metadata.property_count || 0);
+  const unitAmount = Number(metadata.billing_unit_amount || metadata.unit_amount || 0);
+  const totalAmount = Number(metadata.billing_amount || metadata.total_amount || 0);
+  const propertyIds = String(metadata.billing_property_ids || metadata.property_ids || "")
+    .split(",")
+    .map((item) => Number(String(item || "").trim() || 0))
+    .filter(Boolean);
+  return {
+    ...extra,
+    property_count: propertyCount || undefined,
+    property_ids: propertyIds.length ? propertyIds : undefined,
+    unit_amount: unitAmount || undefined,
+    total_amount: totalAmount || undefined,
+    currency: String(metadata.billing_currency || source?.currency || "").toUpperCase() || undefined,
+    stripe_billing_details: billingDetails
+  };
+}
+
+function emarqetMetadata(source = {}) {
+  const metadata = stripeSubscriptionMetadata(source);
+  return metadata?.emarqet_company_id ? metadata : {};
+}
+
+async function handleEmarqetStripeCheckoutCompleted(db, source = {}, eventType = "", options = {}) {
+  const metadata = emarqetMetadata(source);
+  const companyId = Number(metadata.emarqet_company_id || 0);
+  if (!companyId) return { handled: false };
+  const listing = findEmarqetListingForStripe(db, companyId, metadata, String(source?.id || ""));
+  if (!listing) return { handled: true, ok: false, reason: "listing_missing" };
+  const plan = findEmarqetPlanForListing(db, companyId, listing);
+  const subscriptionId = typeof source?.subscription === "string" ? source.subscription : String(source?.subscription?.id || "");
+  const paid = String(source?.payment_status || "").toLowerCase() === "paid";
+  await finalizeEmarqetStripePayment(db, {
+    companyId,
+    listing,
+    plan,
+    providerEventType: eventType || "checkout.session.completed",
+    status: paid ? "paid" : "processing",
+    amount: fromStripeAmount(source?.amount_total || source?.amount_subtotal || 0) || Number(plan.monthly_price || 0),
+    currency: source?.currency || plan.currency || "RON",
+    stripeCheckoutSessionId: String(source?.id || ""),
+    stripeSubscriptionId: subscriptionId,
+    stripeInvoiceId: String(source?.invoice || ""),
+    stripePaymentIntentId: String(source?.payment_intent || ""),
+    referenceCode: String(source?.id || ""),
+    paidAt: isoFromStripeTimestamp(source?.created) || new Date().toISOString(),
+    livemode: Boolean(source?.livemode),
+    stripeBillingDetails: emarqetStripeBillingDetails(source),
+    metadata,
+    listingPaymentStatus: paid ? "PAID" : "PROCESSING",
+    ensureFacturaXmlGenerated: options.ensureFacturaXmlGenerated,
+    transporter: options.transporter
+  });
+  return { handled: true, ok: true };
+}
+
+async function handleEmarqetStripeInvoicePaid(db, source = {}, eventType = "", options = {}) {
+  const metadata = emarqetMetadata(source);
+  const companyId = Number(metadata.emarqet_company_id || 0);
+  if (!companyId) return { handled: false };
+  const listing = findEmarqetListingForStripe(db, companyId, metadata, "");
+  if (!listing) return { handled: true, ok: false, reason: "listing_missing" };
+  const plan = findEmarqetPlanForListing(db, companyId, listing);
+  await finalizeEmarqetStripePayment(db, {
+    companyId,
+    listing,
+    plan,
+    providerEventType: eventType || "invoice.paid",
+    status: "paid",
+    amount: fromStripeAmount(source?.amount_paid || source?.amount_due || 0) || Number(plan.monthly_price || 0),
+    currency: source?.currency || plan.currency || "RON",
+    stripeSubscriptionId: String(source?.subscription || ""),
+    stripeInvoiceId: String(source?.id || ""),
+    stripePaymentIntentId: String(source?.payment_intent || ""),
+    referenceCode: String(source?.number || source?.id || ""),
+    paidAt: isoFromStripeTimestamp(source?.status_transitions?.paid_at || source?.created) || new Date().toISOString(),
+    livemode: Boolean(source?.livemode),
+    stripeBillingDetails: emarqetStripeBillingDetails(source),
+    metadata,
+    listingPaymentStatus: "PAID",
+    notes: "Plata Stripe e-Marqet confirmata prin invoice.",
+    ensureFacturaXmlGenerated: options.ensureFacturaXmlGenerated,
+    transporter: options.transporter
+  });
+  return { handled: true, ok: true };
+}
+
+function handleEmarqetStripeInvoiceFailed(db, source = {}, eventType = "") {
+  const metadata = emarqetMetadata(source);
+  const companyId = Number(metadata.emarqet_company_id || 0);
+  if (!companyId) return { handled: false };
+  const listing = findEmarqetListingForStripe(db, companyId, metadata, "");
+  if (!listing) return { handled: true, ok: false, reason: "listing_missing" };
+  db.prepare(`
+    UPDATE emarqet_listings
+    SET stripe_checkout_status='PAYMENT_FAILED',
+        updated_at=CURRENT_TIMESTAMP
+    WHERE company_id=? AND id=?
+  `).run(companyId, listing.id);
+  return { handled: true, ok: true, eventType };
+}
+
+function applyStripeBillingDetailsToCompany(db, companyId, details = {}) {
+  const normalizedCompanyId = Number(companyId || 0);
+  if (!normalizedCompanyId) return;
+  const taxId = String(details.tax_id || "").trim().toUpperCase();
+  const name = String(details.name || "").trim();
+  const address = String(details.address || "").trim();
+  const country = String(details.country || "").trim();
+  if (!taxId && !name && !address && !country) return;
+
+  db.prepare(`
+    UPDATE companies
+    SET name=CASE WHEN ? <> '' THEN ? ELSE name END,
+        cui=CASE WHEN ? <> '' THEN ? ELSE cui END,
+        address=CASE WHEN ? <> '' THEN ? ELSE address END,
+        country=CASE WHEN ? <> '' THEN ? ELSE country END,
+        updated_at=datetime('now')
+    WHERE id=?
+  `).run(
+    name, name,
+    taxId, country === "Romania" ? taxId.replace(/^RO/i, "") : taxId,
+    address, address,
+    country, country,
+    normalizedCompanyId
+  );
 }
 
 function mapStripeSubscriptionStatus(status) {
@@ -361,17 +597,37 @@ function settingsReturnHref(req) {
   return wantsNexoraReturn(req) ? "/nexora/settings?tab=subscription" : "/setari";
 }
 
-export function registerBillingWebhook(app, { db }) {
+async function runBillingInvoiceAutomationSteps(db, facturaId, { ensureFacturaXmlGenerated, transporter } = {}) {
+  const results = {};
+  const errors = [];
+  const runStep = async (key, fn) => {
+    try {
+      results[key] = await fn();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error || `${key}_failed`);
+      errors.push({ step: key, message });
+      console.error(`Billing invoice ${key} failed:`, message);
+    }
+  };
+
+  await runStep("efactura", () => maybeSendBillingInvoiceToEfactura(db, facturaId, { ensureFacturaXmlGenerated }));
+  await runStep("pdf", () => maybeGenerateBillingInvoicePdf(db, facturaId));
+  await runStep("email", () => maybeEmailBillingInvoice(db, facturaId, { transporter }));
+
+  return { ok: errors.length === 0, results, errors };
+}
+
+export function registerBillingWebhook(app, { db, ensureFacturaXmlGenerated, transporter }) {
   const stripe = createStripeClient();
-  const webhookSecret = String(process.env.STRIPE_WEBHOOK_SECRET || "").trim();
-  if (!stripe || !webhookSecret) return;
+  const webhookSecrets = stripeWebhookSecrets();
+  if (!stripe || !webhookSecrets.length) return;
 
   app.post("/stripe/webhook", express.raw({ type: "application/json" }), async (req, res) => {
     const signature = req.headers["stripe-signature"];
     let event;
 
     try {
-      event = stripe.webhooks.constructEvent(req.body, signature, webhookSecret);
+      event = constructStripeWebhookEvent(stripe, req.body, signature, webhookSecrets);
     } catch (error) {
       console.error("Stripe webhook signature failed:", error?.message || error);
       return res.status(400).send(`Webhook Error: ${error?.message || "Invalid signature"}`);
@@ -381,35 +637,45 @@ export function registerBillingWebhook(app, { db }) {
       switch (event.type) {
         case "checkout.session.completed": {
           const session = event.data.object;
+          const emarqetHandled = await handleEmarqetStripeCheckoutCompleted(db, session, event.type, { ensureFacturaXmlGenerated, transporter });
+          if (emarqetHandled.handled) break;
           const companyId = Number(session?.metadata?.company_id || 0);
           const companySubscriptionId = Number(session?.metadata?.subscription_id || 0) || null;
           const subscriptionId = String(session?.subscription || "");
           const customerId = String(session?.customer || "");
           const email = String(session?.customer_details?.email || session?.customer_email || "");
+          const billingDetails = stripeBillingDetails(session);
           const initiatedByUserId = Number(session?.metadata?.initiated_by_user_id || 0) || null;
           const initiatedByEmail = String(session?.metadata?.initiated_by_email || email || "");
+          const checkoutPaymentStatus = String(session?.payment_status || "").toLowerCase() === "paid" ? "paid" : "processing";
+          const checkoutAmount = fromStripeAmount(session?.amount_total || session?.amount_subtotal || 0);
+          const checkoutCurrency = String(session?.currency || "eur").toLowerCase();
+          const checkoutMetadata = stripeSubscriptionMetadata(session);
+          const checkoutUnitAmount = Number(checkoutMetadata.billing_unit_amount || checkoutMetadata.unit_amount || 0) || checkoutAmount;
 
           if (companyId) {
-            upsertBillingPayment(db, {
+            applyStripeBillingDetailsToCompany(db, companyId, billingDetails);
+            const paymentId = upsertBillingPayment(db, {
               companyId,
               companySubscriptionId,
               source: "stripe",
               providerEventType: event.type,
               paymentKind: "subscription",
-              status: "processing",
-              amount: fromStripeAmount(session?.amount_total || session?.amount_subtotal || 0),
-              currency: String(session?.currency || "eur"),
-              payerEmail: email,
+              status: checkoutPaymentStatus,
+              amount: checkoutAmount,
+              currency: checkoutCurrency,
+              payerName: billingDetails.name,
+              payerEmail: billingDetails.email || email,
               referenceCode: String(session?.id || ""),
               stripeCheckoutSessionId: String(session?.id || ""),
               stripeSubscriptionId: subscriptionId,
               paidAt: isoFromStripeTimestamp(session?.created),
               createdByUserId: initiatedByUserId,
               createdByEmail: initiatedByEmail,
-              metadata: {
+              metadata: trevoroBillingMetadata(session, billingDetails, {
                 company_id: companyId,
                 customer_id: customerId
-              }
+              })
             });
 
             if (customerId) {
@@ -447,6 +713,37 @@ export function registerBillingWebhook(app, { db }) {
             } else {
               syncCompanyStatusFromSubscription(db, companyId);
             }
+
+            if (checkoutPaymentStatus === "paid") {
+              db.prepare(`
+                UPDATE company_subscriptions
+                SET status='active',
+                    last_payment_status='paid',
+                    updated_at=datetime('now')
+                WHERE company_id=?
+              `).run(companyId);
+              db.prepare(`
+                UPDATE travel_properties
+                SET status='activ',
+                    subscription_status='active',
+                    partner_plan='standard_monthly',
+                    monthly_price_ron=CASE
+                      WHEN lower(?)='ron' THEN CASE WHEN COALESCE(monthly_price_ron, 0) > 0 THEN monthly_price_ron ELSE ? END
+                      ELSE COALESCE(monthly_price_ron, 0)
+                    END,
+                    monthly_price_amount=CASE WHEN COALESCE(monthly_price_amount, 0) > 0 THEN monthly_price_amount ELSE ? END,
+                    monthly_price_currency=UPPER(CASE WHEN COALESCE(monthly_price_currency, '') <> '' THEN monthly_price_currency ELSE ? END),
+                    updated_at=datetime('now')
+                WHERE billing_company_id=?
+              `).run(checkoutCurrency, checkoutUnitAmount, checkoutUnitAmount, checkoutCurrency, companyId);
+	              if (paymentId) {
+	                const invoiceResult = maybeGenerateBillingInvoice(db, paymentId, { livemode: session?.livemode ? 1 : 0 });
+	                if (invoiceResult?.facturaId) {
+	                  await runBillingInvoiceAutomationSteps(db, invoiceResult.facturaId, { ensureFacturaXmlGenerated, transporter });
+	                }
+	              }
+              syncCompanyStatusFromSubscription(db, companyId);
+            }
           }
           break;
         }
@@ -458,8 +755,11 @@ export function registerBillingWebhook(app, { db }) {
         }
         case "invoice.payment_failed": {
           const invoice = event.data.object;
+          const emarqetHandled = handleEmarqetStripeInvoiceFailed(db, invoice, event.type);
+          if (emarqetHandled.handled) break;
           const subscriptionId = String(invoice?.subscription || "");
           if (subscriptionId) {
+            const billingDetails = stripeBillingDetails(invoice);
             const row = db.prepare(`
               SELECT id, company_id
               FROM company_subscriptions
@@ -468,6 +768,7 @@ export function registerBillingWebhook(app, { db }) {
               LIMIT 1
             `).get(subscriptionId);
             if (row) {
+              applyStripeBillingDetailsToCompany(db, row.company_id, billingDetails);
               upsertBillingPayment(db, {
                 companyId: row.company_id,
                 companySubscriptionId: row.id,
@@ -477,17 +778,17 @@ export function registerBillingWebhook(app, { db }) {
                 status: "failed",
                 amount: fromStripeAmount(invoice?.amount_due || invoice?.amount_remaining || 0),
                 currency: String(invoice?.currency || "eur"),
-                payerName: String(invoice?.customer_name || ""),
-                payerEmail: String(invoice?.customer_email || ""),
+                payerName: billingDetails.name || String(invoice?.customer_name || ""),
+                payerEmail: billingDetails.email || String(invoice?.customer_email || ""),
                 referenceCode: String(invoice?.number || invoice?.id || ""),
                 stripeSubscriptionId: subscriptionId,
                 stripeInvoiceId: String(invoice?.id || ""),
                 stripePaymentIntentId: String(invoice?.payment_intent || ""),
                 failureReason: String(invoice?.last_finalization_error?.message || invoice?.status || "payment_failed"),
                 notes: "Plată Stripe eșuată",
-                metadata: {
+                metadata: trevoroBillingMetadata(invoice, billingDetails, {
                   hosted_invoice_url: invoice?.hosted_invoice_url || null
-                }
+                })
               });
 
               db.prepare(`
@@ -504,8 +805,14 @@ export function registerBillingWebhook(app, { db }) {
         }
         case "invoice.paid": {
           const invoice = event.data.object;
+          const emarqetHandled = await handleEmarqetStripeInvoicePaid(db, invoice, event.type, { ensureFacturaXmlGenerated, transporter });
+          if (emarqetHandled.handled) break;
           const subscriptionId = String(invoice?.subscription || "");
           if (subscriptionId) {
+            const billingDetails = stripeBillingDetails(invoice);
+            const invoiceAmount = fromStripeAmount(invoice?.amount_paid || invoice?.amount_due || 0);
+            const invoiceMetadata = stripeSubscriptionMetadata(invoice);
+            const invoiceUnitAmount = Number(invoiceMetadata.billing_unit_amount || invoiceMetadata.unit_amount || 0) || invoiceAmount;
             const row = db.prepare(`
               SELECT id, company_id
               FROM company_subscriptions
@@ -514,6 +821,7 @@ export function registerBillingWebhook(app, { db }) {
               LIMIT 1
             `).get(subscriptionId);
             if (row) {
+              applyStripeBillingDetailsToCompany(db, row.company_id, billingDetails);
               upsertBillingPayment(db, {
                 companyId: row.company_id,
                 companySubscriptionId: row.id,
@@ -521,19 +829,19 @@ export function registerBillingWebhook(app, { db }) {
                 providerEventType: event.type,
                 paymentKind: "subscription",
                 status: "paid",
-                amount: fromStripeAmount(invoice?.amount_paid || invoice?.amount_due || 0),
+                amount: invoiceAmount,
                 currency: String(invoice?.currency || "eur"),
-                payerName: String(invoice?.customer_name || ""),
-                payerEmail: String(invoice?.customer_email || ""),
+                payerName: billingDetails.name || String(invoice?.customer_name || ""),
+                payerEmail: billingDetails.email || String(invoice?.customer_email || ""),
                 referenceCode: String(invoice?.number || invoice?.id || ""),
                 stripeSubscriptionId: subscriptionId,
                 stripeInvoiceId: String(invoice?.id || ""),
                 stripePaymentIntentId: String(invoice?.payment_intent || ""),
                 paidAt: isoFromStripeTimestamp(invoice?.status_transitions?.paid_at || invoice?.created),
                 notes: "Plată Stripe confirmată",
-                metadata: {
+                metadata: trevoroBillingMetadata(invoice, billingDetails, {
                   hosted_invoice_url: invoice?.hosted_invoice_url || null
-                }
+                })
               });
               const paymentId = findBillingPayment(db, {
                 stripeInvoiceId: String(invoice?.id || ""),
@@ -541,9 +849,12 @@ export function registerBillingWebhook(app, { db }) {
                 stripeSubscriptionId: subscriptionId,
                 companyId: row.company_id
               });
-              if (paymentId) {
-                maybeGenerateBillingInvoice(db, paymentId, { livemode: invoice?.livemode ? 1 : 0 });
-              }
+	              if (paymentId) {
+	                const invoiceResult = maybeGenerateBillingInvoice(db, paymentId, { livemode: invoice?.livemode ? 1 : 0 });
+	                if (invoiceResult?.facturaId) {
+	                  await runBillingInvoiceAutomationSteps(db, invoiceResult.facturaId, { ensureFacturaXmlGenerated, transporter });
+	                }
+	              }
 
               db.prepare(`
                 UPDATE company_subscriptions
@@ -552,6 +863,26 @@ export function registerBillingWebhook(app, { db }) {
                     updated_at=datetime('now')
                 WHERE id=?
               `).run(row.id);
+              db.prepare(`
+                UPDATE travel_properties
+                SET status='activ',
+                    subscription_status='active',
+                    partner_plan='standard_monthly',
+                    monthly_price_ron=CASE
+                      WHEN lower(?)='ron' THEN CASE WHEN COALESCE(monthly_price_ron, 0) > 0 THEN monthly_price_ron ELSE ? END
+                      ELSE COALESCE(monthly_price_ron, 0)
+                    END,
+                    monthly_price_amount=CASE WHEN COALESCE(monthly_price_amount, 0) > 0 THEN monthly_price_amount ELSE ? END,
+                    monthly_price_currency=UPPER(CASE WHEN COALESCE(monthly_price_currency, '') <> '' THEN monthly_price_currency ELSE ? END),
+                    updated_at=datetime('now')
+                WHERE billing_company_id=?
+              `).run(
+                String(invoice?.currency || "eur").toLowerCase(),
+                invoiceUnitAmount,
+                invoiceUnitAmount,
+                String(invoice?.currency || "eur").toLowerCase(),
+                row.company_id
+              );
               syncCompanyStatusFromSubscription(db, row.company_id);
             }
           }
@@ -602,7 +933,11 @@ export function registerBillingRoutes(app, { db, requireAuth, requireRole, getSe
         success_url: successUrl,
         cancel_url: cancelUrl,
         customer: customerId,
+        customer_update: { address: "auto", name: "auto" },
         client_reference_id: String(companyId),
+        billing_address_collection: "required",
+        ...(stripeTaxIdCollectionEnabled() ? { tax_id_collection: { enabled: true } } : {}),
+        ...(stripeAutomaticTaxEnabled() ? { automatic_tax: { enabled: true } } : {}),
         metadata: {
           company_id: String(companyId),
           subscription_id: String(subscription.id),

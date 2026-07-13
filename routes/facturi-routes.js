@@ -34,6 +34,22 @@ export function registerFacturiRoutes(app, deps) {
     transporter
   } = deps;
 
+  app.use((req, res, next) => {
+    const currentPath = String(req.path || "");
+    if (
+      currentPath === "/facturi" ||
+      currentPath.startsWith("/facturi/") ||
+      currentPath.startsWith("/factura/") ||
+      currentPath.startsWith("/nexora/facturi")
+    ) {
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0, s-maxage=0");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
+      res.setHeader("Surrogate-Control", "no-store");
+    }
+    next();
+  });
+
   function facturaDisplayNumber(invoice) {
     return formatInvoiceDisplayNumber(invoice);
   }

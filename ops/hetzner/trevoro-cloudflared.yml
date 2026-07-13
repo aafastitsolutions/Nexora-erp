@@ -1,0 +1,17 @@
+tunnel: d25ebfd1-1d3b-4e2e-80d3-3498389db2ba
+credentials-file: /home/server/.cloudflared/d25ebfd1-1d3b-4e2e-80d3-3498389db2ba.json
+
+ingress:
+  - hostname: trevoro.ro
+    service: http://127.0.0.1:3100
+    originRequest:
+      httpHostHeader: trevoro.ro
+  - hostname: www.trevoro.ro
+    service: http://127.0.0.1:3100
+    originRequest:
+      httpHostHeader: www.trevoro.ro
+  - hostname: beta.trevoro.ro
+    service: http://127.0.0.1:3000
+    originRequest:
+      httpHostHeader: beta.trevoro.ro
+  - service: http_status:404

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="108" viewBox="0 0 360 108" role="img" aria-labelledby="title desc">
+  <title id="title">e-Marqet</title>
+  <desc id="desc">Logo e-Marqet cu simbol de marketplace conectat si text albastru.</desc>
+  <rect width="360" height="108" rx="18" fill="#ffffff"/>
+  <g transform="translate(22 20)">
+    <rect x="2" y="12" width="64" height="44" rx="12" fill="#e0f2fe" stroke="#7dd3fc" stroke-width="3"/>
+    <path d="M10 22h48l-6-12H16z" fill="#0284c7"/>
+    <path d="M14 24v6a8 8 0 0 0 16 0v-6m0 0v6a8 8 0 0 0 16 0v-6m0 0v6a8 8 0 0 0 16 0v-6" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="18" cy="64" r="5" fill="#0ea5e9"/>
+    <circle cx="34" cy="64" r="5" fill="#22c55e"/>
+    <circle cx="50" cy="64" r="5" fill="#f59e0b"/>
+    <path d="M23 64h6m10 0h6" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"/>
+  </g>
+  <g transform="translate(104 24)">
+    <text x="0" y="33" fill="#0f172a" font-family="Inter, Arial, sans-serif" font-size="34" font-weight="800" letter-spacing="0">e-Marqet</text>
+    <text x="2" y="59" fill="#0284c7" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="700" letter-spacing="0">marketplace-uri conectate la Nexora</text>
+  </g>
+</svg>

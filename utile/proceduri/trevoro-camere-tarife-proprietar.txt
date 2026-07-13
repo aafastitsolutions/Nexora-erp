@@ -1,0 +1,60 @@
+PROCEDURA TREVORO - CAMERE SI TARIFE PENTRU PROPRIETARI
+
+Scop:
+Ajuta proprietarul sa completeze corect tipurile de camere, facilitatile, pozele si tarifele publicate pe pagina proprietatii.
+
+Unde se completeaza:
+Cont proprietar Trevoro > Camere si tarife.
+
+Pasi:
+
+1. Alege tipul camerei
+- Selecteaza Tip camera din lista disponibila.
+- Exemple: Camera dubla standard, Apartament, Suita, Camera twin, Camera familie.
+- Nu combina doua tipuri de camere in acelasi rand.
+
+2. Completeaza numarul de camere
+- La Nr. camere se trece cate camere exista din acel tip.
+- Exemplu: daca proprietatea are 5 camere duble standard, se trece 5.
+- Nu se trece totalul camerelor proprietatii daca randul se refera doar la un tip de camera.
+
+3. Completeaza capacitatea
+- Completeaza numarul de adulti / persoane.
+- Completeaza numarul de copii, daca acel tip de camera accepta copii.
+- Completeaza paturile sau continutul camerei.
+- Exemplu: 1 pat dublu mare, 2 paturi single, canapea extensibila.
+
+4. Completeaza pretul
+- La Pret RON/noapte se trece pretul pentru acel tip de camera.
+- Daca un alt tip de camera are alt pret, se completeaza separat pe randul lui.
+
+5. Alege facilitatile camerei
+- Bifeaza doar optiunile reale pentru acel tip de camera.
+- Exemple: vedere la mare, vedere la munte, balcon, aer conditionat, baie in camera, dus, cada, jacuzzi, TV, Wi-Fi, minibar.
+- Nu bifa facilitati care exista in proprietate, dar nu exista in camera respectiva.
+
+6. Adauga pozele camerei
+- Pentru fiecare tip de camera poti adauga maximum 5 poze.
+- Pozele trebuie sa arate camera respectiva sau dotarile ei.
+- Pozele adaugate la camere se adauga si in galeria proprietatii.
+- Limita generala a galeriei proprietatii este de 30 poze.
+
+7. Salveaza tipul de camera
+- Dupa ce ai terminat randul, apasa Salveaza camerele/tarifele.
+- Verifica daca randul ramane completat dupa salvare.
+
+8. Treci la urmatorul tip de camera
+- Completeaza urmatorul rand sau alege alt Tip camera din formular.
+- Repeta pasii pentru numar camere, capacitate, pret, facilitati si poze.
+- Apasa din nou Salveaza camerele/tarifele.
+
+Recomandari:
+- Pentru camere de acelasi tip, dar cu preturi diferite, creeaza tipuri separate.
+- Pentru camere cu dotari diferite, creeaza tipuri separate, chiar daca pretul este apropiat.
+- Actualizeaza numarul de camere daca un tip de camera nu mai este disponibil.
+- Foloseste poze clare si reale; turistul trebuie sa vada exact ce poate rezerva.
+
+Suport:
+Email: support@trevoro.ro
+WhatsApp: 0774362975
+Program: 09:00-18:00, luni-vineri

@@ -80,6 +80,7 @@ function renderNexoraDashboardPage(options = {}) {
   const activities = Array.isArray(options.activities) ? options.activities : [];
   const visibleActivities = activities.slice(0, 3);
   const recentInvoices = Array.isArray(options.recentInvoices) ? options.recentInvoices : [];
+  const euOpportunityNotifications = Array.isArray(options.euOpportunityNotifications) ? options.euOpportunityNotifications : [];
   const efacturaSummary = options.efacturaSummary || {
     total: 0,
     responseAvailable: 0,
@@ -271,6 +272,26 @@ function renderNexoraDashboardPage(options = {}) {
     ? `<section class="nx-dashboard-grid">${panelBlocks}</section>`
     : `<section class="nx-content-card"><div class="nx-empty-state">Nu ai selectat niciun panou pentru dashboard. Deschide setările și alege ce vrei să vezi.</div></section>`;
 
+  const euNotificationsHtml = euOpportunityNotifications.length ? `
+      <section class="nx-content-card">
+        <div class="nx-section-head">
+          <div>
+            <h1>EU Opportunity Finder</h1>
+            <p>${escapeHtml(euOpportunityNotifications.length)} oportunități noi cu scor ridicat.</p>
+          </div>
+          <a class="nx-btn primary" href="/nexora/procurement/opportunities?min_score=70">Deschide</a>
+        </div>
+        <div class="nx-activity-list">
+          ${euOpportunityNotifications.map((item) => `
+            <a class="nx-activity" href="/nexora/procurement/opportunities?min_score=70">
+              <b>${escapeHtml(item.title || item.message || "-")}</b>
+              <span>Scor ${escapeHtml(item.relevance_score || 0)}${item.submission_deadline ? ` · termen ${escapeHtml(String(item.submission_deadline).slice(0, 10))}` : ""}</span>
+            </a>
+          `).join("")}
+        </div>
+      </section>
+    ` : "";
+
   return `<!doctype html>
 <html lang="ro">
 <head>
@@ -305,6 +326,7 @@ function renderNexoraDashboardPage(options = {}) {
       </header>
 
       ${kpiGridHtml}
+      ${euNotificationsHtml}
       ${dashboardGridHtml}
     </main>
   </div>

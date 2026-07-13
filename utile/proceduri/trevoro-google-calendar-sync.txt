@@ -1,0 +1,32 @@
+Trevoro - sincronizare Google Calendar pentru proprietari
+
+Unde se adauga:
+1. Intra pe https://www.trevoro.ro/login
+2. Autentifica-te ca proprietar.
+3. Intra in Dashboard proprietar.
+4. Sectiunea Calendar.
+5. Alege Google, lipeste linkul secret iCal si apasa Adauga.
+
+De unde iei linkul corect din Google Calendar:
+1. Deschide Google Calendar.
+2. In stanga, la My calendars, mergi pe calendarul proprietatii.
+3. Apasa cele 3 puncte si apoi Settings and sharing.
+4. Mergi la Integrate calendar.
+5. Copiaza linkul Secret address in iCal format.
+
+Important:
+- Nu folosi linkul normal din browser, de forma calendar.google.com/calendar/u/0/r.
+- Linkul corect este un URL privat de tip iCal/ICS.
+- Evenimentele all-day din Google blocheaza noptile din interval. De exemplu:
+  DTSTART 2026-06-05 si DTEND 2026-06-07 blocheaza 5 si 6 iunie.
+- Dupa adaugare, Trevoro sincronizeaza automat si afiseaza zilele ocupate in calendarul proprietarului.
+- Clientul nu poate trimite cerere sau continua spre checkout pentru intervale care includ zile ocupate.
+
+Test activ acum:
+- Casa la Nea Gica are un calendar de test conectat.
+- Date ocupate: 2026-06-05 si 2026-06-06.
+- URL test: https://trevoro.ro/uploads/travel/test/casa-la-nea-gica-calendar.ics
+
+Ce trebuie inlocuit la calendarul real:
+- In dashboard exista un link Google normal, de browser, care nu este suficient pentru sync.
+- Sterge linkul normal si adauga linkul Secret address in iCal format din Google Calendar.

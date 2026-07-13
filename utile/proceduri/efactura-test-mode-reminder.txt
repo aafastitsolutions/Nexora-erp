@@ -1,0 +1,29 @@
+Nexora / Trevoro - e-Factura TEST mode
+Actualizat: 2026-06-05
+
+Status curent:
+- e-Factura este setata pe TEST.
+- Trimiterea catre e-Factura PRODUCTIE este blocata explicit.
+- Automatizarea dupa plata abonamentului este activa doar in flux de test/sandbox.
+- In testul automatizat local, statusul folosit este TEST_SIMULAT.
+
+Setari active in serviciul Nexora:
+- BILLING_AUTO_INVOICE_ENABLED=true
+- BILLING_AUTO_INVOICE_LIVE_ONLY=false
+- BILLING_AUTO_EFACTURA_ENABLED=true
+- BILLING_EFACTURA_TEST_SIMULATION_ENABLED=true
+- EFACTURA_ENVIRONMENT=test
+- EFACTURA_PRODUCTION_ENABLED=false
+
+Atentie pentru lansare:
+1. Verifica facturile generate automat dupa platile abonamentelor.
+2. Verifica XML-ul e-Factura si datele firmei.
+3. Dupa teste, dezactiveaza simularea:
+   BILLING_EFACTURA_TEST_SIMULATION_ENABLED=false
+4. Pentru productie, comuta mediul ANAF doar dupa confirmare:
+   EFACTURA_ENVIRONMENT=prod
+   EFACTURA_PRODUCTION_ENABLED=true
+5. Actualizeaza setarea din Nexora pentru companie:
+   anaf_environment=prod
+
+Nu activa productia fara o confirmare explicita.

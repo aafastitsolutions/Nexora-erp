@@ -7,6 +7,12 @@ import {
   renderNexoraSalesOrdersPage,
   renderNexoraSalesPricesPage
 } from "../src/ui/nexora-sales-pages.js";
+import {
+  renderNexoraOrderDeliveryStatusPage,
+  renderNexoraOrderFulfillmentPage,
+  renderNexoraOrderLifecyclePage,
+  renderNexoraOrderTrackingPage
+} from "../src/ui/nexora-order-management-pages.js";
 
 function moneyInput(value) {
   const normalized = Number(String(value || "0").replace(",", "."));
@@ -15,6 +21,12 @@ function moneyInput(value) {
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function dateTimeInput(value) {
+  const raw = String(value || "").trim();
+  if (raw) return raw.replace("T", " ");
+  return new Date().toISOString().slice(0, 19).replace("T", " ");
 }
 
 function normalizeStatus(value, fallback) {
@@ -75,6 +87,47 @@ function loadClients(db, companyId) {
     SELECT id, name, cui, address, phone
     FROM clients
     WHERE company_id=?
+    ORDER BY name COLLATE NOCASE ASC
+  `).all(companyId);
+}
+
+function loadOrderManagementOrders(db, companyId, openOnly = false) {
+  const where = ["so.company_id=?"];
+  const params = [companyId];
+  if (openOnly) where.push("UPPER(COALESCE(so.status,'')) NOT IN ('LIVRATA','ANULATA')");
+  return db.prepare(`
+    SELECT so.id, so.order_number, so.status, so.total, so.due_date, cl.name AS client_name
+    FROM sales_orders so
+    JOIN clients cl ON cl.id=so.client_id AND cl.company_id=so.company_id
+    WHERE ${where.join(" AND ")}
+    ORDER BY date(COALESCE(so.due_date, so.order_date, so.created_at)) ASC, so.id DESC
+    LIMIT 250
+  `).all(...params);
+}
+
+function loadOrderManagementDeliveries(db, companyId, openOnly = false) {
+  const where = ["sd.company_id=?"];
+  const params = [companyId];
+  if (openOnly) where.push("UPPER(COALESCE(sd.status,'')) NOT IN ('LIVRATA','ANULATA')");
+  return db.prepare(`
+    SELECT sd.id, sd.delivery_number, sd.status, sd.order_id, sd.courier, sd.awb,
+           COALESCE(cl.name, order_client.name) AS client_name,
+           so.order_number
+    FROM sales_deliveries sd
+    LEFT JOIN sales_orders so ON so.id=sd.order_id AND so.company_id=sd.company_id
+    LEFT JOIN clients cl ON cl.id=sd.client_id AND cl.company_id=sd.company_id
+    LEFT JOIN clients order_client ON order_client.id=so.client_id AND order_client.company_id=so.company_id
+    WHERE ${where.join(" AND ")}
+    ORDER BY date(COALESCE(sd.scheduled_date, sd.created_at)) DESC, sd.id DESC
+    LIMIT 250
+  `).all(...params);
+}
+
+function loadOrderManagementWarehouses(db, companyId) {
+  return db.prepare(`
+    SELECT id, warehouse_code, name
+    FROM inventory_warehouses
+    WHERE company_id=? AND UPPER(COALESCE(status,'')) <> 'INACTIV'
     ORDER BY name COLLATE NOCASE ASC
   `).all(companyId);
 }
@@ -229,6 +282,337 @@ export function registerSalesRoutes(app, { db, requireAuth, fmtMoney }) {
     }
 
     res.redirect(`/nexora/orders/${orderId}?ok=created`);
+  });
+
+  app.get("/nexora/orders/lifecycle", requireAuth, (req, res) => {
+    const companyId = companyIdFrom(req);
+    const stats = db.prepare(`
+      SELECT
+        SUM(CASE WHEN UPPER(COALESCE(status,'')) NOT IN ('LIVRATA','ANULATA') THEN 1 ELSE 0 END) AS open_orders,
+        SUM(CASE WHEN UPPER(COALESCE(status,''))='CONFIRMATA' THEN 1 ELSE 0 END) AS confirmed_orders,
+        SUM(CASE WHEN UPPER(COALESCE(status,''))='IN_LUCRU' THEN 1 ELSE 0 END) AS in_progress_orders,
+        (SELECT COUNT(*) FROM order_lifecycle_events WHERE company_id=?) AS events_count
+      FROM sales_orders
+      WHERE company_id=?
+    `).get(companyId, companyId) || {};
+    const events = db.prepare(`
+      SELECT ole.*, so.order_number, cl.name AS client_name
+      FROM order_lifecycle_events ole
+      JOIN sales_orders so ON so.id=ole.order_id AND so.company_id=ole.company_id
+      JOIN clients cl ON cl.id=so.client_id AND cl.company_id=so.company_id
+      WHERE ole.company_id=?
+      ORDER BY datetime(COALESCE(ole.event_date, ole.created_at)) DESC, ole.id DESC
+      LIMIT 250
+    `).all(companyId);
+
+    res.type("html").send(renderNexoraOrderLifecyclePage({
+      companyName: req.session.user.company_name || "",
+      user: req.session.user,
+      stats,
+      events,
+      orders: loadOrderManagementOrders(db, companyId),
+      ok: String(req.query?.ok || ""),
+      err: String(req.query?.err || "")
+    }));
+  });
+
+  app.post("/nexora/orders/lifecycle/create", requireAuth, (req, res) => {
+    const companyId = companyIdFrom(req);
+    const orderId = Number(req.body?.order_id || 0);
+    const order = db.prepare(`SELECT id, status FROM sales_orders WHERE id=? AND company_id=?`).get(orderId, companyId);
+    if (!order) return res.redirect("/nexora/orders/lifecycle?err=missing");
+    const toStatus = normalizeStatus(req.body?.to_status, order.status || "NOUA");
+    const allowed = new Set(["NOUA", "CONFIRMATA", "IN_LUCRU", "LIVRATA", "ANULATA", "BLOCAT"]);
+    if (!allowed.has(toStatus)) return res.redirect("/nexora/orders/lifecycle?err=invalid");
+
+    const eventNumber = nextNumber(db, "order_lifecycle_events", "event_number", companyId, "OLC");
+    db.prepare(`
+      INSERT INTO order_lifecycle_events (
+        company_id, event_number, order_id, from_status, to_status, event_type, event_date, actor_email, notes
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      companyId,
+      eventNumber,
+      orderId,
+      order.status || "",
+      toStatus,
+      normalizeStatus(req.body?.event_type, "STATUS"),
+      dateTimeInput(req.body?.event_date),
+      currentUserEmail(req),
+      String(req.body?.notes || "").trim()
+    );
+    db.prepare(`UPDATE sales_orders SET status=?, updated_at=datetime('now') WHERE id=? AND company_id=?`).run(toStatus, orderId, companyId);
+    res.redirect("/nexora/orders/lifecycle?ok=created");
+  });
+
+  app.get("/nexora/orders/fulfillment", requireAuth, (req, res) => {
+    const companyId = companyIdFrom(req);
+    const stats = db.prepare(`
+      SELECT
+        COUNT(*) AS total_tasks,
+        SUM(CASE WHEN UPPER(COALESCE(status,''))='IN_LUCRU' THEN 1 ELSE 0 END) AS running_tasks,
+        SUM(CASE WHEN UPPER(COALESCE(status,''))='FINALIZAT' THEN 1 ELSE 0 END) AS done_tasks,
+        SUM(CASE WHEN UPPER(COALESCE(status,''))='BLOCAT' THEN 1 ELSE 0 END) AS blocked_tasks
+      FROM order_fulfillment_tasks
+      WHERE company_id=?
+    `).get(companyId) || {};
+    const tasks = db.prepare(`
+      SELECT oft.*, so.order_number, sd.delivery_number, cl.name AS client_name, iw.name AS warehouse_name
+      FROM order_fulfillment_tasks oft
+      JOIN sales_orders so ON so.id=oft.order_id AND so.company_id=oft.company_id
+      JOIN clients cl ON cl.id=so.client_id AND cl.company_id=so.company_id
+      LEFT JOIN sales_deliveries sd ON sd.id=oft.delivery_id AND sd.company_id=oft.company_id
+      LEFT JOIN inventory_warehouses iw ON iw.id=oft.warehouse_id AND iw.company_id=oft.company_id
+      WHERE oft.company_id=?
+      ORDER BY date(COALESCE(oft.planned_date, oft.created_at)) ASC, oft.id DESC
+      LIMIT 250
+    `).all(companyId);
+
+    res.type("html").send(renderNexoraOrderFulfillmentPage({
+      companyName: req.session.user.company_name || "",
+      user: req.session.user,
+      stats,
+      tasks,
+      orders: loadOrderManagementOrders(db, companyId, true),
+      deliveries: loadOrderManagementDeliveries(db, companyId, true),
+      warehouses: loadOrderManagementWarehouses(db, companyId),
+      ok: String(req.query?.ok || ""),
+      err: String(req.query?.err || "")
+    }));
+  });
+
+  app.post("/nexora/orders/fulfillment/create", requireAuth, (req, res) => {
+    const companyId = companyIdFrom(req);
+    const orderId = Number(req.body?.order_id || 0);
+    const deliveryId = Number(req.body?.delivery_id || 0) || null;
+    const warehouseId = Number(req.body?.warehouse_id || 0) || null;
+    const order = db.prepare(`SELECT id FROM sales_orders WHERE id=? AND company_id=?`).get(orderId, companyId);
+    if (!order) return res.redirect("/nexora/orders/fulfillment?err=missing");
+    if (deliveryId) {
+      const delivery = db.prepare(`SELECT id, order_id FROM sales_deliveries WHERE id=? AND company_id=?`).get(deliveryId, companyId);
+      if (!delivery || (delivery.order_id && Number(delivery.order_id) !== orderId)) return res.redirect("/nexora/orders/fulfillment?err=invalid");
+    }
+    if (warehouseId) {
+      const warehouse = db.prepare(`SELECT id FROM inventory_warehouses WHERE id=? AND company_id=?`).get(warehouseId, companyId);
+      if (!warehouse) return res.redirect("/nexora/orders/fulfillment?err=invalid");
+    }
+
+    const taskNumber = nextNumber(db, "order_fulfillment_tasks", "task_number", companyId, "OF");
+    db.prepare(`
+      INSERT INTO order_fulfillment_tasks (
+        company_id, task_number, order_id, delivery_id, task_type, warehouse_id, assigned_to,
+        planned_date, status, notes, created_by_email, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `).run(
+      companyId,
+      taskNumber,
+      orderId,
+      deliveryId,
+      normalizeStatus(req.body?.task_type, "PICKING"),
+      warehouseId,
+      String(req.body?.assigned_to || "").trim(),
+      String(req.body?.planned_date || "").trim() || null,
+      normalizeStatus(req.body?.status, "PLANIFICAT"),
+      String(req.body?.notes || "").trim(),
+      currentUserEmail(req)
+    );
+    res.redirect("/nexora/orders/fulfillment?ok=created");
+  });
+
+  app.post("/nexora/orders/fulfillment/:id/status", requireAuth, (req, res) => {
+    const companyId = companyIdFrom(req);
+    const id = Number(req.params.id || 0);
+    const status = normalizeStatus(req.body?.status, "PLANIFICAT");
+    const allowed = new Set(["PLANIFICAT", "IN_LUCRU", "FINALIZAT", "BLOCAT", "ANULAT"]);
+    if (!allowed.has(status)) return res.redirect("/nexora/orders/fulfillment?err=invalid");
+    const result = db.prepare(`
+      UPDATE order_fulfillment_tasks
+      SET status=?, updated_at=datetime('now')
+      WHERE id=? AND company_id=?
+    `).run(status, id, companyId);
+    res.redirect(`/nexora/orders/fulfillment?${result.changes ? "ok=status" : "err=missing"}`);
+  });
+
+  app.get("/nexora/orders/tracking", requireAuth, (req, res) => {
+    const companyId = companyIdFrom(req);
+    const stats = db.prepare(`
+      SELECT
+        COUNT(*) AS events_count,
+        SUM(CASE WHEN TRIM(COALESCE(awb,'')) <> '' THEN 1 ELSE 0 END) AS awb_count,
+        SUM(CASE WHEN UPPER(COALESCE(status,''))='IN_TRANZIT' THEN 1 ELSE 0 END) AS in_transit_count,
+        SUM(CASE WHEN UPPER(COALESCE(status,'')) IN ('LIVRAT','LIVRATA') THEN 1 ELSE 0 END) AS delivered_count
+      FROM order_tracking_events
+      WHERE company_id=?
+    `).get(companyId) || {};
+    const events = db.prepare(`
+      SELECT ote.*, so.order_number, sd.delivery_number,
+             COALESCE(delivery_client.name, order_client.name) AS client_name
+      FROM order_tracking_events ote
+      LEFT JOIN sales_orders so ON so.id=ote.order_id AND so.company_id=ote.company_id
+      LEFT JOIN sales_deliveries sd ON sd.id=ote.delivery_id AND sd.company_id=ote.company_id
+      LEFT JOIN clients order_client ON order_client.id=so.client_id AND order_client.company_id=so.company_id
+      LEFT JOIN clients delivery_client ON delivery_client.id=sd.client_id AND delivery_client.company_id=sd.company_id
+      WHERE ote.company_id=?
+      ORDER BY datetime(COALESCE(ote.event_date, ote.created_at)) DESC, ote.id DESC
+      LIMIT 250
+    `).all(companyId);
+
+    res.type("html").send(renderNexoraOrderTrackingPage({
+      companyName: req.session.user.company_name || "",
+      user: req.session.user,
+      stats,
+      events,
+      orders: loadOrderManagementOrders(db, companyId),
+      deliveries: loadOrderManagementDeliveries(db, companyId),
+      ok: String(req.query?.ok || ""),
+      err: String(req.query?.err || "")
+    }));
+  });
+
+  app.post("/nexora/orders/tracking/create", requireAuth, (req, res) => {
+    const companyId = companyIdFrom(req);
+    const deliveryId = Number(req.body?.delivery_id || 0) || null;
+    let orderId = Number(req.body?.order_id || 0) || null;
+    const delivery = deliveryId
+      ? db.prepare(`SELECT id, order_id FROM sales_deliveries WHERE id=? AND company_id=?`).get(deliveryId, companyId)
+      : null;
+    if (deliveryId && !delivery) return res.redirect("/nexora/orders/tracking?err=missing");
+    if (!orderId && delivery?.order_id) orderId = Number(delivery.order_id);
+    if (orderId) {
+      const order = db.prepare(`SELECT id FROM sales_orders WHERE id=? AND company_id=?`).get(orderId, companyId);
+      if (!order) return res.redirect("/nexora/orders/tracking?err=missing");
+    }
+    if (!orderId && !deliveryId) return res.redirect("/nexora/orders/tracking?err=required");
+
+    const status = normalizeStatus(req.body?.status, "PREGATITA");
+    const courier = String(req.body?.courier || "").trim();
+    const awb = String(req.body?.awb || "").trim();
+    const eventDate = dateTimeInput(req.body?.event_date);
+    const trackingNumber = nextNumber(db, "order_tracking_events", "tracking_number", companyId, "OTR");
+    db.prepare(`
+      INSERT INTO order_tracking_events (
+        company_id, tracking_number, order_id, delivery_id, event_type, event_date,
+        location, courier, awb, status, notes, created_by_email, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `).run(
+      companyId,
+      trackingNumber,
+      orderId,
+      deliveryId,
+      normalizeStatus(req.body?.event_type, "STATUS"),
+      eventDate,
+      String(req.body?.location || "").trim(),
+      courier,
+      awb,
+      status,
+      String(req.body?.notes || "").trim(),
+      currentUserEmail(req)
+    );
+
+    if (deliveryId) {
+      db.prepare(`
+        UPDATE sales_deliveries
+        SET status=?,
+            courier=CASE WHEN ? <> '' THEN ? ELSE courier END,
+            awb=CASE WHEN ? <> '' THEN ? ELSE awb END,
+            delivered_at=CASE WHEN ? IN ('LIVRAT','LIVRATA') THEN COALESCE(delivered_at, date(?)) ELSE delivered_at END,
+            updated_at=datetime('now')
+        WHERE id=? AND company_id=?
+      `).run(status, courier, courier, awb, awb, status, eventDate, deliveryId, companyId);
+    }
+    if (orderId && ["LIVRAT", "LIVRATA"].includes(status)) {
+      db.prepare(`UPDATE sales_orders SET status='LIVRATA', updated_at=datetime('now') WHERE id=? AND company_id=?`).run(orderId, companyId);
+    }
+
+    res.redirect("/nexora/orders/tracking?ok=created");
+  });
+
+  app.get("/nexora/orders/delivery-status", requireAuth, (req, res) => {
+    const companyId = companyIdFrom(req);
+    const stats = db.prepare(`
+      SELECT
+        COUNT(*) AS total_deliveries,
+        SUM(CASE WHEN UPPER(COALESCE(status,'')) NOT IN ('LIVRATA','ANULATA') THEN 1 ELSE 0 END) AS open_deliveries,
+        SUM(CASE WHEN TRIM(COALESCE(awb,'')) <> '' THEN 1 ELSE 0 END) AS awb_deliveries,
+        SUM(CASE WHEN UPPER(COALESCE(status,''))='LIVRATA' THEN 1 ELSE 0 END) AS done_deliveries
+      FROM sales_deliveries
+      WHERE company_id=?
+    `).get(companyId) || {};
+    const rows = db.prepare(`
+      SELECT sd.id, sd.delivery_number, sd.status, sd.scheduled_date, sd.delivered_at, sd.courier, sd.awb,
+             sd.order_id, so.order_number, COALESCE(cl.name, order_client.name) AS client_name,
+             (SELECT COUNT(*) FROM sales_delivery_items sdi WHERE sdi.company_id=sd.company_id AND sdi.delivery_id=sd.id) AS items_count,
+             (SELECT ote.status FROM order_tracking_events ote WHERE ote.company_id=sd.company_id AND ote.delivery_id=sd.id ORDER BY datetime(COALESCE(ote.event_date, ote.created_at)) DESC, ote.id DESC LIMIT 1) AS last_tracking_status,
+             (SELECT ote.event_date FROM order_tracking_events ote WHERE ote.company_id=sd.company_id AND ote.delivery_id=sd.id ORDER BY datetime(COALESCE(ote.event_date, ote.created_at)) DESC, ote.id DESC LIMIT 1) AS last_tracking_date
+      FROM sales_deliveries sd
+      LEFT JOIN sales_orders so ON so.id=sd.order_id AND so.company_id=sd.company_id
+      LEFT JOIN clients cl ON cl.id=sd.client_id AND cl.company_id=sd.company_id
+      LEFT JOIN clients order_client ON order_client.id=so.client_id AND order_client.company_id=so.company_id
+      WHERE sd.company_id=?
+      ORDER BY
+        CASE WHEN UPPER(COALESCE(sd.status,'')) IN ('LIVRATA','ANULATA') THEN 1 ELSE 0 END,
+        date(COALESCE(sd.scheduled_date, sd.created_at)) ASC,
+        sd.id DESC
+      LIMIT 250
+    `).all(companyId);
+
+    res.type("html").send(renderNexoraOrderDeliveryStatusPage({
+      companyName: req.session.user.company_name || "",
+      user: req.session.user,
+      stats,
+      rows,
+      ok: String(req.query?.ok || ""),
+      err: String(req.query?.err || "")
+    }));
+  });
+
+  app.post("/nexora/orders/delivery-status/:id/status", requireAuth, (req, res) => {
+    const companyId = companyIdFrom(req);
+    const deliveryId = Number(req.params.id || 0);
+    const status = normalizeStatus(req.body?.status, "PREGATITA");
+    const allowed = new Set(["PREGATITA", "PREDAT_CURIER", "IN_TRANZIT", "LIVRATA", "INTARZIATA", "ANULATA"]);
+    if (!allowed.has(status)) return res.redirect("/nexora/orders/delivery-status?err=invalid");
+    const delivery = db.prepare(`SELECT id, order_id FROM sales_deliveries WHERE id=? AND company_id=?`).get(deliveryId, companyId);
+    if (!delivery) return res.redirect("/nexora/orders/delivery-status?err=missing");
+
+    const courier = String(req.body?.courier || "").trim();
+    const awb = String(req.body?.awb || "").trim();
+    db.prepare(`
+      UPDATE sales_deliveries
+      SET status=?,
+          courier=?,
+          awb=?,
+          delivered_at=CASE WHEN ?='LIVRATA' THEN COALESCE(delivered_at, date('now')) ELSE delivered_at END,
+          updated_at=datetime('now')
+      WHERE id=? AND company_id=?
+    `).run(status, courier, awb, status, deliveryId, companyId);
+
+    const trackingNumber = nextNumber(db, "order_tracking_events", "tracking_number", companyId, "OTR");
+    db.prepare(`
+      INSERT INTO order_tracking_events (
+        company_id, tracking_number, order_id, delivery_id, event_type, event_date,
+        courier, awb, status, notes, created_by_email, updated_at
+      )
+      VALUES (?, ?, ?, ?, 'STATUS_LIVRARE', datetime('now'), ?, ?, ?, ?, ?, datetime('now'))
+    `).run(
+      companyId,
+      trackingNumber,
+      delivery.order_id || null,
+      deliveryId,
+      courier,
+      awb,
+      status,
+      "Status actualizat din Order Management.",
+      currentUserEmail(req)
+    );
+
+    if (delivery.order_id && status === "LIVRATA") {
+      db.prepare(`UPDATE sales_orders SET status='LIVRATA', updated_at=datetime('now') WHERE id=? AND company_id=?`).run(delivery.order_id, companyId);
+    }
+    res.redirect("/nexora/orders/delivery-status?ok=status");
   });
 
   app.get("/nexora/orders/:id", requireAuth, (req, res) => {

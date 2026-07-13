@@ -25,3 +25,25 @@ _project_archive/
 logs/
 *.log
 .DS_Store
+
+# Local datasets and generated operational artifacts
+data/onrc/
+data/emarqet/contacte-parteneri-*-verified-*.csv
+data/travel-sources/**/*.xlsx
+
+public/mobile/
+pictures/capturi/
+pictures/social-media/
+
+utile/achizitii/
+utile/parteneriate/
+utile/rapoarte/
+utile/social-drafts/
+utile/studii/
+utile/tiktok-demo/
+utile/trevoro-real-social-video/
+utile/proceduri/trevoro-conturi-test.txt
+utile/**/*.pdf
+utile/**/*.docx
+utile/**/*.xlsx
+utile/**/*.mp4

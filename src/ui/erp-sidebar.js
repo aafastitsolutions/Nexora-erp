@@ -17,6 +17,10 @@ const ICONS = {
   files: "▧",
   workflow: "⟲",
   store: "▨",
+  restaurant: "▦",
+  map: "✈",
+  marketplace: "◇",
+  smartphone: "▤",
   sliders: "⚙",
   shield: "▰"
 };

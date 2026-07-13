@@ -1,0 +1,55 @@
+Trevoro Daily Outreach Job
+==========================
+
+Ce face jobul zilnic:
+1. Sincronizeaza inbox-ul contact@trevoro.ro si marcheaza raspunsuri, bounce-uri si Stop-uri.
+2. Proceseaza lead-urile interesate cu raspuns primit.
+   - Cauta adrese alternative mentionate in raspunsuri.
+   - Trimite automat follow-up catre contactul alternativ.
+   - Nu retrimite catre aceeasi adresa pentru acelasi lead.
+3. Verifica lead-urile cu email esuat/bounced.
+   - Pentru erori temporare SMTP, de tip throttling/rate limit, asteapta cooldown si reincearca in ziua urmatoare.
+   - Pentru bounce-uri reale, cauta o adresa alternativa in registrul turistic oficial local.
+   - Daca exista CUI, verifica firma in ANAF ca validare, dar ANAF nu returneaza adrese de email.
+   - Daca gaseste email alternativ sigur, actualizeaza lead-ul si il pune inapoi in status nou.
+   - Daca nu gaseste email si exista telefon, marcheaza lead-ul ca fallback WhatsApp Business.
+4. Trimite pana la 100 emailuri outreach international pe zi, cu pauza intre emailuri.
+   - Jobul ruleaza cu `--international`.
+   - Sunt excluse lead-urile cu country = Romania.
+   - Mesajele internationale sunt in engleza si trimit catre https://www.trevoro.ro/en/owners#form.
+5. Se opreste automat daca SMTP-ul incepe sa dea throttling, ca sa protejam reputatia domeniului.
+6. Sincronizeaza iar inbox-ul dupa batch.
+7. Proceseaza inca o data lead-urile interesate, pentru raspunsurile aparute imediat dupa trimitere.
+
+Support:
+- Timerul `trevoro-email-sync.timer` ruleaza la 5 minute si porneste `scripts/sync-trevoro-support-tickets.mjs`.
+- Scriptul sincronizeaza inbox-ul Trevoro si creeaza tichete din mesajele catre support@trevoro.ro.
+- Tichetele apar in Nexora la /nexora/travel/support.
+- Daca exista tichete support nedeschise, Nexora Travel afiseaza banner rosu.
+
+Programare:
+- timer systemd user: trevoro-daily-outreach.timer
+- ora: zilnic la 09:30 Europe/Bucharest
+- batch: pana la 100 emailuri/zi
+- surse: osm + official_tourism_registry
+- scor minim: 40
+- delay intre emailuri: 45 secunde
+
+Comanda unica de outreach:
+
+Ruleaza test fara trimitere:
+cd /home/server/Nexora
+node scripts/run-trevoro-outreach.mjs --international-limit 5 --romania-limit 0 --dry-run --source all --delay-ms 0
+
+Ruleaza manual batch real:
+cd /home/server/Nexora
+node scripts/run-trevoro-outreach.mjs --romania-limit 400 --international-limit 400 --source all --min-score 0 --daily-quota 800 --delay-ms 45000
+
+Rapoarte:
+- utile/rapoarte/outreach/trevoro-outreach-report-*.json
+- utile/trevoro-interested-followup-report-*.json
+
+WhatsApp Business:
+- Jobul marcheaza candidatii pentru fallback WhatsApp, dar nu trimite automat inca.
+- Pentru trimitere automata avem nevoie de WhatsApp Business API, numar conectat si template-uri aprobate.
+- Dupa ce acestea exista, putem adauga un worker separat care ia lead-urile cu activitate outreach_whatsapp_candidate.

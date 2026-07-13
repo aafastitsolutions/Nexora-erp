@@ -1,0 +1,14 @@
+[Unit]
+Description=Trevoro unpaid property lifecycle
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=server
+Group=server
+WorkingDirectory=/home/server/Nexora
+Environment=NODE_ENV=production
+EnvironmentFile=/home/server/Nexora/.env
+ExecStart=/usr/bin/node scripts/process-trevoro-unpaid-property-deletions.mjs --limit 300
+TimeoutStartSec=1800

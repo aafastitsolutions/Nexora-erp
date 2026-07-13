@@ -1,0 +1,14 @@
+[Unit]
+Description=cloudflared aafast tunnel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=server
+ExecStart=/usr/bin/cloudflared --no-autoupdate --config /home/server/.cloudflared-aafast/config.yml tunnel run
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

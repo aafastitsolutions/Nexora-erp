@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { renderNexoraShell } from "../src/ui/nexora-shell.js";
 
 const DEFAULT_ANAF_REDIRECT_URI = "https://nexora.aafastitsolutions.ro/oauth/anaf/callback";
 const DEFAULT_ANAF_AUTHORIZE_URL = "https://logincert.anaf.ro/anaf-oauth2/v1/authorize";
@@ -140,6 +141,92 @@ function buildAccessDeniedMessage({ connection, environment, redirectUri }) {
   }
 
   return parts.join(" ");
+}
+
+function renderAnafOauthLaunchPage({ authorizationRequestUrl, environment, redirectUri, user = null }) {
+  if (user) {
+    const companyName = user.company_name || "Workspace";
+    const body = `
+      <section class="nx-content-card">
+        <div class="nx-section-head">
+          <div>
+            <h1>Deschide autentificarea ANAF</h1>
+            <p>Apasă butonul de mai jos. Browserul trebuie să te ducă pe ANAF și să îți ceară certificatul digital calificat.</p>
+          </div>
+          <div class="nx-form-actions">
+            <a class="nx-btn" href="/nexora/anaf/status">Înapoi la status</a>
+          </div>
+        </div>
+      </section>
+
+      <div class="nx-two-column-grid">
+        <section class="nx-panel">
+          <div class="nx-panel-head">
+            <div><h2>Detalii conexiune</h2><span>verifică înainte de autorizare</span></div>
+          </div>
+          <div class="nx-settings-note"><b>Mediu</b><span>${escapeHtml(String(environment || "prod").toUpperCase())}</span></div>
+          <div class="nx-settings-note"><b>Redirect URI</b><span>${escapeHtml(redirectUri)}</span></div>
+        </section>
+
+        <section class="nx-panel">
+          <div class="nx-panel-head">
+            <div><h2>Dacă nu apare fereastra ANAF</h2><span>browser / certificat</span></div>
+          </div>
+          <p class="nx-table-sub">Deschide linkul într-o filă nouă sau fereastră incognito. Dacă ANAF te întoarce imediat cu eroare, șterge cookie-urile ANAF/logincert sau închide sesiunile ANAF deja deschise și reîncearcă.</p>
+          <div class="nx-form-actions" style="margin-top:16px">
+            <a class="nx-btn primary" href="${escapeHtml(authorizationRequestUrl)}">Deschide ANAF în aceeași filă</a>
+            <a class="nx-btn" href="${escapeHtml(authorizationRequestUrl)}" target="_blank" rel="noopener">Filă nouă</a>
+          </div>
+          <label class="nx-field" style="margin-top:14px">
+            <span>Sau copiază manual linkul</span>
+            <input readonly onclick="this.select()" value="${escapeHtml(authorizationRequestUrl)}">
+          </label>
+        </section>
+      </div>
+    `;
+
+    return renderNexoraShell({
+      title: "Conectare SPV ANAF",
+      appName: "Nexora ERP",
+      companyName,
+      user,
+      currentPath: "/nexora/anaf/status",
+      eyebrow: "Financiar / ANAF e-Factura",
+      pageTitle: "Deschide ANAF",
+      body
+    });
+  }
+
+  return renderPublicPage({
+    title: "Conectare SPV ANAF",
+    body: `
+      <div class="stack">
+        <div>
+          <div class="muted" style="font-weight:700;letter-spacing:.08em;text-transform:uppercase">Nexora · SPV</div>
+          <h1>Deschide autentificarea ANAF</h1>
+          <p class="muted">Apasa butonul de mai jos. Browserul trebuie sa te duca pe ANAF si sa iti ceara certificatul digital calificat.</p>
+        </div>
+
+        <section class="panel">
+          <div class="meta">
+            <div><b>Mediu:</b> ${escapeHtml(String(environment || "prod").toUpperCase())}</div>
+            <div><b>Redirect URI:</b> ${escapeHtml(redirectUri)}</div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <p><b>Daca nu apare fereastra ANAF:</b></p>
+          <p class="muted">Deschide linkul intr-o fila noua sau fereastra incognito. Daca ANAF te intoarce imediat cu eroare, sterge cookie-urile ANAF/logincert sau inchide sesiunile ANAF deja deschise si reincearca.</p>
+          <p style="margin-top:18px">
+            <a href="${escapeHtml(authorizationRequestUrl)}" style="display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 18px;border-radius:14px;background:#2563eb;color:#fff;font-weight:900;text-decoration:none">Deschide ANAF in aceeasi fila</a>
+            <a href="${escapeHtml(authorizationRequestUrl)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 18px;border-radius:14px;background:#fff;color:#2563eb;border:1px solid #bfdbfe;font-weight:900;text-decoration:none;margin-left:8px">Fila noua</a>
+          </p>
+          <p class="muted" style="margin-top:14px">Sau copiaza manual linkul:</p>
+          <input readonly onclick="this.select()" value="${escapeHtml(authorizationRequestUrl)}" style="width:100%;min-height:42px;border:1px solid #dbe3ef;border-radius:12px;padding:0 12px">
+        </section>
+      </div>
+    `
+  });
 }
 
 function upsertAnafConnection(db, companyId, environment, tokenPayload, rawResponse) {
@@ -714,6 +801,15 @@ function beginOauthAuthorization(req, res, {
     requested_scope: scope || "",
     invite_code: formattedInviteCode || ""
   }, req.query);
+
+  if (String(req.query?.launch || "").trim() === "1") {
+    return res.type("html").send(renderAnafOauthLaunchPage({
+      authorizationRequestUrl,
+      environment,
+      redirectUri,
+      user: returnTo === "nexora" ? req.session?.user || null : null
+    }));
+  }
 
   res.redirect(authorizationRequestUrl);
 }

@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Nexora EU Opportunity Finder daily
+
+[Timer]
+OnCalendar=*-*-* 07:30:00
+Persistent=true
+Unit=nexora-eu-opportunity-finder.service
+
+[Install]
+WantedBy=timers.target

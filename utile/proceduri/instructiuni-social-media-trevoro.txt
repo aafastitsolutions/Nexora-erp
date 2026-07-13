@@ -1,0 +1,137 @@
+Instructiuni Social Media Trevoro
+=================================
+
+Scop
+----
+Conectam Nexora Travel la:
+- Facebook Page Trevoro: https://www.facebook.com/profile.php?id=61590311832249
+- TikTok Trevoro: https://www.tiktok.com/@trevororomania
+
+In Nexora, fluxul este deja pregatit aici:
+/nexora/travel/social-posts
+
+
+1. Facebook - OAuth pagina + Page Access Token
+----------------------------------------------
+
+Flux recomandat:
+1. In Nexora mergi la:
+   /nexora/travel/social-posts
+2. La cardul Facebook apasa:
+   Conecteaza Facebook
+3. Autorizeaza aplicatia Meta cu contul care administreaza pagina Trevoro.
+4. Nexora citeste paginile administrate, alege pagina Trevoro si salveaza Page Access Token-ul paginii.
+5. Postarile Facebook aflate in manual_required sunt mutate automat in queued.
+
+Configurare Meta necesara:
+- FACEBOOK_CLIENT_ID sau FACEBOOK_APP_ID
+- FACEBOOK_CLIENT_SECRET sau FACEBOOK_APP_SECRET
+- optional NEXORA_FACEBOOK_REDIRECT_URI
+- redirect implicit: https://nexora.aafastitsolutions.ro/oauth/facebook/callback
+- scope-uri: pages_show_list, pages_read_engagement, pages_manage_posts
+
+Varianta manuala, daca OAuth nu este disponibil:
+https://developers.facebook.com/tools/explorer/
+
+Pasi:
+1. Logheaza-te cu contul Meta/Facebook care administreaza pagina Trevoro.
+2. In Graph API Explorer, selecteaza aplicatia Meta pentru Trevoro.
+   Important: sa fie aplicatia Trevoro, nu doar "Graph API Explorer".
+3. Genereaza User Token cu permisiunile:
+   - pages_show_list
+   - pages_read_engagement
+   - pages_manage_posts
+4. Ruleaza request:
+   GET /me/accounts?fields=name,id,access_token
+5. Cauta pagina cu ID:
+   61590311832249
+6. Copiaza access_token de la pagina respectiva.
+   Acesta este Page Access Token-ul.
+7. In Nexora mergi la:
+   /nexora/travel/social-posts
+8. La cardul Facebook completeaza:
+   - Page ID: 61590311832249
+   - Access token: tokenul copiat din Meta
+   - Status: active
+   - Auto queue: bifat
+9. Apasa Save.
+
+Ce face Nexora dupa asta:
+- postari Facebook generate automat intra in coada;
+- worker-ul Nexora proceseaza coada periodic;
+- publicarea se face prin Meta Graph API.
+
+Nota pentru productie:
+Pentru folosire stabila, tokenul trebuie sa fie long-lived, iar aplicatia Meta trebuie sa aiba aprobate permisiunile necesare, in special pages_manage_posts.
+
+
+2. TikTok - Direct Post Approval
+--------------------------------
+
+Unde intri:
+https://developers.tiktok.com/
+
+Pasi:
+1. Intra in TikTok Developer Portal.
+2. Mergi la Manage Apps.
+3. Creeaza sau selecteaza aplicatia Trevoro.
+4. Adauga produsul:
+   Content Posting API
+5. Activeaza Direct Post.
+6. Cere scope:
+   video.publish
+7. Pentru upload/draft manual, scope-ul este:
+   video.upload
+8. Contul @trevororomania trebuie sa autorizeze aplicatia prin OAuth.
+9. Trimite aplicatia la App Review / Audit pentru Content Posting API.
+
+Important:
+TikTok permite testarea Direct Post, dar pentru aplicatii neauditate postarile sunt restrictionate la privat.
+Pentru postari publice automate pe @trevororomania este nevoie de audit TikTok aprobat.
+
+Pana la aprobare:
+- Nexora genereaza script/caption TikTok;
+- postarea ramane in status manual_required;
+- publicarea se face manual sau dupa ce TikTok aproba Direct Post.
+
+
+3. Linkuri utile
+----------------
+
+Meta Graph API Explorer:
+https://developers.facebook.com/tools/explorer/
+
+Meta Access Token Debugger:
+https://developers.facebook.com/tools/debug/accesstoken/
+
+TikTok Developers:
+https://developers.tiktok.com/
+
+TikTok Direct Post API:
+https://developers.tiktok.com/doc/content-posting-api-reference-direct-post
+
+TikTok Content Posting API Get Started:
+https://developers.tiktok.com/doc/content-posting-api-get-started//
+
+TikTok App Review Guidelines:
+https://developers.tiktok.com/doc/app-review-guidelines
+
+
+4. Status implementare Nexora
+-----------------------------
+
+Implementat:
+- travel_social_accounts
+- travel_social_publish_jobs
+- generare automata Facebook post la activare proprietate
+- generare automata TikTok script la activare proprietate
+- pagina /nexora/travel/social-posts
+- queue manuala si worker periodic pentru Facebook
+- OAuth Facebook pentru salvarea automata a Page Access Token-ului
+- TikTok pastrat corect ca manual_required pana la audit
+
+De facut cand avem tokenuri:
+1. Conectat Facebook din Nexora sau salvat Page Access Token manual.
+2. Testata o postare Facebook din queue.
+3. Creat app TikTok si pornit review pentru video.publish.
+4. Dupa aprobare, extins Nexora pentru Direct Post TikTok public.

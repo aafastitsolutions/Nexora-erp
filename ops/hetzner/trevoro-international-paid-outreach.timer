@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Trevoro international paid listing outreach once on 2026-06-19
+
+[Timer]
+OnCalendar=2026-06-19 09:30:00 Europe/Bucharest
+AccuracySec=1m
+Persistent=false
+Unit=trevoro-international-paid-outreach.service
+
+[Install]
+WantedBy=timers.target

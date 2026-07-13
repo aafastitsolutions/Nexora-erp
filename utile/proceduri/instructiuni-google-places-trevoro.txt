@@ -1,0 +1,44 @@
+Trevoro / Nexora Travel - Google Places
+=======================================
+
+Ce putem face corect:
+- folosim Google Places API (New), metoda Text Search, nu scraping Google Maps;
+- stocam in Nexora doar google_place_id, pentru ca Place ID-ul este exceptat de la restrictiile de caching/stocare Google;
+- folosim Place ID-ul pentru verificari live, matching si validare manuala.
+
+Ce NU facem fara acord/licenta explicita:
+- nu construim o baza permanenta de lead-uri copiind nume, telefon, email, website, rating sau review-uri din Google Maps;
+- nu facem scraping din interfata Google Maps;
+- nu afisam date Google fara atribuire/Google logo si fara respectarea politicilor Places API.
+
+Setup:
+1. Google Cloud Console:
+   - activeaza Places API (New);
+   - asigura-te ca billing-ul este activ;
+   - creeaza/restrictioneaza o cheie API pentru server.
+
+2. In /home/server/Nexora/.env adauga una dintre variabile:
+   GOOGLE_PLACES_API_KEY=cheia_ta
+
+   Alternative acceptate de script:
+   GOOGLE_MAPS_API_KEY=cheia_ta
+   GOOGLE_API_KEY=cheia_ta
+
+3. Test rapid:
+   node scripts/match-google-place-ids-for-travel-leads.mjs --dry-run --source=osm --min-score=40 --limit=10
+
+4. Rulare reala:
+   node scripts/match-google-place-ids-for-travel-leads.mjs --source=osm --min-score=40 --limit=200
+
+Ce face scriptul:
+- ia lead-uri existente din travel_leads;
+- cauta prin Google Places API dupa nume + tip + oras + Romania;
+- cere doar campul places.id;
+- salveaza google_place_id pe lead;
+- adauga activitate in timeline: google_place_matched;
+- scrie raport JSON in folderul utile.
+
+Surse oficiale:
+- Text Search (New): https://developers.google.com/maps/documentation/places/web-service/text-search
+- REST places.searchText: https://developers.google.com/maps/documentation/places/web-service/reference/rest/v1/places/searchText
+- Politici Places API: https://developers.google.com/maps/documentation/places/web-service/policies

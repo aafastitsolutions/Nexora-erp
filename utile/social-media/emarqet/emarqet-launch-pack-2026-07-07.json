@@ -1,0 +1,103 @@
+{
+  "createdAt": "2026-07-07T14:14:54.548Z",
+  "outputDir": "public/uploads/emarqet/social/launch-2026-07-07",
+  "posts": [
+    {
+      "id": "01",
+      "image": "/uploads/emarqet/social/launch-2026-07-07/emarqet-launch-01-publica-gratuit.png",
+      "theme": "/uploads/emarqet/social/launch-2026-07-07/themes/theme-01-marketplace-categorii.png",
+      "pageCaption": "Am lansat e-Marqet, o platforma romaneasca de anunturi locale.\n\nPoti publica gratuit primul anunt pentru auto, imobiliare, servicii sau produse.\n\nIntra aici si pune primul anunt:\nhttps://e-marqet.com/publica?utm_source=facebook&utm_medium=page&utm_campaign=emarqet_launch_pack&utm_content=publica_gratuit",
+      "groupCaption": "Salut! Daca este permis in grup, lasam aici o platforma romaneasca noua de anunturi locale: e-Marqet.\n\nSe pot publica anunturi pentru masini, imobiliare, servicii si produse. Primul pas este gratuit.\n\nhttps://e-marqet.com/publica?utm_source=facebook&utm_medium=manual_group&utm_campaign=emarqet_launch_pack&utm_content=publica_gratuit"
+    },
+    {
+      "id": "02",
+      "image": "/uploads/emarqet/social/launch-2026-07-07/emarqet-launch-02-da-l-mai-departe.png",
+      "theme": "/uploads/emarqet/social/launch-2026-07-07/themes/theme-02-distribuire-anunt.png",
+      "pageCaption": "Campanie noua pe e-Marqet: Pune-l pe e-Marqet. Da-l mai departe.\n\nPublici un anunt, il distribui pe Facebook, iar la 3 clickuri unice primesti promovare gratuita 7 zile.\n\nhttps://e-marqet.com/cont?utm_source=facebook&utm_medium=page&utm_campaign=emarqet_launch_pack&utm_content=referral",
+      "groupCaption": "Pentru cei care vand ceva local: pe e-Marqet poti publica anuntul si primesti link de distribuit.\n\nLa 3 clickuri unice pe link, anuntul primeste promovare gratuita 7 zile.\n\nhttps://e-marqet.com/cont?utm_source=facebook&utm_medium=manual_group&utm_campaign=emarqet_launch_pack&utm_content=referral"
+    },
+    {
+      "id": "03",
+      "image": "/uploads/emarqet/social/launch-2026-07-07/emarqet-launch-03-auto-imobiliare.png",
+      "theme": "/uploads/emarqet/social/launch-2026-07-07/themes/theme-03-auto-imobiliare-servicii.png",
+      "pageCaption": "Ai o masina, o proprietate sau un serviciu de promovat?\n\nPune anuntul pe e-Marqet si primesti o pagina publica simpla, cu link usor de distribuit.\n\nhttps://e-marqet.com/anunturi?utm_source=facebook&utm_medium=page&utm_campaign=emarqet_launch_pack&utm_content=auto_imobiliare_servicii",
+      "groupCaption": "Daca aveti anunturi auto, imobiliare sau servicii locale, e-Marqet poate fi un canal in plus pentru vizibilitate.\n\nPublicarea incepe simplu, cu anunt si link public.\n\nhttps://e-marqet.com/anunturi?utm_source=facebook&utm_medium=manual_group&utm_campaign=emarqet_launch_pack&utm_content=auto_imobiliare_servicii"
+    },
+    {
+      "id": "04",
+      "image": "/uploads/emarqet/social/launch-2026-07-07/emarqet-launch-04-firme-parteneri.png",
+      "theme": "/uploads/emarqet/social/launch-2026-07-07/themes/theme-04-firme-parteneri.png",
+      "pageCaption": "Pentru dealeri auto, agentii imobiliare si firme locale: e-Marqet are profil business si flux de import anunturi.\n\nEste util cand ai stoc, proprietati sau servicii de promovat constant.\n\nhttps://e-marqet.com/parteneri?utm_source=facebook&utm_medium=page&utm_campaign=emarqet_launch_pack&utm_content=business_parteneri",
+      "groupCaption": "Pentru firme care publica des anunturi: e-Marqet poate pregati profil business si import de anunturi.\n\nPotrivit pentru dealeri auto, agentii imobiliare si servicii locale.\n\nhttps://e-marqet.com/parteneri?utm_source=facebook&utm_medium=manual_group&utm_campaign=emarqet_launch_pack&utm_content=business_parteneri"
+    },
+    {
+      "id": "05",
+      "image": "/uploads/emarqet/social/launch-2026-07-07/emarqet-launch-05-marketplace-local.png",
+      "theme": "/uploads/emarqet/social/launch-2026-07-07/themes/theme-05-marketplace-local.png",
+      "pageCaption": "e-Marqet este un canal nou pentru anunturi locale, construit sa fie simplu de folosit si usor de distribuit.\n\nPublici anuntul, primesti link si il poti trimite mai departe pe Facebook.\n\nhttps://e-marqet.com/?utm_source=facebook&utm_medium=page&utm_campaign=emarqet_launch_pack&utm_content=marketplace_local",
+      "groupCaption": "Lasam aici o alternativa romaneasca pentru anunturi locale: e-Marqet.\n\nEste util pentru cei care vor un link public pentru anunt si apoi il distribuie unde este permis.\n\nhttps://e-marqet.com/?utm_source=facebook&utm_medium=manual_group&utm_campaign=emarqet_launch_pack&utm_content=marketplace_local"
+    }
+  ],
+  "results": [
+    {
+      "post": "01",
+      "mode": "page",
+      "id": 1,
+      "updated": true
+    },
+    {
+      "post": "01",
+      "mode": "group",
+      "id": 2,
+      "updated": true
+    },
+    {
+      "post": "02",
+      "mode": "page",
+      "id": 3,
+      "updated": true
+    },
+    {
+      "post": "02",
+      "mode": "group",
+      "id": 4,
+      "updated": true
+    },
+    {
+      "post": "03",
+      "mode": "page",
+      "id": 5,
+      "updated": true
+    },
+    {
+      "post": "03",
+      "mode": "group",
+      "id": 6,
+      "updated": true
+    },
+    {
+      "post": "04",
+      "mode": "page",
+      "id": 7,
+      "updated": true
+    },
+    {
+      "post": "04",
+      "mode": "group",
+      "id": 8,
+      "updated": true
+    },
+    {
+      "post": "05",
+      "mode": "page",
+      "id": 9,
+      "updated": true
+    },
+    {
+      "post": "05",
+      "mode": "group",
+      "id": 10,
+      "updated": true
+    }
+  ]
+}

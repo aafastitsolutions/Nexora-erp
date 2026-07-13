@@ -1,0 +1,12 @@
+[Unit]
+Description=Nexora EU Opportunity Finder daily sync
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/server/Nexora
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npm run procurement:sync:eu -- --due-only --limit 40
+User=server
+Group=server

@@ -1,0 +1,20 @@
+[Unit]
+Description=Trevoro public site (Next.js)
+After=network-online.target nexora.service
+Wants=network-online.target
+Requires=nexora.service
+
+[Service]
+Type=simple
+User=server
+Group=server
+WorkingDirectory=/home/server/Trevoro
+Environment=NODE_ENV=production
+EnvironmentFile=/home/server/Trevoro/.env
+ExecStart=/usr/bin/npm run start -- --hostname 127.0.0.1 --port 3100
+Restart=always
+RestartSec=5
+TimeoutStartSec=90
+
+[Install]
+WantedBy=multi-user.target

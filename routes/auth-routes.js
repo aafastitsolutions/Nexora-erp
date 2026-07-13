@@ -65,6 +65,7 @@ function buildSessionUser(u) {
     role: u.role,
     company_id: u.company_id,
     client_id: u.client_id,
+    language: u.language || "ro",
     company_name: u.company_name,
     company_is_demo: u.company_is_demo,
     demo_expires_at: u.demo_expires_at,

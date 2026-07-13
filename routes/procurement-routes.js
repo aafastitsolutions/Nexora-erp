@@ -3,10 +3,19 @@ import {
   renderNexoraProcurementBillsPage,
   renderNexoraProcurementCostsPage,
   renderNexoraProcurementHubPage,
+  renderNexoraProcurementOpportunitiesPage,
   renderNexoraProcurementOrdersPage,
   renderNexoraProcurementReceiptsPage,
   renderNexoraProcurementSuppliersPage
 } from "../src/ui/nexora-procurement-pages.js";
+import {
+  createCrmLeadFromProcurementOpportunity,
+  ensureProcurementOpportunitiesSchema,
+  loadProcurementOpportunities,
+  syncEuOpportunityFinder,
+  syncProcurementOpportunities,
+  updateProcurementOpportunityStatus
+} from "../lib/procurement-opportunities.js";
 
 function companyIdFrom(req) {
   return Number(req.session.user.company_id || 0);
@@ -416,6 +425,8 @@ function createAccountingExpenseForBill(db, req, companyId, bill, supplier, atta
 }
 
 export function registerProcurementRoutes(app, { db, requireAuth, fmtMoney, fs, path, __dirname, upload }) {
+  ensureProcurementOpportunitiesSchema(db);
+
   app.get("/nexora/procurement", requireAuth, (req, res) => {
     const companyId = companyIdFrom(req);
     const stats = {
@@ -464,6 +475,82 @@ export function registerProcurementRoutes(app, { db, requireAuth, fmtMoney, fs, 
       recentBills,
       fmtMoney
     }));
+  });
+
+  app.get("/nexora/procurement/opportunities", requireAuth, (req, res) => {
+    const companyId = companyIdFrom(req);
+    const filters = {
+      eu_only: true,
+      source: safeText(req.query?.source),
+      status: safeText(req.query?.status) || "active",
+      contract_type: safeText(req.query?.contract_type),
+      source_type: safeText(req.query?.source_type),
+      country: safeText(req.query?.country),
+      funding_program: safeText(req.query?.funding_program),
+      review_status: safeText(req.query?.review_status),
+      min_score: parseNumber(req.query?.min_score, 0),
+      publication_from: parseDate(req.query?.publication_from),
+      publication_to: parseDate(req.query?.publication_to),
+      deadline_from: parseDate(req.query?.deadline_from),
+      deadline_to: parseDate(req.query?.deadline_to),
+      q: safeText(req.query?.q)
+    };
+    const data = loadProcurementOpportunities(db, companyId, filters);
+    const syncResults = (() => {
+      try {
+        return JSON.parse(String(req.session?.procurementOpportunitySyncResults || "[]"));
+      } catch {
+        return [];
+      }
+    })();
+    req.session.procurementOpportunitySyncResults = null;
+    return res.type("html").send(renderNexoraProcurementOpportunitiesPage({
+      companyName: req.session.user.company_name || "",
+      user: req.session.user,
+      rows: data.rows,
+      stats: data.stats,
+      latestRuns: data.latestRuns,
+      sources: data.sources,
+      notifications: data.notifications,
+      filters,
+      syncResults,
+      fmtMoney,
+      err: safeText(req.query?.err)
+    }));
+  });
+
+  app.post("/nexora/procurement/opportunities/sync", requireAuth, async (req, res) => {
+    const companyId = companyIdFrom(req);
+    try {
+      const results = await syncEuOpportunityFinder(db, companyId, { limit: 40 });
+      req.session.procurementOpportunitySyncResults = JSON.stringify(results);
+      return res.redirect("/nexora/procurement/opportunities");
+    } catch (error) {
+      console.error("Procurement opportunities sync failed:", error);
+      return res.redirect(`/nexora/procurement/opportunities?err=${encodeURIComponent("Sincronizarea a eșuat. Verifică logurile sau încearcă din nou.")}`);
+    }
+  });
+
+  app.post("/nexora/procurement/opportunities/:id/status", requireAuth, (req, res) => {
+    const companyId = companyIdFrom(req);
+    try {
+      const result = updateProcurementOpportunityStatus(db, companyId, Number(req.params.id || 0), req.body?.review_status);
+      return res.redirect(`/nexora/procurement/opportunities?${result.ok ? "ok=updated" : "err=missing"}`);
+    } catch (error) {
+      console.error("Procurement opportunity status update failed:", error);
+      return res.redirect("/nexora/procurement/opportunities?err=status_failed");
+    }
+  });
+
+  app.post("/nexora/procurement/opportunities/:id/create-lead", requireAuth, (req, res) => {
+    const companyId = companyIdFrom(req);
+    try {
+      const result = createCrmLeadFromProcurementOpportunity(db, companyId, Number(req.params.id || 0), currentUserEmail(req));
+      return res.redirect(`/nexora/procurement/opportunities?${result.ok ? "ok=lead_created" : "err=lead_failed"}`);
+    } catch (error) {
+      console.error("Create CRM lead from procurement opportunity failed:", error);
+      return res.redirect("/nexora/procurement/opportunities?err=lead_failed");
+    }
   });
 
   app.get("/nexora/procurement/suppliers", requireAuth, (req, res) => {

@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trevoro - campanie promovare 14 zile</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #142326;
+      --muted: #5f6d70;
+      --line: #d9e2e4;
+      --soft: #f4f8f8;
+      --brand: #008f7a;
+      --brand-dark: #036b5d;
+      --accent: #ff735c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: #eef4f5;
+      line-height: 1.5;
+    }
+    main {
+      width: min(1120px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0 56px;
+    }
+    header {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 24px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(28px, 4vw, 44px);
+      letter-spacing: 0;
+    }
+    .lead {
+      margin: 0;
+      color: var(--muted);
+      max-width: 720px;
+    }
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      border: 1px solid var(--brand);
+      background: var(--brand);
+      color: #fff;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .btn.secondary {
+      background: #fff;
+      color: var(--brand-dark);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+      gap: 16px;
+    }
+    article {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      box-shadow: 0 10px 30px rgba(20, 35, 38, 0.06);
+    }
+    .kicker {
+      color: var(--brand-dark);
+      font-weight: 800;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      margin: 0 0 8px;
+    }
+    h2 {
+      font-size: 20px;
+      margin: 0 0 8px;
+      letter-spacing: 0;
+    }
+    .meta {
+      color: var(--muted);
+      font-size: 14px;
+      margin: 0 0 12px;
+    }
+    textarea {
+      width: 100%;
+      min-height: 190px;
+      resize: vertical;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      color: var(--ink);
+      background: var(--soft);
+      font: inherit;
+      font-size: 14px;
+    }
+    .preview {
+      display: block;
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      object-fit: cover;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--soft);
+      margin: 12px 0;
+    }
+    .visual {
+      margin: 12px 0;
+      padding: 10px 12px;
+      border-left: 4px solid var(--accent);
+      background: #fff7f5;
+      color: #63342b;
+      font-size: 14px;
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      margin-top: 12px;
+    }
+    .link {
+      color: var(--brand-dark);
+      font-size: 13px;
+      overflow-wrap: anywhere;
+    }
+    .copied {
+      color: var(--brand-dark);
+      font-weight: 700;
+      font-size: 13px;
+      min-height: 20px;
+    }
+    .tools {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>Trevoro - campanie promovare 14 zile</h1>
+        <p class="lead">Postari gata de copiat pentru Facebook, profil personal, grupuri si TikTok/Reels. Textele copiate includ UTM-uri pentru masurare in Nexora Travel.</p>
+      </div>
+      <div class="actions">
+        <a class="btn secondary" href="/nexora/travel/social-posts">Inapoi in Social Posts</a>
+        <a class="btn secondary" href="/nexora/travel/social-responses" target="_blank" rel="noreferrer">Raspunsuri rapide</a>
+        <a class="btn secondary" href="https://business.facebook.com/" target="_blank" rel="noreferrer">Meta Business Suite</a>
+        <a class="btn" href="https://www.trevoro.ro/cazare" target="_blank" rel="noreferrer">Trevoro /cazare</a>
+      </div>
+    </header>
+
+    <section class="grid" id="posts"></section>
+  </main>
+
+  <script>
+    const posts = [
+      {
+        day: "Ziua 1",
+        title: "Lansare pentru turisti",
+        platform: "Facebook Page + profil personal",
+        link: "https://www.trevoro.ro/cazare",
+        image: "/nexora/travel/social-campaign-assets/trevoro-day-01-cazari-romania.png",
+        visual: "Captura cu pagina /cazare sau logo Trevoro.",
+        text: `Am lansat Trevoro, o platforma romaneasca unde poti descoperi cazari dupa tara, oras, judet sau regiune.
+
+Incepem cu proprietati verificate si extindem constant lista. Daca planuiesti un weekend, o vacanta la mare, munte sau o iesire in tara, poti porni de aici:
+
+https://www.trevoro.ro/cazare
+
+Trevoro este construit pentru cautare simpla si contact direct cu proprietarii.
+
+#Trevoro #CazareRomania #VacantaRomania #TurismRomania`
+      },
+      {
+        day: "Ziua 2",
+        title: "Pentru proprietari",
+        platform: "Facebook Page + grupuri proprietari",
+        link: "https://www.trevoro.ro/proprietari",
+        image: "/nexora/travel/social-campaign-assets/trevoro-day-02-cost-predictibil.png",
+        visual: "Card: Cost predictibil - planuri fixe de la 99 lei/luna.",
+        text: `Ai hotel, pensiune, cabana, vila sau apartament in regim hotelier?
+
+Trevoro cauta proprietari care vor cost predictibil. In perioada de lansare, proprietarii activi primesc planuri fixe de la 99 lei/lunae pentru listare si promovare social media.
+
+Fara comision pe rezervari.
+
+Inscriere: https://www.trevoro.ro/proprietari
+
+#Trevoro #ProprietariCazare #TurismRomania #PensiuniRomania`
+      },
+      {
+        day: "Ziua 3",
+        title: "Ghid litoral",
+        platform: "Facebook Page + grupuri litoral",
+        link: "https://www.trevoro.ro/blog/cazare-litoral-vara",
+        image: "/nexora/travel/social-campaign-assets/trevoro-day-03-ghid-litoral.png",
+        visual: "Poza litoral sau card cu checklist.",
+        text: `Cazarea la mare nu inseamna doar pretul pe noapte.
+
+Conteaza distanta fata de plaja, parcarea, aerul conditionat, politica pentru copii si confirmarea clara a disponibilitatii.
+
+Ghid Trevoro:
+https://www.trevoro.ro/blog/cazare-litoral-vara
+
+#Trevoro #LitoralRomania #VacantaRomania #CazareRomania`
+      },
+      {
+        day: "Ziua 4",
+        title: "Intrebare de comunitate",
+        platform: "Facebook Page + profil personal",
+        link: "https://www.trevoro.ro/cazare",
+        image: "/nexora/travel/social-campaign-assets/trevoro-day-04-intrebare-comunitate.png",
+        visual: "Sondaj simplu cu 5 destinatii.",
+        text: `Pentru vara asta, ce cauti mai des?
+
+1. Litoral
+2. Munte
+3. Delta Dunarii
+4. City break
+5. Cabana cu prietenii
+
+Construim Trevoro in functie de ce cauta oamenii real. Scrie in comentarii zona care te intereseaza si adaugam mai multe optiuni acolo.
+
+https://www.trevoro.ro/cazare
+
+#Trevoro #VacantaRomania #TurismRomania`
+      },
+      {
+        day: "Ziua 5",
+        title: "Ghid cabane",
+        platform: "Facebook Page + grupuri munte/cabane",
+        link: "https://www.trevoro.ro/blog/cabane-cu-jacuzzi",
+        image: "/nexora/travel/social-campaign-assets/trevoro-day-05-cabane-jacuzzi.png",
+        visual: "Card: Ce verifici la o cabana.",
+        text: `Cabana cu jacuzzi suna bine, dar merita sa verifici cateva lucruri inainte:
+
+- jacuzzi privat sau comun;
+- acces cu masina mica;
+- parcare pentru tot grupul;
+- reguli pentru ora de liniste;
+- ce este inclus in pret.
+
+Ghid Trevoro:
+https://www.trevoro.ro/blog/cabane-cu-jacuzzi
+
+#Trevoro #CabaneRomania #WeekendRomania #CazareLaMunte`
+      },
+      {
+        day: "Ziua 6",
+        title: "Proprietate reala - 2 Mai",
+        platform: "Facebook Page",
+        link: "https://www.trevoro.ro/properties/24-vila-roxana-2-mai",
+        image: "/nexora/travel/social-campaign-assets/trevoro-day-06-vila-roxana-2-mai.png",
+        visual: "Poza proprietate daca exista; altfel captura pagina.",
+        text: `Recomandare Trevoro pentru cei care cauta cazare aproape de mare: Vila Roxana, 2 Mai.
+
+Verifica pagina proprietatii si trimite cerere direct catre proprietar:
+
+https://www.trevoro.ro/properties/24-vila-roxana-2-mai
+
+#Trevoro #Cazare2Mai #LitoralRomania #CazariRomania`
+      },
+      {
+        day: "Ziua 7",
+        title: "Recap blog",
+        platform: "Facebook Page + profil personal",
+        link: "https://www.trevoro.ro/blog",
+        image: "/nexora/travel/social-campaign-assets/trevoro-day-07-ghiduri-trevoro.png",
+        visual: "Colaj cu 4 carduri blog.",
+        text: `Saptamana aceasta am pus la treaba ghidurile Trevoro pentru:
+
+- litoral;
+- cabane;
+- Delta Dunarii;
+- Turcia;
+- proprietari care vor listare fara comision.
+
+Le gasesti aici:
+https://www.trevoro.ro/blog
+
+#Trevoro #GhiduriTravel #VacantaRomania #TurismRomania`
+      },
+      {
+        day: "Ziua 8",
+        title: "Delta Dunarii",
+        platform: "Facebook Page + grupuri vacante",
+        link: "https://www.trevoro.ro/blog/cazare-delta-dunarii",
+        image: "/nexora/travel/social-campaign-assets/trevoro-day-08-delta-dunarii.png",
+        visual: "Imagine Delta sau checklist.",
+        text: `In Delta Dunarii, cazarea trebuie aleasa altfel decat la mare sau la munte.
+
+Intreaba din timp despre transfer cu barca, mese, excursii si ora de sosire. Unele detalii mici pot schimba complet sejurul.
+
+Ghid Trevoro:
+https://www.trevoro.ro/blog/cazare-delta-dunarii
+
+#Trevoro #DeltaDunarii #VacantaRomania #CazareRomania`
+      },
+      {
+        day: "Ziua 9",
+        title: "Orase disponibile",
+        platform: "Facebook Page",
+        link: "https://www.trevoro.ro/cazare",
+        image: "/nexora/travel/social-campaign-assets/trevoro-day-09-orase-disponibile.png",
+        visual: "Captura cu hub-ul de destinatii.",
+        text: `Pe Trevoro poti porni cautarea dupa oras, judet sau regiune.
+
+Avem deja pagini pentru destinatii precum Bucuresti, Hateg, 2 Mai, Bran, Eforie Nord, Sibiu, Timisoara, Sighisoara, Vatra Dornei si altele.
+
+Incepe cautarea aici:
+https://www.trevoro.ro/cazare
+
+#Trevoro #CazariRomania #TurismRomania #VacantaRomania`
+      },
+      {
+        day: "Ziua 10",
+        title: "Calendar si overbooking",
+        platform: "Facebook Page + grupuri proprietari",
+        link: "https://www.trevoro.ro/blog/sincronizare-calendar-fara-overbooking",
+        image: "/nexora/travel/social-campaign-assets/trevoro-day-10-calendar-overbooking.png",
+        visual: "Card: Calendar sincronizat = mai putine incurcaturi.",
+        text: `Pentru proprietari, una dintre cele mai mari griji este overbooking-ul.
+
+De aceea, Trevoro merge spre sincronizare calendar si integrari cu sisteme folosite de proprietari. Pana la API-uri complete, calendarul/iCal este primul pas practic.
+
+Explicatie scurta:
+https://www.trevoro.ro/blog/sincronizare-calendar-fara-overbooking
+
+#Trevoro #ProprietariCazare #ChannelManager #TurismRomania`
+      },
+      {
+        day: "Ziua 11",
+        title: "Turcia",
+        platform: "Facebook Page",
+        link: "https://www.trevoro.ro/blog/turcia-cazare-antalya-istanbul",
+        image: "/nexora/travel/social-campaign-assets/trevoro-day-11-turcia.png",
+        visual: "Imagine Turcia/Istanbul/Antalya.",
+        text: `Turcia este pe lista Trevoro.
+
+Antalya, Istanbul, statiuni de litoral sau city break: adaugam treptat destinatii si proprietati, dar pastram regula de baza: informatii clare si contact direct.
+
+Ghid:
+https://www.trevoro.ro/blog/turcia-cazare-antalya-istanbul
+
+#Trevoro #Turcia #VacantaTurcia #Cazare`
+      },
+      {
+        day: "Ziua 12",
+        title: "Recomanda un proprietar",
+        platform: "Facebook Page + profil personal",
+        link: "https://www.trevoro.ro/proprietari",
+        image: "/nexora/travel/social-campaign-assets/trevoro-day-12-recomanda-proprietar.png",
+        visual: "Card: Recomanda un proprietar.",
+        text: `Cunosti proprietari de pensiuni, cabane, vile sau apartamente in regim hotelier?
+
+Ii poti directiona catre Trevoro. In perioada de lansare, proprietarii Trevoro au planuri fixe de la 99 lei/luna si promovare social media.
+
+Proprietari:
+https://www.trevoro.ro/proprietari
+
+#Trevoro #ProprietariCazare #PensiuniRomania #TurismRomania`
+      },
+      {
+        day: "Ziua 13",
+        title: "Proprietate reala - Bran",
+        platform: "Facebook Page",
+        link: "https://www.trevoro.ro/properties/18-muntele-rece-srl-bran",
+        image: "/nexora/travel/social-campaign-assets/trevoro-day-13-bran-munte.png",
+        visual: "Poza proprietate sau captura pagina.",
+        text: `Pentru cei care cauta zona Bran, avem proprietati listate pe Trevoro si continuam sa extindem destinatiile montane.
+
+Vezi pagina:
+https://www.trevoro.ro/properties/18-muntele-rece-srl-bran
+
+#Trevoro #Bran #CazareLaMunte #CabaneRomania`
+      },
+      {
+        day: "Ziua 14",
+        title: "Recap si CTA",
+        platform: "Facebook Page + profil personal",
+        link: "https://www.trevoro.ro/cazare",
+        image: "/nexora/travel/social-campaign-assets/trevoro-day-14-recap.png",
+        visual: "Colaj Trevoro: turisti + proprietari.",
+        text: `Trevoro creste pas cu pas: proprietati active, pagini pe destinatii, ghiduri de calatorie si instrumente pentru proprietari.
+
+Daca esti turist, porneste de aici:
+https://www.trevoro.ro/cazare
+
+Daca esti proprietar, inscrie proprietatea aici:
+https://www.trevoro.ro/proprietari
+
+Ne ajuta orice distribuire catre oameni care cauta cazare sau administreaza o proprietate.
+
+#Trevoro #CazareRomania #VacantaRomania #ProprietariCazare`
+      }
+    ];
+
+    function trackedUrl(rawUrl, index) {
+      try {
+        const url = new URL(rawUrl);
+        url.searchParams.set("utm_source", "facebook");
+        url.searchParams.set("utm_medium", "social");
+        url.searchParams.set("utm_campaign", "trevoro_launch_14_days");
+        url.searchParams.set("utm_content", `day_${String(index + 1).padStart(2, "0")}`);
+        return url.toString();
+      } catch {
+        return rawUrl;
+      }
+    }
+
+    function addTrackingToText(text, index) {
+      return String(text || "").replace(/https:\/\/www\.trevoro\.ro\/[^\s)]+/g, (match) => trackedUrl(match, index));
+    }
+
+    const container = document.querySelector("#posts");
+    posts.forEach((post, index) => {
+      const article = document.createElement("article");
+      const textId = `post-${index}`;
+      const copiedId = `copied-${index}`;
+      const trackedLink = trackedUrl(post.link, index);
+      const copyText = addTrackingToText(post.text, index);
+      article.innerHTML = `
+        <p class="kicker">${post.day}</p>
+        <h2>${post.title}</h2>
+        <p class="meta">${post.platform}</p>
+        <img class="preview" src="${post.image}" alt="${post.day} - ${post.title}" loading="lazy">
+        <textarea id="${textId}" spellcheck="false">${copyText}</textarea>
+        <p class="visual"><strong>Vizual:</strong> ${post.visual}</p>
+        <p class="link">${trackedLink}</p>
+        <div class="row">
+          <div class="tools">
+            <button class="btn" data-copy="${textId}" data-copied="${copiedId}">Copiaza text</button>
+            <a class="btn secondary" href="${post.image}" download>Descarca imagine</a>
+          </div>
+          <span class="copied" id="${copiedId}"></span>
+        </div>
+      `;
+      container.appendChild(article);
+    });
+
+    document.addEventListener("click", async (event) => {
+      const button = event.target.closest("[data-copy]");
+      if (!button) return;
+      const textarea = document.getElementById(button.dataset.copy);
+      const copied = document.getElementById(button.dataset.copied);
+      await navigator.clipboard.writeText(textarea.value);
+      copied.textContent = "Copiat";
+      setTimeout(() => { copied.textContent = ""; }, 1800);
+    });
+  </script>
+</body>
+</html>

@@ -35,6 +35,7 @@ function renderSalesNav(activePath) {
   const items = [
     ["General", "/nexora/sales"],
     ["Oferte", "/nexora/quotes"],
+    ["Import oferte", "/nexora/sales/import-foldere-oferte"],
     ["Comenzi", "/nexora/orders"],
     ["Clienți", "/nexora/clients"],
     ["Prețuri", "/nexora/sales/prices"],
@@ -118,6 +119,27 @@ function renderNexoraSalesHubPage(options = {}) {
       <div class="nx-kpi-card"><div class="nx-kpi-icon green">SO</div><div><div class="nx-kpi-label">Comenzi</div><div class="nx-kpi-value">${escapeHtml(stats.orders_count || 0)}</div></div></div>
       <div class="nx-kpi-card"><div class="nx-kpi-icon orange">RON</div><div><div class="nx-kpi-label">Valoare comenzi</div><div class="nx-kpi-value">${escapeHtml(money(stats.orders_amount, fmtMoney))}</div></div></div>
       <div class="nx-kpi-card"><div class="nx-kpi-icon purple">DLV</div><div><div class="nx-kpi-label">Livrări deschise</div><div class="nx-kpi-value">${escapeHtml(stats.deliveries_open || 0)}</div></div></div>
+    </section>
+
+    <section class="nx-panel" id="import-folder-oferte">
+      <div class="nx-panel-head">
+        <div>
+          <h2>Import folder oferte</h2>
+          <span>Dosare organizate pe clienți</span>
+        </div>
+        <a class="nx-btn" href="/nexora/quotes">Vezi oferte</a>
+      </div>
+
+      <form method="post" action="/nexora/sales/import-foldere-oferte" enctype="multipart/form-data" class="nx-form">
+        <input type="hidden" name="folder_layout" value="client_folders">
+        <label class="nx-field">
+          <span>Folder</span>
+          <input type="file" name="quote_files" accept=".pdf,.doc,.docx,.xls,.xlsx" webkitdirectory directory multiple required>
+        </label>
+        <div class="nx-form-actions">
+          <button class="nx-btn primary" type="submit">Importă folder</button>
+        </div>
+      </form>
     </section>
 
     <div class="nx-two-column-grid">

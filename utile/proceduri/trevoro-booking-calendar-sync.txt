@@ -1,0 +1,104 @@
+Trevoro - sincronizare Booking.com Calendar pentru proprietari
+
+Scop:
+- Preluam zilele ocupate din Booking.com in Trevoro.
+- Folosim linkul privat iCal/ICS exportat din Booking.com.
+- Trevoro citeste calendarul si blocheaza automat zilele ocupate pentru cereri noi.
+
+Unde se gaseste in Booking.com:
+1. Intra in Booking.com Extranet.
+2. Alege proprietatea corecta.
+3. Din meniul de sus intra la Tarife si disponibilitate.
+4. Intra in Calendar sau Calendar in format lista.
+5. Cauta optiunea Sincronizare calendare / Sync calendars.
+6. Alege Export calendar / Exporta calendarul.
+7. Copiaza linkul iCal/ICS generat de Booking.com.
+
+Din ecranul calendarului in format lista:
+1. Deschide meniul Tarife si disponibilitate din bara de sus.
+2. Daca nu vezi Sincronizare calendare, intra in Calendar si cauta in setarile calendarului.
+3. Panoul din dreapta cu Planificatorul de disponibilitate nu este linkul iCal.
+4. Butonul Setari privind disponibilitatea nu este intotdeauna locul pentru export iCal; cauta explicit Sincronizare calendare.
+
+Daca nu apare deloc Sincronizare calendare:
+1. Verifica meniul Tarife si disponibilitate din bara de sus, nu panoul lateral din dreapta.
+2. Incearca sa selectezi fiecare camera/unitate din calendar; la unele conturi optiunea apare pe unitate.
+3. Intra la Proprietate si verifica structura camerelor/unitatilor.
+4. Booking poate ascunde iCal daca proprietatea are prea multe tipuri de camere, daca un tip de camera are mai multe unitati sau daca este conectat un channel manager/connectivity provider.
+5. Daca vezi doar optiuni de feedback si nu Sync calendars, contacteaza suportul Booking si cere activarea optiunii iCal calendar sync / export calendar pentru proprietatea respectiva.
+
+Caz confirmat: client fara sincronizare calendar in Booking.com
+- Daca in contul Booking al clientului nu exista Sincronizare calendare / Sync calendars, nu avem link iCal de preluat din Booking.
+- In acest caz Trevoro nu poate sincroniza automat ocuparea din Booking pentru acea proprietate.
+- Solutia temporara este administrarea manuala a disponibilitatii in Trevoro si in Booking, pana cand Booking activeaza optiunea sau clientul foloseste un channel manager.
+- Pentru perioade ocupate in Booking, proprietarul trebuie sa blocheze manual acele date si in Trevoro.
+- Pentru rezervari venite din Trevoro, proprietarul trebuie sa blocheze manual acele date si in Booking.
+- Recomandare operationala: la fiecare rezervare noua, proprietarul actualizeaza ambele calendare in aceeasi zi.
+
+Cum contactezi suportul Booking.com:
+1. Intra in Booking.com Extranet.
+2. Click pe Inbox din meniul de sus.
+3. Alege Mesaje Booking.com / Booking.com messages.
+4. Cauta butonul Vezi optiuni de contact / See contact options.
+5. Daca nu apare, cauta Nu gasesti ce ai nevoie? / Can't find what you need?
+6. Alege topic apropiat: Account, Property details, Rates & Availability sau Connectivity provider / Channel manager.
+7. Alege Message / Send message sau Call, daca apare optiunea de telefon.
+8. Trimite solicitarea de activare calendar sync.
+
+Mesaj recomandat catre Booking.com:
+Hello,
+
+We cannot find the Sync calendars / Calendar synchronization option in the Extranet for this property.
+Please enable iCal calendar synchronization for this property, including:
+- Export calendar / iCal URL, so we can send Booking.com availability to an external calendar.
+- Import calendar / Add calendar connection, so Booking.com can import availability from an external iCal URL.
+
+We need this to synchronize availability with Trevoro and avoid double bookings.
+
+Thank you.
+
+Unde se adauga in Trevoro:
+1. Intra pe https://www.trevoro.ro/login
+2. Autentifica-te ca proprietar.
+3. Intra in Dashboard proprietar.
+4. Sectiunea Calendar.
+5. Alege Booking.com ca provider.
+6. Lipeste linkul iCal/ICS copiat din Booking.com.
+7. Apasa Adauga.
+8. Apasa Sync daca vrei verificare imediata.
+
+Important:
+- Nu folosi linkul normal din browserul Booking.com.
+- Linkul corect trebuie sa fie un URL privat iCal/ICS si, de obicei, contine o adresa lunga generata de Booking.
+- Daca Booking cere alegerea unei platforme externe, alege Alte calendare / Other calendar sau optiunea echivalenta.
+- Daca Booking cere nume pentru calendarul exportat/importat, foloseste Trevoro.
+- Evenimentele ocupate din Booking blocheaza noptile respective in Trevoro.
+- Clientul nu poate trimite cerere sau continua spre checkout pentru intervale care includ zile ocupate.
+
+Limitare:
+- Aceasta procedura este sync din Booking.com catre Trevoro.
+- Sync invers, din Trevoro catre Booking.com, se face prin import iCal in Booking.com, daca optiunea este disponibila in cont.
+- Integrarea real-time completa necesita channel manager/API.
+
+Export Trevoro catre Booking.com:
+1. In Trevoro/Nexora intra la proprietate.
+2. In sectiunea Calendar copiaza linkul Export Trevoro iCal.
+3. In Booking.com Extranet mergi la Tarife si disponibilitate > Sincronizare calendare.
+4. Alege Adauga conexiune calendar / Import calendar.
+5. Denumeste conexiunea Trevoro.
+6. Lipeste linkul iCal exportat din Trevoro.
+7. Salveaza si verifica daca zilele ocupate din Trevoro apar blocate in Booking.
+
+Linkul Trevoro are forma:
+- https://www.trevoro.ro/trevoro/proprietati/ID-nume-proprietate/calendar.ics
+
+Erori frecvente:
+- calendar_not_ical: linkul lipit nu este iCal/ICS, ci pagina normala Booking.
+- calendar_http_403 sau calendar_http_401: linkul nu este public/valid sau a expirat.
+- calendar_http_404: linkul a fost copiat gresit sau calendarul a fost sters din Booking.
+
+Test dupa adaugare:
+1. In Trevoro apasa Sync pe calendarul Booking.
+2. Verifica daca statusul devine activ.
+3. Verifica daca zilele ocupate apar blocate in calendarul proprietatii.
+4. Incearca o cerere de rezervare pe un interval ocupat; Trevoro trebuie sa refuze intervalul.
