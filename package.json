@@ -16,6 +16,7 @@
     "emarqet:enrich:contacts": "node scripts/enrich-emarqet-outbound-contacts.mjs",
     "emarqet:social:launch-pack": "node scripts/create-emarqet-social-launch-pack.mjs",
     "emarqet:outreach": "node scripts/send-emarqet-partner-outreach-emails.mjs",
+    "emarqet:lead-builder-email": "node scripts/send-emarqet-lead-builder-emails.mjs",
     "lead-builder:pilot:prahova": "node scripts/run-lead-builder-job.mjs --pilot-prahova",
     "lead-builder:google-places": "node scripts/run-google-places-lead-builder.mjs",
     "emarqet:pilot:auto-prahova": "node scripts/launch-emarqet-auto-prahova.mjs",

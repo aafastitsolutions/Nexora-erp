@@ -3,12 +3,12 @@ import dotenv from "dotenv";
 import fs from "node:fs";
 import path from "node:path";
 import { db } from "../db.js";
-import { createTransporter } from "../lib/bootstrap.js";
 import {
   emarqetOfficeEmail,
   emarqetOutreachCcEmails,
   emarqetReplyToEmail
 } from "../lib/emarqet-mailboxes.js";
+import { createEmarqetTransporter, requireEmarqetSmtpConfig } from "../lib/emarqet-smtp.js";
 import {
   buildEmarqetOutboundMessage,
   ensureEmarqetOutboundSchema,
@@ -62,9 +62,7 @@ function matchesFilter(value = "", filter = "") {
 
 function requireEmailConfig() {
   const from = emarqetOfficeEmail();
-  if (!from || !process.env.SMTP_USER || !(process.env.SMTP_PASS || process.env.TREVORO_MAIL_PASS)) {
-    throw new Error("SMTP nu este configurat complet.");
-  }
+  requireEmarqetSmtpConfig(from, { allowSenderMismatch: hasFlag("--allow-sender-mismatch") });
   return from;
 }
 
@@ -208,13 +206,15 @@ async function main() {
   const replyTo = safeText(argValue("--reply-to", emarqetReplyToEmail()));
   const allowNonGeneric = hasFlag("--allow-non-generic");
   const dryRun = !hasFlag("--send") || hasFlag("--dry-run");
-  const from = requireEmailConfig();
+  const from = dryRun ? emarqetOfficeEmail() : requireEmailConfig();
   const companyId = companyIdFromDb();
   if (!companyId) throw new Error("Nu am gasit companie activa.");
   ensureEmarqetOutboundSchema(db);
 
   const rows = loadEligibleLeads(companyId, { limit, segment, county, city });
-  const transporter = createTransporter();
+  const transporter = dryRun ? null : createEmarqetTransporter(from, {
+    allowSenderMismatch: hasFlag("--allow-sender-mismatch")
+  });
   if (!dryRun) await transporter.verify();
 
   const report = [];
