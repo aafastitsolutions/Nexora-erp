@@ -69,6 +69,7 @@ import { registerQuotesRoutes } from "./routes/quotes-routes.js";
 import { registerReportsRoutes } from "./routes/reports-routes.js";
 import { registerScmRoutes } from "./routes/scm-routes.js";
 import { registerSalesRoutes } from "./routes/sales-routes.js";
+import { registerStripeReconciliationRoutes } from "./routes/stripe-reconciliation-routes.js";
 import { registerWorkflowRoutes } from "./routes/workflow-routes.js";
 import { db, migrate } from "./db.js";
 import bcrypt from "bcrypt";
@@ -113,6 +114,7 @@ app.post("/language", (req, res) => {
   res.redirect(safeReturnTo);
 });
 registerBillingRoutes(app, { db, requireAuth, requireRole, getSetting, refreshSessionCompanyAccess });
+registerStripeReconciliationRoutes(app, { db, requireAuth, requireSuperAdmin });
 registerDashboardRoutes(app, { db, requireAuth, todayISO, escapeHtml, fmtMoney, crmShellStart, crmShellEnd });
 
 const { templateHtml, invoiceTemplateHtml, quoteTemplateHtml, uiHtml } = loadTemplates(__dirname);
@@ -2084,7 +2086,8 @@ function buildWorkspaceNavigation(active, userModules = [], userEmail = "") {
     hasModuleAccess(userModules, "accounts") ? workspaceNavItem({ href: "/accounts", label: "Utilizatori", iconKey: "accounts", isActive: activeKey === "accounts" }) : "",
     hasModuleAccess(userModules, "setari") ? workspaceNavItem({ href: "/nexora/settings", label: "Setări", iconKey: "setari", isActive: activeKey === "setari" }) : "",
     isSuperAdmin ? workspaceNavItem({ href: "/nexora/super-admin/companies", label: "Companii", iconKey: "superadmin", isActive: activeKey === "superadmin" }) : "",
-    isSuperAdmin ? workspaceNavItem({ href: "/nexora/super-admin/payments", label: "Plăți", iconKey: "facturi", isActive: activeKey === "superadmin-payments" }) : ""
+    isSuperAdmin ? workspaceNavItem({ href: "/nexora/super-admin/payments", label: "Plăți", iconKey: "facturi", isActive: activeKey === "superadmin-payments" }) : "",
+    isSuperAdmin ? workspaceNavItem({ href: "/nexora/super-admin/stripe-reconciliation", label: "Reconciliere Stripe", iconKey: "accounting", isActive: activeKey === "superadmin-stripe-reconciliation" }) : ""
   ].join("");
 
   const favoriteLinksHtml = favoriteModules
@@ -2310,7 +2313,7 @@ function buildClassicNavigation(active, userModules = [], userEmail = "") {
   const adminMenu = classicMenuDropdown({
     label: "Setări",
     iconKey: "setari",
-    isActive: ["accounts", "setari", "superadmin", "superadmin-payments"].includes(activeKey),
+    isActive: ["accounts", "setari", "superadmin", "superadmin-payments", "superadmin-stripe-reconciliation"].includes(activeKey),
     align: "right",
     itemsHtml: [
       classicMenuSection("Administrare", [
@@ -2319,7 +2322,8 @@ function buildClassicNavigation(active, userModules = [], userEmail = "") {
       ].join("")),
       classicMenuSection("Super admin", [
         isSuperAdmin ? classicMenuLink({ href: "/nexora/super-admin/companies", label: "Companii", iconKey: "superadmin", isActive: activeKey === "superadmin" }) : "",
-        isSuperAdmin ? classicMenuLink({ href: "/nexora/super-admin/payments", label: "Plăți", iconKey: "facturi", isActive: activeKey === "superadmin-payments" }) : ""
+        isSuperAdmin ? classicMenuLink({ href: "/nexora/super-admin/payments", label: "Plăți", iconKey: "facturi", isActive: activeKey === "superadmin-payments" }) : "",
+        isSuperAdmin ? classicMenuLink({ href: "/nexora/super-admin/stripe-reconciliation", label: "Reconciliere Stripe", iconKey: "accounting", isActive: activeKey === "superadmin-stripe-reconciliation" }) : ""
       ].join(""))
     ].join("")
   });

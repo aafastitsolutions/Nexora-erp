@@ -351,7 +351,8 @@ const ERP_MODULES = [
     children: [
       { label: "Dashboard platformă", path: "/nexora/super-admin" },
       { label: "Companii", path: "/nexora/super-admin/companies" },
-      { label: "Plăți", path: "/nexora/super-admin/payments" }
+      { label: "Plăți", path: "/nexora/super-admin/payments" },
+      { label: "Reconciliere Stripe", path: "/nexora/super-admin/stripe-reconciliation" }
     ]
   },
   {
