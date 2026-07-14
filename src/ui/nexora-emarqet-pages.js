@@ -1670,7 +1670,7 @@ function renderEmarqetEmailPage(options = {}) {
           <h1>Email & Suport E-MARQET</h1>
           <p>Mailbox-uri mapate pentru sender, reply-uri, intrări și tichete.</p>
         </div>
-        <a class="nx-btn" href="mailto:${escapeHtml(settings.supportEmail || "suport@e-marqet.com")}">Scrie suport</a>
+        <a class="nx-btn" href="mailto:${escapeHtml(settings.supportEmail || "support@e-marqet.com")}">Scrie suport</a>
       </div>
       <div class="emq-mailbox-grid">${mailboxCards(mailboxes)}</div>
     </section>
