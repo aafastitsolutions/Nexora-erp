@@ -12,7 +12,7 @@ rsync -az --relative --chown=server:server \
 
 echo
 echo "Validate and restart on VPS"
-ssh -o BatchMode=yes "${VPS_HOST}" "set -euo pipefail; cd '${REMOTE_DIR}'; node --check routes/travel-routes.js; node --check src/ui/nexora-travel-pages.js; node --check lib/lead-builder.js; node --check routes/lead-builder-routes.js; node --check src/ui/nexora-lead-builder-pages.js; node --check scripts/launch-emarqet-auto-prahova.mjs; node --check lib/emarqet-monetization.js; node --check lib/emarqet-marketplace-services.js; node --check lib/emarqet-billing.js; node --check routes/emarqet-routes.js; node --check routes/emarqet-public-routes.js; node --check routes/billing-routes.js; node --check src/ui/nexora-emarqet-pages.js; node --check src/ui/emarqet-public-pages.js; systemctl restart nexora.service; systemctl status nexora.service --no-pager -l | sed -n '1,50p'"
+ssh -o BatchMode=yes "${VPS_HOST}" "set -euo pipefail; cd '${REMOTE_DIR}'; node --check routes/travel-routes.js; node --check src/ui/nexora-travel-pages.js; node --check lib/lead-builder.js; node --check routes/lead-builder-routes.js; node --check src/ui/nexora-lead-builder-pages.js; node --check scripts/launch-emarqet-auto-prahova.mjs; node --check scripts/sync-emarqet-support-tickets.mjs; node --check lib/emarqet-monetization.js; node --check lib/emarqet-marketplace-services.js; node --check lib/emarqet-billing.js; node --check routes/emarqet-routes.js; node --check routes/emarqet-public-routes.js; node --check routes/billing-routes.js; node --check src/ui/nexora-emarqet-pages.js; node --check src/ui/emarqet-public-pages.js; systemctl restart nexora.service; systemctl status nexora.service --no-pager -l | sed -n '1,50p'"
 
 echo
 echo "Public origin check"

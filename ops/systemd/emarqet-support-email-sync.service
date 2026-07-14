@@ -1,0 +1,12 @@
+[Unit]
+Description=e-Marqet support email sync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=server
+WorkingDirectory=/home/server/Nexora
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node scripts/sync-emarqet-support-tickets.mjs --commit --limit 100
+
