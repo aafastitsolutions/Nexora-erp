@@ -295,25 +295,18 @@ function statusBadge(value = "") {
 
 function trevoroSignupSuccessMessage(mode = "") {
   if (String(mode || "") === "founding") {
-    return "Mulțumim! Proprietatea a fost înscrisă pe Trevoro. Publicarea se activează pe abonament lunar fix, cu 0% comision pe rezervări.";
+    return "Mulțumim! Proprietatea a fost înscrisă gratuit pe Trevoro. Echipa va valida datele și va pregăti listarea.";
   }
-  return "Mulțumim! Proprietatea a fost înscrisă pe Trevoro. Vei putea completa poze, prețuri și calendarul din portalul de proprietar.";
+  return "Mulțumim! Proprietatea a fost înscrisă pe Trevoro. Vei putea completa poze, calendar și detaliile proprietății din portalul de proprietar.";
 }
 
 function propertyPlanDisplay(row = {}) {
   const plan = String(row.partner_plan || "standard_monthly");
-  const label = plan === "founding_partner" ? "Gratis 12 luni" : plan.replaceAll("_", " ");
-  const amount = Number(row.monthly_price_amount || row.monthly_price_ron || 0);
-  const currency = String(row.monthly_price_currency || "RON").toUpperCase();
-  const price = amount > 0
-    ? currency === "RON"
-      ? `${amount} lei/lună`
-      : `${amount} ${currency}/lună`
-    : "0 lei";
+  const label = plan === "founding_partner" ? "Program lansare" : plan.replaceAll("_", " ");
   const freeUntil = row.free_until ? `până la ${dateValue(row.free_until)}` : "";
   return `
     <span class="nx-status-pill ${plan === "founding_partner" ? "success" : "neutral"}">${escapeHtml(label)}</span>
-    <div class="nx-table-sub">${escapeHtml([price, freeUntil].filter(Boolean).join(" · "))}</div>
+    <div class="nx-table-sub">${escapeHtml(freeUntil || "detalii interne")}</div>
   `;
 }
 
@@ -390,8 +383,8 @@ const OWNER_EVENT_LABELS = {
   owner_password_reset_email_sent: "Email resetare parolă trimis",
   owner_password_reset_email_error: "Eroare email resetare parolă",
   owner_password_reset_completed: "Parolă resetată",
-  owner_billing_checkout_created: "Checkout plată creat",
-  owner_billing_checkout_error: "Eroare checkout plată",
+  owner_billing_checkout_created: "Program proprietar actualizat",
+  owner_billing_checkout_error: "Eroare program proprietar",
   owner_property_updated: "Date proprietate modificate",
   owner_property_update_error: "Eroare date proprietate",
   owner_billing_company_updated: "Date firmă modificate",
@@ -619,17 +612,17 @@ function outreachTemplates(lead = {}) {
       {
         key: "telefon",
         label: "Telefon",
-        message: `Hello, I am contacting you from Trevoro about ${name}, a ${propertyType} in ${city}. Trevoro is a Romanian booking platform with fixed monthly plans from 19 EUR/month and 0% booking commission. Plans: ${TREVORO_OWNER_PLANS_EN}. We also offer support for publishing the property at ${TREVORO_SUPPORT_EMAIL}. Could we discuss for a few minutes?`
+        message: `Hello, I am contacting you from Trevoro about ${name}, a ${propertyType} in ${city}. Trevoro is opening free owner registrations during launch. The account includes: ${TREVORO_OWNER_PLANS_EN}. We also offer support for publishing the property at ${TREVORO_SUPPORT_EMAIL}. Could we discuss for a few minutes?`
       },
       {
         key: "whatsapp",
         label: "WhatsApp",
-        message: `Hello! I am contacting you from Trevoro, a Romanian booking platform. We found ${name}, ${propertyType} in ${city}, and we would like to invite you to list the property. Fixed plans: ${TREVORO_OWNER_PLANS_EN}. Trevoro takes 0% booking commission. Support for publishing: ${TREVORO_SUPPORT_EMAIL}. Register here: ${internationalClaimUrl}`
+        message: `Hello! I am contacting you from Trevoro. We found ${name}, ${propertyType} in ${city}, and we would like to invite you to prepare the property listing during our free launch program. Support: ${TREVORO_SUPPORT_EMAIL}. Register here: ${internationalClaimUrl}`
       },
       {
         key: "email",
         label: "Email",
-        message: `Subject: Trevoro - fixed monthly plans and 0% booking commission\n\nHello,\n\nI am contacting you from Trevoro, a Romanian booking platform for hotels, guesthouses, villas, cabins and serviced apartments.\n\nWe found ${name}, a ${propertyType} in ${city}, and we would like to invite you to list your property on Trevoro.\n\nTrevoro is built as a clearer alternative to commission-based booking websites. The owner plans are fixed and predictable: ${TREVORO_OWNER_PLANS_EN}. Trevoro takes 0% booking commission, regardless of how many booking requests your property receives.\n\n${enOutreachEmailExtra()}\n\nWe also offer support for any issue related to publishing your property, setting up the listing and preparing it for guests. If you need help, contact us directly at ${TREVORO_SUPPORT_EMAIL}.\n${TREVORO_SUPPORT_HOURS_EN}\n\nRegistration link: ${internationalClaimUrl}\n\nOnline reservations and payments will be activated in the next phase.\n\nThank you,\nThe Trevoro Team`
+        message: `Subject: Trevoro - free launch registration for ${name}\n\nHello,\n\nI am contacting you from Trevoro, a Romanian platform for hotels, guesthouses, villas, cabins and serviced apartments.\n\nWe found ${name}, a ${propertyType} in ${city}, and we would like to invite you to prepare your property listing on Trevoro.\n\nDuring the launch program, owner registration is free. The account includes: ${TREVORO_OWNER_PLANS_EN}.\n\n${enOutreachEmailExtra()}\n\nWe also offer support for publishing your property and preparing it for guests. If you need help, contact us directly at ${TREVORO_SUPPORT_EMAIL}.\n${TREVORO_SUPPORT_HOURS_EN}\n\nRegistration link: ${internationalClaimUrl}\n\nThank you,\nThe Trevoro Team`
       }
     ];
   }
@@ -637,17 +630,17 @@ function outreachTemplates(lead = {}) {
     {
       key: "telefon",
       label: "Telefon",
-      message: `Bună ziua, vă contactez din partea Trevoro în legătură cu ${name}, ${propertyType} din ${city}. Trevoro este o platformă românească pentru promovarea proprietăților turistice, cu abonamente fixe: ${TREVORO_OWNER_PLANS_RO}. Nu luăm comision pe rezervări. Oferim suport la ${TREVORO_SUPPORT_EMAIL}. Putem discuta câteva minute?`
+      message: `Bună ziua, vă contactez din partea Trevoro în legătură cu ${name}, ${propertyType} din ${city}. Trevoro a deschis înscrierea gratuită a proprietarilor în programul de lansare. Contul include: ${TREVORO_OWNER_PLANS_RO}. Oferim suport la ${TREVORO_SUPPORT_EMAIL}. Putem discuta câteva minute?`
     },
     {
       key: "whatsapp",
       label: "WhatsApp",
-      message: `Bună ziua! Sunt de la Trevoro. Am găsit ${name}, ${propertyType} din ${city}, și vrem să invităm proprietatea pe platforma Trevoro. Planuri proprietari: ${TREVORO_OWNER_PLANS_RO}, cu 0% comision pe rezervări. Suport: ${TREVORO_SUPPORT_EMAIL}. Înscriere aici: ${claimUrl}`
+      message: `Bună ziua! Sunt de la Trevoro. Am găsit ${name}, ${propertyType} din ${city}, și vrem să invităm proprietatea în programul de lansare Trevoro. Înscrierea proprietarilor este gratuită în această etapă. Suport: ${TREVORO_SUPPORT_EMAIL}. Înscriere aici: ${claimUrl}`
     },
       {
         key: "email",
         label: "Email",
-      message: `Subiect: Trevoro - promovare cu abonament fix pentru ${name}\n\nBună ziua,\n\nVă contactez din partea Trevoro, platformă românească pentru hoteluri, pensiuni, cabane, vile și apartamente.\n\nAm găsit ${name}, ${propertyType} din ${city}, și vrem să invităm proprietatea pe Trevoro.\n\nModelul este simplu și predictibil: proprietarul alege un abonament lunar fix, iar Trevoro nu percepe comision pe rezervări. Planurile pentru România sunt: ${TREVORO_OWNER_PLANS_RO}. Toate planurile au 0% comision pe rezervări, indiferent de câte cereri primește proprietatea.\n\n${roOutreachEmailExtra()}\n\nOferim suport pentru publicarea proprietății, configurarea listării, fotografii, prețuri și calendar. Pentru suport ne puteți scrie direct la ${TREVORO_SUPPORT_EMAIL}.\n${TREVORO_SUPPORT_HOURS_RO}\n\nÎnscrierea se face aici: ${claimUrl}\n\nDupă înscriere, echipa Trevoro confirmă datele și pregătește listarea. Rezervările online și plățile vor fi activate într-o etapă următoare.\n\nMulțumesc,\nEchipa Trevoro`
+      message: `Subiect: Trevoro - înscriere gratuită în programul de lansare pentru ${name}\n\nBună ziua,\n\nVă contactez din partea Trevoro, platformă românească pentru hoteluri, pensiuni, cabane, vile și apartamente.\n\nAm găsit ${name}, ${propertyType} din ${city}, și vrem să invităm proprietatea pe Trevoro.\n\nS-au deschis înscrierile pentru proprietari. În programul de lansare, proprietatea poate fi pregătită gratuit pe Trevoro. Contul include: ${TREVORO_OWNER_PLANS_RO}.\n\n${roOutreachEmailExtra()}\n\nOferim suport pentru publicarea proprietății, configurarea listării, fotografii și calendar. Pentru suport ne puteți scrie direct la ${TREVORO_SUPPORT_EMAIL}.\n${TREVORO_SUPPORT_HOURS_RO}\n\nÎnscrierea se face aici: ${claimUrl}\n\nDupă înscriere, echipa Trevoro confirmă datele și pregătește listarea.\n\nMulțumesc,\nEchipa Trevoro`
     }
   ];
 }
@@ -659,14 +652,16 @@ const TREVORO_SUPPORT_MAILTO = `mailto:${TREVORO_SUPPORT_EMAIL}?subject=${encode
 const TREVORO_AGENCY_SIGNUP_URL = "https://www.trevoro.ro/agentii#formular";
 const TREVORO_AGENCY_SIGNUP_URL_EN = "https://www.trevoro.ro/en/agencies#form";
 const TREVORO_OWNER_PLANS_RO = [
-  "Basic 99 lei/lună: pagină publică, poze, descriere, facilități, prețuri, disponibilitate, calendar iCal/ICS, contact direct, 0% comision",
-  "Premium 149 lei/lună: tot din Basic, plus afișare prioritară, optimizare SEO, evidențiere în conținut Trevoro și suport prioritar",
-  "Business 249 lei/lună: tot din Premium, plus promovare social media, conținut dedicat, badge Partener Verificat și prioritate maximă"
+  "cont de proprietar",
+  "pagină publică pregătită pentru validare",
+  "poze, descriere, facilități, disponibilitate și calendar iCal/ICS",
+  "contact direct și suport de publicare"
 ].join("; ");
 const TREVORO_OWNER_PLANS_EN = [
-  "Basic 19 EUR/month: public page, photos, description, amenities, prices, availability, iCal/ICS calendar, direct requests, 0% commission",
-  "Premium 29 EUR/month: everything in Basic, plus priority placement, SEO optimization, Trevoro content highlights and priority support",
-  "Business 59 EUR/month: everything in Premium, plus social media promotion, dedicated content, Verified Partner badge and maximum priority"
+  "owner dashboard account",
+  "public page prepared for validation",
+  "photos, description, amenities, availability and iCal/ICS calendar",
+  "direct contact and publishing support"
 ].join("; ");
 
 function isRomaniaLead(lead = {}) {
@@ -879,17 +874,17 @@ function trevoroOutreachTemplates(lead = {}) {
       {
         key: "email",
         label: "Email",
-        message: `Subject: Trevoro - fixed monthly plans and 0% booking commission\n\nHello,\n\nI am contacting you from Trevoro, a Romanian booking platform for hotels, guesthouses, villas, cabins and serviced apartments.\n\nWe found ${name}, a ${propertyType} in ${city}, and we would like to invite you to list your property on Trevoro.\n\nTrevoro is built as a clearer alternative to commission-based booking websites. The owner plans are fixed and predictable: ${TREVORO_OWNER_PLANS_EN}. Trevoro takes 0% booking commission, regardless of how many booking requests your property receives.\n\n${enOutreachEmailExtra()}\n\nWe also offer support for any issue related to publishing your property, setting up the listing and preparing it for guests. If you need help, contact us directly at ${TREVORO_SUPPORT_EMAIL}.\n${TREVORO_SUPPORT_HOURS_EN}\n\nRegistration link: ${internationalClaimUrl}\n\nOnline reservations and payments will be activated in the next phase.\n\nThank you,\nThe Trevoro Team`
+        message: `Subject: Trevoro - free launch registration for ${name}\n\nHello,\n\nI am contacting you from Trevoro, a Romanian platform for hotels, guesthouses, villas, cabins and serviced apartments.\n\nWe found ${name}, a ${propertyType} in ${city}, and we would like to invite you to prepare your property listing on Trevoro.\n\nDuring the launch program, owner registration is free. The account includes: ${TREVORO_OWNER_PLANS_EN}.\n\n${enOutreachEmailExtra()}\n\nWe also offer support for publishing your property and preparing it for guests. If you need help, contact us directly at ${TREVORO_SUPPORT_EMAIL}.\n${TREVORO_SUPPORT_HOURS_EN}\n\nRegistration link: ${internationalClaimUrl}\n\nThank you,\nThe Trevoro Team`
       },
       {
         key: "whatsapp",
         label: "WhatsApp",
-        message: `Hello! I am contacting you from Trevoro, a Romanian booking platform. We found ${name}, ${propertyType} in ${city}, and we would like to invite you to list the property. Fixed plans: ${TREVORO_OWNER_PLANS_EN}. Trevoro takes 0% booking commission. Support for publishing: ${TREVORO_SUPPORT_EMAIL}. Register here: ${internationalClaimUrl}`
+        message: `Hello! I am contacting you from Trevoro. We found ${name}, ${propertyType} in ${city}, and we would like to invite you to prepare the property listing during our free launch program. Support: ${TREVORO_SUPPORT_EMAIL}. Register here: ${internationalClaimUrl}`
       },
       {
         key: "sms",
         label: "SMS",
-        message: `Trevoro invites ${name}: plans from 19 EUR/month, 0% booking commission. Support: ${TREVORO_SUPPORT_EMAIL}. Register: ${internationalClaimUrl}`
+        message: `Trevoro invites ${name}: free owner registration during launch. Support: ${TREVORO_SUPPORT_EMAIL}. Register: ${internationalClaimUrl}`
       }
     ];
   }
@@ -897,17 +892,17 @@ function trevoroOutreachTemplates(lead = {}) {
     {
       key: "email",
       label: "Email",
-      message: `Subiect: Trevoro - promovare cu abonament fix pentru ${name}\n\nBună ziua,\n\nVă contactez din partea Trevoro, platformă românească pentru hoteluri, pensiuni, cabane, vile și apartamente.\n\nAm găsit ${name}, ${propertyType} din ${city}, și vrem să invităm proprietatea pe Trevoro.\n\nModelul este simplu și predictibil: proprietarul alege un abonament lunar fix, iar Trevoro nu percepe comision pe rezervări. Planurile pentru România sunt: ${TREVORO_OWNER_PLANS_RO}. Toate planurile au 0% comision pe rezervări, indiferent de câte cereri primește proprietatea.\n\n${roOutreachEmailExtra()}\n\nOferim suport pentru publicarea proprietății, configurarea listării, fotografii, prețuri și calendar. Pentru suport ne puteți scrie direct la ${TREVORO_SUPPORT_EMAIL}.\n${TREVORO_SUPPORT_HOURS_RO}\n\nÎnscrierea se face aici: ${claimUrl}\n\nDupă înscriere, echipa Trevoro confirmă datele și pregătește listarea. Rezervările online și plățile vor fi activate într-o etapă următoare.\n\nMulțumesc,\nEchipa Trevoro`
+      message: `Subiect: Trevoro - înscriere gratuită în programul de lansare pentru ${name}\n\nBună ziua,\n\nVă contactez din partea Trevoro, platformă românească pentru hoteluri, pensiuni, cabane, vile și apartamente.\n\nAm găsit ${name}, ${propertyType} din ${city}, și vrem să invităm proprietatea pe Trevoro.\n\nS-au deschis înscrierile pentru proprietari. În programul de lansare, proprietatea poate fi pregătită gratuit pe Trevoro. Contul include: ${TREVORO_OWNER_PLANS_RO}.\n\n${roOutreachEmailExtra()}\n\nOferim suport pentru publicarea proprietății, configurarea listării, fotografii și calendar. Pentru suport ne puteți scrie direct la ${TREVORO_SUPPORT_EMAIL}.\n${TREVORO_SUPPORT_HOURS_RO}\n\nÎnscrierea se face aici: ${claimUrl}\n\nDupă înscriere, echipa Trevoro confirmă datele și pregătește listarea.\n\nMulțumesc,\nEchipa Trevoro`
     },
     {
       key: "whatsapp",
       label: "WhatsApp",
-      message: `Bună ziua! Sunt de la Trevoro. Am găsit ${name}, ${propertyType} din ${city}, și vrem să invităm proprietatea pe platforma Trevoro. Planuri proprietari: ${TREVORO_OWNER_PLANS_RO}, cu 0% comision pe rezervări. Suport: ${TREVORO_SUPPORT_EMAIL}. Înscriere aici: ${claimUrl}`
+      message: `Bună ziua! Sunt de la Trevoro. Am găsit ${name}, ${propertyType} din ${city}, și vrem să invităm proprietatea în programul de lansare Trevoro. Înscrierea proprietarilor este gratuită în această etapă. Suport: ${TREVORO_SUPPORT_EMAIL}. Înscriere aici: ${claimUrl}`
     },
     {
       key: "sms",
       label: "SMS",
-      message: `Trevoro invită ${name}: planuri de la 99 lei/lună, 0% comision pe rezervări. Suport: ${TREVORO_SUPPORT_EMAIL}. Înscriere: ${claimUrl}`
+      message: `Trevoro invită ${name}: înscriere gratuită în programul de lansare. Suport: ${TREVORO_SUPPORT_EMAIL}. Înscriere: ${claimUrl}`
     }
   ];
 }
@@ -1359,6 +1354,7 @@ function renderNexoraTravelDashboardPage(options = {}) {
   const stats = options.stats || {};
   const analytics = options.analytics || {};
   const traffic = analytics.traffic || options.user?.travelTrafficSummary || {};
+  const lotogenTraffic = options.lotogenTraffic || {};
   const payments = analytics.payments || {};
   const social = analytics.social || {};
   const emailZones = analytics.emailZones || {};
@@ -1381,9 +1377,9 @@ function renderNexoraTravelDashboardPage(options = {}) {
     { label: "Interesate / înscrieri", value: stats.interestedLeads || 0 }
   ];
   const paymentRows = [
-    { label: "Plătite", value: paidPayments },
-    { label: "Pending", value: pendingPayments },
-    { label: "Eșuate", value: failedPayments }
+    { label: "Confirmate", value: paidPayments },
+    { label: "În așteptare", value: pendingPayments },
+    { label: "Cu eroare", value: failedPayments }
   ];
   const facebookRows = [
     { label: "Publicate", value: facebookPublished },
@@ -1402,6 +1398,9 @@ function renderNexoraTravelDashboardPage(options = {}) {
     label: row.source || "direct",
     value: row.visitors || 0,
     views: row.views || 0
+  }));
+  const lotogenSourceRows = (lotogenTraffic.topSources || []).slice(0, 6).map((row) => ({
+    label: row.source || "direct", value: row.visitors || 0, views: row.views || 0
   }));
   const dashboardStyle = `
     <style>
@@ -1435,7 +1434,7 @@ function renderNexoraTravelDashboardPage(options = {}) {
     <section class="nx-dashboard-hero">
       <div>
         <h1>Analiză operațională Trevoro</h1>
-        <p>Date concrete pentru trafic, lead-uri, plăți, social media și email outreach. Fără liste recente, doar indicatori și agregări utile.</p>
+        <p>Date concrete pentru trafic, lead-uri, social media și email outreach. Fără liste recente, doar indicatori și agregări utile.</p>
       </div>
       <div class="nx-form-actions">
         <a class="nx-btn primary" href="/nexora/travel/dashboard/export.csv">Export dashboard CSV</a>
@@ -1450,11 +1449,26 @@ function renderNexoraTravelDashboardPage(options = {}) {
       <div class="nx-kpi-card"><div class="nx-kpi-icon purple">C</div><div><div class="nx-kpi-label">Contactate</div><div class="nx-kpi-value">${escapeHtml(dashboardNumber(stats.contactedLeads || 0))}</div><div class="nx-table-sub">${escapeHtml(contactedRate)}% din total</div></div></div>
       <div class="nx-kpi-card"><div class="nx-kpi-icon green">A</div><div><div class="nx-kpi-label">Active</div><div class="nx-kpi-value">${escapeHtml(dashboardNumber(stats.activeLeads || 0))}</div><div class="nx-table-sub">${escapeHtml(activeRate)}% din total</div></div></div>
       <div class="nx-kpi-card"><div class="nx-kpi-icon orange">T</div><div><div class="nx-kpi-label">Trafic 30 zile</div><div class="nx-kpi-value">${escapeHtml(dashboardNumber(trafficVisitors30))}</div><div class="nx-table-sub">${escapeHtml(dashboardNumber(trafficViews30))} vizite</div></div></div>
-      <div class="nx-kpi-card"><div class="nx-kpi-icon green">€</div><div><div class="nx-kpi-label">Plăți confirmate</div><div class="nx-kpi-value">${escapeHtml(dashboardNumber(paidPayments))}</div><div class="nx-table-sub">${escapeHtml(dashboardMoney(payments.paidAmounts || []))}</div></div></div>
+      <div class="nx-kpi-card"><div class="nx-kpi-icon green">P</div><div><div class="nx-kpi-label">Program lansare</div><div class="nx-kpi-value">${escapeHtml(dashboardNumber(stats.activeLeads || 0))}</div><div class="nx-table-sub">proprietăți active</div></div></div>
       <div class="nx-kpi-card"><div class="nx-kpi-icon blue">F</div><div><div class="nx-kpi-label">Postări Facebook</div><div class="nx-kpi-value">${escapeHtml(dashboardNumber(facebookPublished))}</div><div class="nx-table-sub">${escapeHtml(dashboardNumber(facebookTraffic.visitors || 0))} vizitatori Meta</div></div></div>
     </section>
 
     <section class="nx-dashboard-grid">
+      <article class="nx-dashboard-panel wide">
+        <div class="nx-dashboard-panel-head">
+          <div><h2>Trafic LotoGen</h2><p>Vizite și vizitatori pentru lotogen.qr-lab.ro, fără boți.</p></div>
+          <span class="nx-dashboard-chip">ultima vizită ${escapeHtml(dateValue(lotogenTraffic.lastVisitAt) || "-")}</span>
+        </div>
+        <section class="nx-kpi-grid">
+          <div class="nx-kpi-card"><div class="nx-kpi-icon green">24</div><div><div class="nx-kpi-label">Vizite 24h</div><div class="nx-kpi-value">${escapeHtml(dashboardNumber(lotogenTraffic.views24h || 0))}</div><div class="nx-table-sub">${escapeHtml(dashboardNumber(lotogenTraffic.visitors24h || 0))} vizitatori</div></div></div>
+          <div class="nx-kpi-card"><div class="nx-kpi-icon blue">30</div><div><div class="nx-kpi-label">Vizite 30 zile</div><div class="nx-kpi-value">${escapeHtml(dashboardNumber(lotogenTraffic.views30d || 0))}</div><div class="nx-table-sub">${escapeHtml(dashboardNumber(lotogenTraffic.visitors30d || 0))} vizitatori</div></div></div>
+          <div class="nx-kpi-card"><div class="nx-kpi-icon purple">T</div><div><div class="nx-kpi-label">Vizite totale</div><div class="nx-kpi-value">${escapeHtml(dashboardNumber(lotogenTraffic.totalViews || 0))}</div><div class="nx-table-sub">${escapeHtml(dashboardNumber(lotogenTraffic.totalVisitors || 0))} vizitatori</div></div></div>
+        </section>
+        <div class="nx-dashboard-grid">
+          <div><h3>Evoluție 14 zile</h3>${renderDashboardDailyChart(lotogenTraffic.dailySeries || [])}</div>
+          <div><h3>Surse trafic</h3>${renderDashboardBars(lotogenSourceRows, {labelKey:"label",valueKey:"value",meta:(row)=>`${dashboardNumber(row.views || 0)} vizite`})}</div>
+        </div>
+      </article>
       <article class="nx-dashboard-panel">
         <div class="nx-dashboard-panel-head">
           <div><h2>Funnel lead-uri</h2><p>Total, contactate, active și înscrieri.</p></div>
@@ -1473,11 +1487,14 @@ function renderNexoraTravelDashboardPage(options = {}) {
 
       <article class="nx-dashboard-panel">
         <div class="nx-dashboard-panel-head">
-          <div><h2>Plăți abonamente</h2><p>Plăți ale proprietarilor Trevoro.</p></div>
-          <span class="nx-dashboard-chip">${escapeHtml(dashboardNumber(payments.totalPayments || 0))} total</span>
+          <div><h2>Program de lansare</h2><p>Monitorizare internă pentru proprietăți înscrise și activare.</p></div>
+          <span class="nx-dashboard-chip">${escapeHtml(dashboardNumber(stats.activeLeads || 0))} active</span>
         </div>
-        ${renderDashboardBars(paymentRows, { labelKey: "label", valueKey: "value" })}
-        <div class="nx-dashboard-bar-meta" style="margin-top:10px">Încasat: ${escapeHtml(dashboardMoney(payments.paidAmounts || []))}</div>
+        ${renderDashboardBars([
+          { label: "Lead-uri noi", value: Number(stats.newLeads || 0) },
+          { label: "Contactate", value: Number(stats.contactedLeads || 0) },
+          { label: "Active", value: Number(stats.activeLeads || 0) }
+        ], { labelKey: "label", valueKey: "value" })}
       </article>
 
       <article class="nx-dashboard-panel">
@@ -1737,9 +1754,9 @@ function agencyOutreachMessage(row = {}) {
   const city = row.city || (isInternational ? "your area" : "zona dvs.");
   const focus = row.offer_focus || (isInternational ? "travel packages and destinations" : "pachete turistice si destinatii");
   if (isInternational) {
-    return `Subject: Trevoro partnership for travel agencies\n\nHello,\n\nI am contacting you from Trevoro, a Romanian travel platform where selected travel agencies can promote their packages and destinations.\n\nWe found ${name} in ${city} and would like to invite your agency to join Trevoro.\n\nThe agency plan is simple:\n- fixed subscription: 60 EUR/month per agency\n- unlimited agency offers/listings\n- agency mini-site with logo, description, background image, WhatsApp, contact form, Facebook/Instagram links and custom URL\n- up to 15 photos for each published offer\n- agency reviews and separate reviews for each listed offer\n- promotion for selected offers on the Trevoro platform\n- social media promotion through Trevoro content campaigns\n- support for onboarding and first publication\n\nYour agency can choose what you want to put in front: ${focus}.\n\nRegistration link:\n${TREVORO_AGENCY_SIGNUP_URL_EN}\n\nHow it works:\n1. Register the agency using the link above.\n2. Create the agency account with email and password.\n3. Open the agency dashboard and complete the logo, description, WhatsApp, Facebook/Instagram links and custom URL.\n4. Upload the background image and agency gallery.\n5. Add offers with destination, description, price, validity period and up to 15 photos per offer.\n6. Publish the agency page and the offers you want to promote.\n7. Travelers contact the agency directly by WhatsApp, email or the contact form. Package payments remain directly between traveler and agency.\n\nFor support, reply to this email or write to ${TREVORO_SUPPORT_EMAIL}.\n\nIf you do not want to receive messages from us, reply with "Stop" and we will not contact you again.\n\nThank you,\nThe Trevoro Team`;
+    return `Subject: Trevoro partnership for travel agencies\n\nHello,\n\nI am contacting you from Trevoro, a Romanian travel platform where selected travel agencies can promote their packages and destinations.\n\nWe found ${name} in ${city} and would like to invite your agency to join the Trevoro launch program.\n\nThe launch program includes:\n- agency mini-site with logo, description, background image, WhatsApp, contact form, Facebook/Instagram links and custom URL\n- offers/listings for agency packages\n- up to 15 photos for each published offer\n- agency reviews and separate reviews for each listed offer\n- promotion for selected offers on the Trevoro platform\n- social media promotion through Trevoro content campaigns\n- support for onboarding and first publication\n\nYour agency can choose what you want to put in front: ${focus}.\n\nRegistration link:\n${TREVORO_AGENCY_SIGNUP_URL_EN}\n\nHow it works:\n1. Register the agency using the link above.\n2. Create the agency account with email and password.\n3. Open the agency dashboard and complete the logo, description, WhatsApp, Facebook/Instagram links and custom URL.\n4. Upload the background image and agency gallery.\n5. Add offers with destination, description, validity period and up to 15 photos per offer.\n6. Publish the agency page and the offers you want to promote.\n7. Travelers contact the agency directly by WhatsApp, email or the contact form.\n\nFor support, reply to this email or write to ${TREVORO_SUPPORT_EMAIL}.\n\nIf you do not want to receive messages from us, reply with "Stop" and we will not contact you again.\n\nThank you,\nThe Trevoro Team`;
   }
-  return `Subiect: Parteneriat Trevoro pentru agentii de turism\n\nBuna ziua,\n\nVa contactez din partea Trevoro, platforma de turism unde agentiile isi pot promova ofertele si destinatiile.\n\nAm gasit ${name} din ${city} si vrem sa invitam agentia in modulul Trevoro pentru agentii de turism.\n\nOferta este simpla:\n- abonament fix: 199 lei/luna per agentie\n- listari nelimitate pentru ofertele agentiei\n- mini-site cu logo, descriere, imagine de fundal, WhatsApp, formular de contact, link Facebook/Instagram si URL personalizat\n- pana la 15 poze pentru fiecare oferta publicata\n- recenzii pentru agentie si recenzii separate pentru fiecare oferta listata\n- promovare pentru ofertele selectate pe platforma Trevoro\n- promovare in social media prin continut Trevoro\n- suport pentru onboarding si prima publicare\n\nAgentia poate alege ce doreste sa puna in prim plan: ${focus}.\n\nInscrierea se face aici:\n${TREVORO_AGENCY_SIGNUP_URL}\n\nProcedura de la inscriere pana la publicare:\n1. Inscrieti agentia folosind linkul de mai sus.\n2. Creati contul agentiei cu email si parola.\n3. Intrati in dashboard si completati logo, descriere, WhatsApp, Facebook/Instagram si URL personalizat.\n4. Incarcati imaginea de fundal si galeria agentiei.\n5. Adaugati ofertele cu destinatie, descriere, pret, perioada de valabilitate si pana la 15 poze pentru fiecare oferta.\n6. Publicati pagina agentiei si ofertele pe care doriti sa le promovati.\n7. Turistii contacteaza agentia direct prin WhatsApp, email sau formularul de contact. Platile pentru pachete raman direct intre turist si agentie.\n\nPentru suport, raspundeti la acest email sau scrieti la ${TREVORO_SUPPORT_EMAIL}.\n\nDaca nu doriti sa mai primiti mesaje de la noi, raspundeti cu Stop si nu va mai contactam.\n\nMultumesc,\nEchipa Trevoro`;
+  return `Subiect: Parteneriat Trevoro pentru agentii de turism\n\nBuna ziua,\n\nVa contactez din partea Trevoro, platforma de turism unde agentiile isi pot promova ofertele si destinatiile.\n\nAm gasit ${name} din ${city} si vrem sa invitam agentia in programul de lansare Trevoro pentru agentii de turism.\n\nProgramul de lansare include:\n- mini-site cu logo, descriere, imagine de fundal, WhatsApp, formular de contact, link Facebook/Instagram si URL personalizat\n- listari pentru ofertele agentiei\n- pana la 15 poze pentru fiecare oferta publicata\n- recenzii pentru agentie si recenzii separate pentru fiecare oferta listata\n- promovare pentru ofertele selectate pe platforma Trevoro\n- promovare in social media prin continut Trevoro\n- suport pentru onboarding si prima publicare\n\nAgentia poate alege ce doreste sa puna in prim plan: ${focus}.\n\nInscrierea se face aici:\n${TREVORO_AGENCY_SIGNUP_URL}\n\nProcedura de la inscriere pana la publicare:\n1. Inscrieti agentia folosind linkul de mai sus.\n2. Creati contul agentiei cu email si parola.\n3. Intrati in dashboard si completati logo, descriere, WhatsApp, Facebook/Instagram si URL personalizat.\n4. Incarcati imaginea de fundal si galeria agentiei.\n5. Adaugati ofertele cu destinatie, descriere, perioada de valabilitate si pana la 15 poze pentru fiecare oferta.\n6. Publicati pagina agentiei si ofertele pe care doriti sa le promovati.\n7. Turistii contacteaza agentia direct prin WhatsApp, email sau formularul de contact.\n\nPentru suport, raspundeti la acest email sau scrieti la ${TREVORO_SUPPORT_EMAIL}.\n\nDaca nu doriti sa mai primiti mesaje de la noi, raspundeti cu Stop si nu va mai contactam.\n\nMultumesc,\nEchipa Trevoro`;
 }
 
 function renderNexoraTravelAgenciesPage(options = {}) {
@@ -1774,7 +1791,7 @@ function renderNexoraTravelAgenciesPage(options = {}) {
         <td>${escapeHtml(row.source || "-")}</td>
         <td>
           ${statusBadge(row.status)}
-          <div class="nx-table-sub">${escapeHtml(row.subscription_status || "lead")} · ${String(row.country || "").toLowerCase() === "romania" ? `${escapeHtml(row.monthly_price_amount || row.monthly_price_ron || 199)} lei/luna` : `${escapeHtml(row.monthly_price_amount || 60)} EUR/luna`}</div>
+          <div class="nx-table-sub">${escapeHtml(row.subscription_status || "lead")} · program lansare</div>
           <div class="nx-table-sub">Listari: ${escapeHtml(listingLabel)}</div>
         </td>
         <td>
@@ -1806,7 +1823,7 @@ function renderNexoraTravelAgenciesPage(options = {}) {
       <div class="nx-kpi-card"><div class="nx-kpi-icon orange">NOI</div><div><div class="nx-kpi-label">Noi</div><div class="nx-kpi-value">${escapeHtml(stats.newAgencies || 0)}</div></div></div>
       <div class="nx-kpi-card"><div class="nx-kpi-icon green">ACT</div><div><div class="nx-kpi-label">Active</div><div class="nx-kpi-value">${escapeHtml(stats.activeAgencies || 0)}</div></div></div>
       <div class="nx-kpi-card"><div class="nx-kpi-icon purple">@</div><div><div class="nx-kpi-label">Cu email</div><div class="nx-kpi-value">${escapeHtml(stats.withEmail || 0)}</div></div></div>
-      <div class="nx-kpi-card"><div class="nx-kpi-icon green">199</div><div><div class="nx-kpi-label">Abonament RO</div><div class="nx-kpi-value">199 lei</div></div></div>
+      <div class="nx-kpi-card"><div class="nx-kpi-icon green">RO</div><div><div class="nx-kpi-label">Program RO</div><div class="nx-kpi-value">${escapeHtml(stats.activeAgencies || 0)}</div></div></div>
       <div class="nx-kpi-card"><div class="nx-kpi-icon blue">OF</div><div><div class="nx-kpi-label">Oferte</div><div class="nx-kpi-value">${escapeHtml(stats.totalOffers || 0)}</div></div></div>
     </section>
 
@@ -1814,7 +1831,7 @@ function renderNexoraTravelAgenciesPage(options = {}) {
       <div class="nx-section-head">
         <div>
           <h1>Agentii de turism</h1>
-          <p>Lead-uri si parteneri agentii: 199 lei/luna in Romania, 60 EUR/luna international, listari nelimitate, promovare pe Trevoro si social media.</p>
+          <p>Lead-uri si parteneri agentii pentru programul de lansare Trevoro, listari, promovare pe Trevoro si social media.</p>
         </div>
         <div class="nx-form-actions">
           <a class="nx-btn" href="${escapeHtml(TREVORO_AGENCY_SIGNUP_URL)}" target="_blank" rel="noreferrer">Pagina publica</a>
@@ -1871,7 +1888,7 @@ function localPartnerOutreachMessage(row = {}) {
   const name = row.name || "instituția dvs.";
   const area = row.city || row.region || "zona dvs.";
   const administrator = row.administrator ? ` (${row.administrator})` : "";
-  return `Subiect: Parteneriat local pentru promovarea proprietăților turistice din ${area}\n\nBună ziua,\n\nVă contactez din partea Trevoro, platformă românească pentru promovarea proprietăților turistice cu abonament fix și 0% comision pe rezervare.\n\nAm găsit ${name}${administrator} și credem că putem ajuta proprietarii locali din ${area} să fie mai vizibili online.\n\nPropunerea noastră este simplă:\n- creăm și promovăm pagini Trevoro pentru destinații locale;\n- proprietarii se pot lista direct, cu suport pentru poze, descriere, prețuri și calendar;\n- costurile sunt transparente: Basic 99 lei/lună, Premium 149 lei/lună, Business 249 lei/lună;\n- Trevoro nu încasează plățile turiștilor și nu reține comision din rezervări;\n- promovăm proprietățile selectate pe platforma Trevoro și în conținut social media.\n\nCe ne-ar ajuta de la dvs.:\n1. să trimiteți informația către proprietarii locali;\n2. să ne indicați o persoană de contact pentru colaborare;\n3. eventual să publicăm împreună o postare pentru zona ${area}.\n\nLink înscriere proprietăți:\nhttps://www.trevoro.ro/proprietari\n\nSuport Trevoro: ${TREVORO_SUPPORT_EMAIL}\nWhatsApp: 0774362975\n\nDacă nu sunteți persoana potrivită, vă rog să ne redirecționați către responsabilul de turism/promovare locală.\n\nMulțumesc,\nEchipa Trevoro`;
+  return `Subiect: Parteneriat local pentru promovarea proprietăților turistice din ${area}\n\nBună ziua,\n\nVă contactez din partea Trevoro, platformă românească pentru promovarea proprietăților turistice.\n\nAm găsit ${name}${administrator} și credem că putem ajuta proprietarii locali din ${area} să fie mai vizibili online.\n\nPropunerea noastră este simplă:\n- creăm și promovăm pagini Trevoro pentru destinații locale;\n- proprietarii se pot lista direct, cu suport pentru poze, descriere și calendar;\n- înscrierea proprietarilor este gratuită în programul de lansare;\n- promovăm proprietățile selectate pe platforma Trevoro și în conținut social media.\n\nCe ne-ar ajuta de la dvs.:\n1. să trimiteți informația către proprietarii locali;\n2. să ne indicați o persoană de contact pentru colaborare;\n3. eventual să publicăm împreună o postare pentru zona ${area}.\n\nLink înscriere proprietăți:\nhttps://www.trevoro.ro/proprietari\n\nSuport Trevoro: ${TREVORO_SUPPORT_EMAIL}\nWhatsApp: 0774362975\n\nDacă nu sunteți persoana potrivită, vă rog să ne redirecționați către responsabilul de turism/promovare locală.\n\nMulțumesc,\nEchipa Trevoro`;
 }
 
 function renderNexoraTravelLocalPartnersPage(options = {}) {
@@ -2490,7 +2507,7 @@ function renderNexoraTravelOutreachPage(options = {}) {
       <div class="nx-section-head">
         <div>
           <h1>Outreach Trevoro</h1>
-          <p>Campanii de contactare proprietari, cu prețuri afișate și control manual al jobului.</p>
+          <p>Campanii de contactare proprietari pentru programul de lansare, cu control manual al jobului.</p>
         </div>
         <div class="nx-form-actions">
           <form method="post" action="/nexora/travel/outreach/sync-email">
@@ -3076,13 +3093,13 @@ function renderNexoraTravelPropertiesPage(options = {}) {
         </div>
       </div>
       <div class="nx-alert success" style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:14px">
-        <span><b>Control gratuitate 12 luni activ.</b> Proprietățile deja FOUNDING PARTNER sunt deja gratuite; bifa apare la proprietățile cu plată necesară.</span>
-        <a class="nx-btn primary" href="/nexora/travel/properties?country=&status=plata_necesara">Deschide proprietăți cu plată necesară</a>
+        <span><b>Program lansare activ.</b> Proprietățile FOUNDING PARTNER sunt marcate separat pentru monitorizare.</span>
+        <a class="nx-btn primary" href="/nexora/travel/properties?country=&status=plata_necesara">Deschide proprietăți de verificat</a>
       </div>
       ${paymentRequiredCount ? `
         <div class="nx-alert danger" style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:14px">
-          <span>${escapeHtml(paymentRequiredCount)} proprietăți au plată necesară. Acolo apare bifa <b>Gratis 12 luni</b>.</span>
-          <a class="nx-btn primary" href="/nexora/travel/properties?country=&status=plata_necesara">Vezi plată necesară</a>
+          <span>${escapeHtml(paymentRequiredCount)} proprietăți trebuie verificate pentru programul de lansare.</span>
+          <a class="nx-btn primary" href="/nexora/travel/properties?country=&status=plata_necesara">Vezi proprietăți</a>
         </div>
       ` : ""}
       <form method="get" action="/nexora/travel/properties" class="nx-inline-form">
@@ -3092,7 +3109,7 @@ function renderNexoraTravelPropertiesPage(options = {}) {
         <div class="nx-form-actions">
           <button class="nx-btn primary" type="submit">Caută</button>
           <a class="nx-btn" href="/nexora/travel/properties?country=Romania">România</a>
-          <a class="nx-btn" href="/nexora/travel/properties?country=&status=plata_necesara">Plată necesară</a>
+          <a class="nx-btn" href="/nexora/travel/properties?country=&status=plata_necesara">De verificat</a>
           <a class="nx-btn" href="/nexora/travel/properties">Reset</a>
         </div>
       </form>
@@ -4625,7 +4642,7 @@ function renderTrevoroPartnersPage(options = {}) {
   const success = ["1", "founding"].includes(successMode);
   const canonicalUrl = options.canonicalUrl || "/trevoro/parteneri";
   const title = "Trevoro Parteneri - Alternativa românească la Booking";
-  const description = "Publică proprietatea pe Trevoro cu abonament lunar fix, prețuri transparente și 0% comision pe rezervări.";
+  const description = "Înscrie gratuit proprietatea pe Trevoro în programul de lansare pentru proprietari.";
   const schema = {
     "@context": "https://schema.org",
     "@type": "WebPage",
@@ -4691,7 +4708,7 @@ function renderTrevoroPartnersPage(options = {}) {
   </style>
 	</head>
 	<body>
-	  <div class="trevoro-banner">Trevoro pentru proprietari: planuri fixe, prețuri afișate, 0% comision pe rezervări.</div>
+	  <div class="trevoro-banner">Trevoro pentru proprietari: înscriere gratuită în programul de lansare.</div>
 	  <nav class="trevoro-nav">
     <div class="trevoro-brand">Trevoro</div>
     <a href="#formular">Înscrie proprietatea</a>
@@ -4699,16 +4716,16 @@ function renderTrevoroPartnersPage(options = {}) {
   <header class="trevoro-hero">
     <div class="trevoro-hero-content">
       <h1>Alternativa românească la Booking pentru hoteluri, pensiuni și apartamente.</h1>
-	      <p>Publică proprietatea pe Trevoro cu abonament lunar fix: ${escapeHtml(TREVORO_OWNER_PLANS_RO)}. Nu reținem comision din rezervări.</p>
+	      <p>Înscrie proprietatea în programul de lansare Trevoro. Echipa validează datele și pregătește listarea pentru publicare.</p>
       <a class="trevoro-cta" href="#formular">Înscrie proprietatea</a>
     </div>
   </header>
 
   <section class="trevoro-band">
     <div class="trevoro-inner">
-      <div class="trevoro-section-head"><h2>Problema</h2><p>Proprietarii locali au nevoie de vizibilitate fără costuri care sufocă marja.</p></div>
+      <div class="trevoro-section-head"><h2>Problema</h2><p>Proprietarii locali au nevoie de vizibilitate și de un flux simplu de publicare.</p></div>
       <div class="trevoro-grid">
-        <div class="trevoro-item"><b>Comisioane mari</b><span>Platformele internaționale pot transforma fiecare rezervare într-un cost greu de controlat.</span></div>
+        <div class="trevoro-item"><b>Dependență de platforme mari</b><span>Este greu să construiești vizibilitate proprie când prezența online depinde de canale externe.</span></div>
         <div class="trevoro-item"><b>Vizibilitate greu de obținut</b><span>Este dificil să ieși în evidență când concurezi cu mii de proprietăți.</span></div>
         <div class="trevoro-item"><b>Lipsă suport local</b><span>Ai nevoie de oameni care înțeleg piața din România și răspund în limba română.</span></div>
       </div>
@@ -4717,14 +4734,14 @@ function renderTrevoroPartnersPage(options = {}) {
 
   <section class="trevoro-band alt">
     <div class="trevoro-inner">
-      <div class="trevoro-section-head"><h2>Soluția Trevoro</h2><p>Un canal de promovare cu prețuri clare pentru proprietăți locale.</p></div>
+      <div class="trevoro-section-head"><h2>Soluția Trevoro</h2><p>Un canal de promovare și publicare pentru proprietăți locale.</p></div>
       <div class="trevoro-grid two">
-		        <div class="trevoro-item"><b>Planuri transparente</b><span>${escapeHtml(TREVORO_OWNER_PLANS_RO)}. Proprietarul știe costul înainte să publice.</span></div>
-        <div class="trevoro-item"><b>0% comision pe rezervări</b><span>Trevoro nu reține procent din fiecare cerere sau rezervare primită.</span></div>
+		        <div class="trevoro-item"><b>Înscriere simplă</b><span>${escapeHtml(TREVORO_OWNER_PLANS_RO)}.</span></div>
+        <div class="trevoro-item"><b>Contact direct</b><span>Turistul poate ajunge mai ușor la proprietate după validarea listării.</span></div>
         <div class="trevoro-item"><b>Promovare pe social media</b><span>Proprietățile selectate pot intra în campaniile Trevoro și în conținut social.</span></div>
         <div class="trevoro-item"><b>Suport în limba română</b><span>Comunicare directă cu echipa locală.</span></div>
-        <div class="trevoro-item"><b>Dashboard în Nexora Travel</b><span>Lead-urile și follow-up-ul sunt urmărite în Nexora Travel.</span></div>
-        <div class="trevoro-item"><b>Rezervări online în faza următoare</b><span>Fără camere, plăți sau disponibilitate în această etapă.</span></div>
+        <div class="trevoro-item"><b>Portal proprietar</b><span>Datele proprietății și cererile sunt gestionate într-un singur loc.</span></div>
+        <div class="trevoro-item"><b>Funcții etapizate</b><span>Activăm treptat modulele suplimentare, după validarea fluxului de lansare.</span></div>
       </div>
     </div>
   </section>
@@ -4745,8 +4762,8 @@ function renderTrevoroPartnersPage(options = {}) {
   <section class="trevoro-band alt">
     <div class="trevoro-inner">
       <div class="trevoro-highlight">
-        <h2>Prețuri clare, fără comision pe rezervări</h2>
-		        <p>Proprietarul alege un plan fix: ${escapeHtml(TREVORO_OWNER_PLANS_RO)}. Turistul contactează proprietatea, iar regulile de plată rămân între turist și proprietar.</p>
+        <h2>Program de lansare pentru proprietari</h2>
+		        <p>Începem cu înscrierea gratuită, validarea datelor și pregătirea listării. Detaliile comerciale vor fi comunicate separat după finalizarea strategiei.</p>
       </div>
     </div>
   </section>
@@ -4755,12 +4772,13 @@ function renderTrevoroPartnersPage(options = {}) {
     <div class="trevoro-inner trevoro-form-wrap">
       <div class="trevoro-section-head">
         <h2>Înscrie proprietatea</h2>
-        <p>După înscriere, proprietarul intră în portal pentru poze reale, prețuri și calendar. Publicarea se activează pe abonament.</p>
+        <p>După înscriere, proprietarul intră în portal pentru poze reale, calendar și detaliile proprietății.</p>
       </div>
       <div class="trevoro-form-card">
         ${successHtml}
         ${errorHtml}
         <form method="post" action="/trevoro/parteneri#formular" class="nx-form">
+          <input type="hidden" name="plan_key" value="founding_partner">
           <label class="nx-field"><span>Nume proprietate</span><input name="name" value="${formValue(form, "name")}" required></label>
           <label class="nx-field"><span>Tip proprietate</span><input name="property_type" value="${formValue(form, "property_type")}" placeholder="hotel, pensiune, cabană..."></label>
           <label class="nx-field"><span>Țară</span><select name="country">
@@ -4793,8 +4811,8 @@ function renderTrevoroLaunchPage(options = {}) {
   const successMode = String(options.ok || "");
   const success = ["1", "founding"].includes(successMode);
   const canonicalUrl = options.canonicalUrl || "/";
-  const title = "Trevoro - listare fără comisioane pentru proprietăți turistice";
-  const description = "Înscrie proprietatea pe Trevoro cu abonament lunar fix, prețuri transparente și 0% comision pe rezervări.";
+  const title = "Trevoro - program de lansare pentru proprietăți turistice";
+  const description = "Înscrie gratuit proprietatea pe Trevoro în programul de lansare pentru proprietari.";
   const ogImage = "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1600&q=82";
   const schema = {
     "@context": "https://schema.org",
@@ -4876,7 +4894,7 @@ function renderTrevoroLaunchPage(options = {}) {
   </style>
 </head>
 <body>
-  <div class="launch-banner">Trevoro afișează costurile clar: Basic 99 lei/lună, Premium 149 lei/lună, Business 249 lei/lună.</div>
+  <div class="launch-banner">Trevoro primește proprietăți în programul de lansare.</div>
   <nav class="launch-nav">
     <div class="launch-brand">Trevoro</div>
     <div class="launch-nav-links">
@@ -4888,17 +4906,17 @@ function renderTrevoroLaunchPage(options = {}) {
   </nav>
 	  <header class="launch-hero">
 	    <div class="launch-hero-content">
-	      <span class="launch-kicker">Sezon de vară 2026 · Alternativa românească la Booking</span>
-	      <h1>Umple sezonul fără comisioane pe rezervări.</h1>
-		      <p>Înscrie hotelul, pensiunea, cabana sau apartamentul pe Trevoro. Planuri pentru proprietari: ${escapeHtml(TREVORO_OWNER_PLANS_RO)}. Fără comision pe rezervări.</p>
+	      <span class="launch-kicker">Sezon de vară 2026 · Program de lansare Trevoro</span>
+	      <h1>Înscrie proprietatea pe Trevoro.</h1>
+		      <p>Hotelurile, pensiunile, cabanele și apartamentele pot intra gratuit în programul de lansare. Echipa validează datele și pregătește listarea pentru publicare.</p>
 	      <div class="launch-actions">
 	        <a class="launch-cta" href="#formular">Înscrie proprietatea</a>
 	        <a class="launch-secondary" href="#beneficii">Vezi beneficiile</a>
 	      </div>
 	      <div class="launch-hero-metrics" aria-label="Beneficii cheie">
-	        <div class="launch-metric"><b>99 lei</b><span>plan Basic lunar</span></div>
-	        <div class="launch-metric"><b>149 lei</b><span>plan Premium lunar</span></div>
-	        <div class="launch-metric"><b>0%</b><span>comision pe rezervări</span></div>
+	        <div class="launch-metric"><b>Start</b><span>înscriere gratuită</span></div>
+	        <div class="launch-metric"><b>SEO</b><span>pagini pregătite</span></div>
+	        <div class="launch-metric"><b>Social</b><span>promovare lansare</span></div>
 	      </div>
 	    </div>
 	  </header>
@@ -4907,11 +4925,11 @@ function renderTrevoroLaunchPage(options = {}) {
 	    <div class="launch-inner">
 	      <div class="launch-section-head">
 	        <h2>Beneficii pentru proprietari</h2>
-	        <p>Trevoro este construit pentru proprietari care vor vizibilitate, cost fix și suport local. Fără comisioane ascunse, fără presiune la fiecare rezervare.</p>
+	        <p>Trevoro este construit pentru proprietari care vor vizibilitate, suport local și un flux clar de publicare.</p>
 	      </div>
 	      <div class="launch-grid">
-	        <div class="launch-item"><b>Cost fix, predictibil</b><span>Planuri proprietari: ${escapeHtml(TREVORO_OWNER_PLANS_RO)}.</span></div>
-	        <div class="launch-item"><b>Fără comision pe rezervări</b><span>Nu luăm procent din fiecare rezervare. Proprietarul știe costul dinainte.</span></div>
+	        <div class="launch-item"><b>Înscriere gratuită</b><span>${escapeHtml(TREVORO_OWNER_PLANS_RO)}.</span></div>
+	        <div class="launch-item"><b>Contact direct</b><span>Listarea este pregătită pentru ca turistul să ajungă simplu la proprietate.</span></div>
 	        <div class="launch-item"><b>Listare rapidă</b><span>Completezi formularul, noi validăm datele și pregătim profilul proprietății.</span></div>
 	        <div class="launch-item"><b>Promovare Trevoro</b><span>Proprietățile selectate pot intra în campaniile Trevoro pentru sezon și social media.</span></div>
 	        <div class="launch-item"><b>Suport local</b><span>Comunicare în română, cu o echipă care înțelege piața de cazare din România.</span></div>
@@ -4928,8 +4946,8 @@ function renderTrevoroLaunchPage(options = {}) {
 	      </div>
 	      <div class="launch-grid">
 	        <div class="launch-item launch-step"><div class="launch-step-number">1</div><b>Trimiți datele</b><span>Nume, tip proprietate, localitate și o metodă de contact.</span></div>
-	        <div class="launch-item launch-step"><div class="launch-step-number">2</div><b>Confirmăm rapid</b><span>Verificăm datele, planul de publicare și pregătim contul de proprietar.</span></div>
-	        <div class="launch-item launch-step"><div class="launch-step-number">3</div><b>Pregătim profilul</b><span>Activăm proprietatea în Nexora Travel și pregătim promovarea Trevoro.</span></div>
+	        <div class="launch-item launch-step"><div class="launch-step-number">2</div><b>Confirmăm rapid</b><span>Verificăm datele și pregătim contul de proprietar.</span></div>
+	        <div class="launch-item launch-step"><div class="launch-step-number">3</div><b>Pregătim profilul</b><span>Pregătim pagina proprietății și promovarea Trevoro.</span></div>
 	      </div>
 	    </div>
 	  </section>
@@ -4937,8 +4955,8 @@ function renderTrevoroLaunchPage(options = {}) {
 	  <section class="launch-band">
 	    <div class="launch-inner launch-season-strip">
 	      <div class="launch-highlight">
-	        <h2>Prețuri transparente pentru proprietari</h2>
-	        <p>Publicarea se face pe abonament lunar fix: ${escapeHtml(TREVORO_OWNER_PLANS_RO)}. Trevoro are 0% comision pe rezervări, indiferent câte cereri primește proprietatea.</p>
+	        <h2>Program de lansare pentru proprietari</h2>
+	        <p>Începem cu înscrierea gratuită, validarea datelor și pregătirea listării. Detaliile comerciale vor fi comunicate separat după finalizarea strategiei.</p>
 	      </div>
 	      <div class="launch-season-photo" role="img" aria-label="Plajă însorită de sezon"></div>
 	    </div>
@@ -4948,12 +4966,13 @@ function renderTrevoroLaunchPage(options = {}) {
 	    <div class="launch-inner launch-form-wrap">
 	      <div class="launch-section-head">
 	        <h2>Formular înscriere</h2>
-	        <p>Completează formularul în mai puțin de un minut. După înscriere, intri în portal pentru poze, prețuri și calendar.</p>
+	        <p>Completează formularul în mai puțin de un minut. După înscriere, intri în portal pentru poze, calendar și detaliile proprietății.</p>
 	      </div>
       <div class="launch-form-card">
         ${successHtml}
         ${errorHtml}
         <form method="post" action="/#formular" class="nx-form">
+          <input type="hidden" name="plan_key" value="founding_partner">
           <label class="nx-field"><span>Nume proprietate</span><input name="name" value="${formValue(form, "name")}" required></label>
           <label class="nx-field"><span>Tip proprietate</span><input name="property_type" value="${formValue(form, "property_type")}" placeholder="hotel, pensiune, cabană, apartament..."></label>
           <label class="nx-field"><span>Țară</span><select name="country">
@@ -4975,7 +4994,7 @@ function renderTrevoroLaunchPage(options = {}) {
       </div>
     </div>
   </section>
-  <footer class="launch-footer">Trevoro · Planuri fixe pentru proprietăți turistice din România</footer>
+  <footer class="launch-footer">Trevoro · Program de lansare pentru proprietăți turistice din România</footer>
 </body>
 </html>`;
 }

@@ -158,7 +158,7 @@ function renderNexoraStripeReconciliationPage(options = {}) {
       <div class="nx-section-head">
         <div>
           <h1>Reconciliere Stripe</h1>
-          <p>Plăți, comisioane Stripe, facturi și payout-uri bancare pentru Trevoro și e-Marqet.</p>
+          <p>Plăți, comisioane Stripe, facturi și payout-uri bancare pentru Trevoro, NextPDF și e-Marqet.</p>
         </div>
         <div class="nx-form-actions">
           <a class="nx-btn" href="/nexora/super-admin/payments">Plăți platformă</a>
@@ -176,7 +176,7 @@ function renderNexoraStripeReconciliationPage(options = {}) {
             <label class="nx-field"><span>Până la</span><input type="date" name="date_to" value="${escapeHtml(filters.dateTo || "")}"></label>
           </div>
           <div class="nx-two-column-grid compact">
-            <label class="nx-field"><span>Brand</span><select name="brand">${["all", "trevoro", "emarqet", "nexora", "unknown"].map((brand) => `<option value="${brand}" ${filters.brand === brand ? "selected" : ""}>${brand}</option>`).join("")}</select></label>
+            <label class="nx-field"><span>Brand</span><select name="brand">${["all", "trevoro", "emarqet", "nextpdf", "nexora", "unknown"].map((brand) => `<option value="${brand}" ${filters.brand === brand ? "selected" : ""}>${brand}</option>`).join("")}</select></label>
             <label class="nx-field"><span>Sursă Stripe</span><select name="source">${sourceOptions}</select></label>
           </div>
           <label class="nx-field"><span>Companie</span><select name="company_id"><option value="0">Toate companiile</option>${companies.map((company) => `<option value="${escapeHtml(company.id)}" ${Number(filters.companyId || 0) === Number(company.id) ? "selected" : ""}>${escapeHtml(company.name || "")}</option>`).join("")}</select></label>

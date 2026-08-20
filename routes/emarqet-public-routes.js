@@ -9,6 +9,7 @@ import {
   renderEmarqetAccountPage,
   renderEmarqetAuthPage,
   renderEmarqetBusinessPage,
+  renderEmarqetCarVerticalSeoPage,
   renderEmarqetContactPage,
   renderEmarqetCookiesPage,
   renderEmarqetDealerLandingPage,
@@ -26,16 +27,20 @@ import {
   renderEmarqetPublicPartnerPage,
   renderEmarqetPublicPricingPage,
   renderEmarqetPublicPublishPage,
+  renderEmarqetSeoAutoPage,
   renderEmarqetPublicVerticalPage,
+  renderEmarqetPromotionPage,
   renderEmarqetReferralSharePage,
   renderEmarqetSafetyPage,
   renderEmarqetTermsPage
 } from "../src/ui/emarqet-public-pages.js";
 import {
+  AUTO_BRAND_MODELS,
   emarqetDefaultVerticalRows,
   listingMatchesMetadataFilters,
   metadataFromBody,
-  parseMetadata
+  parseMetadata,
+  publishFieldsFor
 } from "../lib/emarqet-categories.js";
 import {
   ensureEmarqetAnalyticsSchema,
@@ -50,20 +55,31 @@ import {
   marketplaceServicesPayload,
   seedMarketplaceServicesCatalog
 } from "../lib/emarqet-marketplace-services.js";
-import { emarqetSupportEmail } from "../lib/emarqet-mailboxes.js";
+import { emarqetOfficeEmail, emarqetSupportEmail } from "../lib/emarqet-mailboxes.js";
+import { createEmarqetTransporter } from "../lib/emarqet-smtp.js";
 import {
   emarqetStripeBillingDetails,
   finalizeEmarqetStripePayment,
-  markEmarqetListingPaidAwaitingApproval,
+  markEmarqetListingPaidAndPublished,
   upsertEmarqetBillingPayment
 } from "../lib/emarqet-billing.js";
 import {
   emarqetPricingPayload,
   ensureEmarqetMonetizationSchema,
+  findEmarqetAddon,
   loadEmarqetAddons,
   loadEmarqetPricingPlans,
   seedEmarqetMonetizationCatalog
 } from "../lib/emarqet-monetization.js";
+import {
+  attachStripeSessionToPromotionOrder,
+  createEmarqetPromotionOrder,
+  ensureEmarqetPromotionsSchema,
+  finalizeEmarqetPromotionStripePayment,
+  findEmarqetPromotionOrderById,
+  isEmarqetPromotionAddon,
+  markPromotionOrderFailed
+} from "../lib/emarqet-promotions.js";
 import {
   emarqetReferralShareKit,
   ensureEmarqetReferralSchema,
@@ -152,8 +168,8 @@ const emarqetImageUpload = multer({
     }
   }),
   limits: {
-    fileSize: Number(process.env.EMARQET_UPLOAD_MAX_FILE_MB || 8) * 1024 * 1024,
-    files: Number(process.env.EMARQET_UPLOAD_MAX_FILES || 12)
+    fileSize: Number(process.env.EMARQET_UPLOAD_MAX_FILE_MB || 20) * 1024 * 1024,
+    files: Number(process.env.EMARQET_UPLOAD_MAX_FILES || 10)
   },
   fileFilter: (req, file, cb) => {
     const allowed = EMARQET_IMAGE_MIME_EXT.has(String(file.mimetype || "").toLowerCase());
@@ -178,6 +194,8 @@ function handleEmarqetImageUpload(req, res, next) {
   return emarqetImageUpload.array("photos", Number(process.env.EMARQET_UPLOAD_MAX_FILES || 12))(req, res, (error) => {
     if (!error) return next();
     cleanupUploadedFiles(req.files || []);
+    const originalPath = safeText(req.originalUrl || req.url).split("?")[0] || "/publica";
+    const target = originalPath.startsWith("/cont/anunt/") ? originalPath : "/publica";
     const message = String(error?.message || error || "");
     const code = error?.code === "LIMIT_FILE_SIZE"
       ? "file_too_large"
@@ -186,7 +204,7 @@ function handleEmarqetImageUpload(req, res, next) {
         : message.includes("invalid_image_type")
           ? "invalid_image"
           : "upload";
-    return res.redirect(`/publica?err=${encodeURIComponent(code)}`);
+    return res.redirect(`${target}?err=${encodeURIComponent(code)}`);
   });
 }
 
@@ -215,6 +233,48 @@ function isWwwEmarqetHost(req) {
 
 function emarqetPublicBaseUrl() {
   return String(process.env.EMARQET_PUBLIC_URL || "https://e-marqet.com").replace(/\/+$/, "");
+}
+
+const CARVERTICAL_AFFILIATE_URL = "https://www.carvertical.deal/2NGMLPR/66RQ8Q/?source_id=AFF&sub1=emarqet20";
+const CARVERTICAL_AFFILIATE_VIN_URL = "https://www.carvertical.deal/2NGMLPR/66RQ8Q/?uid=69&source_id=AFF&sub1=emarqet20&sub3=VIN";
+
+function approvedCarVerticalUrl(value = "", fallback = CARVERTICAL_AFFILIATE_URL) {
+  const candidate = safeText(value);
+  if (!candidate) return fallback;
+  try {
+    const url = new URL(candidate);
+    return url.protocol === "https:" && url.hostname.toLowerCase() === "www.carvertical.deal"
+      ? url.toString()
+      : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function carVerticalListingVin(listing = {}) {
+  const metadata = parseMetadata(listing.metadata_json);
+  const vehicle = metadata.vehicle && typeof metadata.vehicle === "object" && !Array.isArray(metadata.vehicle)
+    ? metadata.vehicle
+    : {};
+  const value = [listing.vin, metadata.vin, metadata.vin_optional, vehicle.vin, vehicle.vin_optional]
+    .map((item) => safeText(item).toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, ""))
+    .find((item) => /^[A-HJ-NPR-Z0-9]{17}$/.test(item));
+  return value || "";
+}
+
+export function carVerticalAffiliateUrl(listing = {}) {
+  const vin = carVerticalListingVin(listing);
+  if (vin) {
+    const configured = approvedCarVerticalUrl(
+      process.env.EMARQET_CARVERTICAL_AFFILIATE_VIN_URL,
+      CARVERTICAL_AFFILIATE_VIN_URL
+    );
+    const url = new URL(configured);
+    url.searchParams.set("sub3", vin);
+    return url.toString();
+  }
+  const configured = safeText(process.env.EMARQET_CARVERTICAL_AFFILIATE_URL);
+  return approvedCarVerticalUrl(configured);
 }
 
 function emarqetHostOnly(req, res, next) {
@@ -570,6 +630,7 @@ function createEmarqetUser(db, companyId, data = {}) {
   const displayName = safeText(data.display_name);
   const phone = safeText(data.phone);
   const password = safeText(data.password);
+  const registrationIp = safeText(data.registration_ip);
   if (!email) return { ok: false, error: "required" };
   if (!displayName) return { ok: false, error: "name_required" };
   if (!phone) return { ok: false, error: "phone_required" };
@@ -580,8 +641,8 @@ function createEmarqetUser(db, companyId, data = {}) {
   if (duplicate?.type === "name") return { ok: false, error: "exists_name" };
   const result = db.prepare(`
     INSERT INTO emarqet_users
-      (company_id, email, password_hash, display_name, phone, name_normalized, phone_normalized, auth_provider)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'email')
+      (company_id, email, password_hash, display_name, phone, name_normalized, phone_normalized, registration_ip, auth_provider)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'email')
   `).run(
     companyId,
     email,
@@ -589,7 +650,8 @@ function createEmarqetUser(db, companyId, data = {}) {
     displayName,
     phone,
     normalizedOrNull(normalizePersonName(displayName)),
-    normalizedOrNull(normalizePhone(phone))
+    normalizedOrNull(normalizePhone(phone)),
+    registrationIp
   );
   return { ok: true, user: findEmarqetUserById(db, companyId, result.lastInsertRowid) };
 }
@@ -653,6 +715,19 @@ function safeJson(value = {}) {
   } catch {
     return "{}";
   }
+}
+
+function jsonParseSafe(value = "", fallback = {}) {
+  try {
+    return value ? JSON.parse(value) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function requestIp(req = {}) {
+  const forwarded = safeText(req.headers?.["x-forwarded-for"]).split(",").map((item) => safeText(item)).filter(Boolean);
+  return forwarded[0] || safeText(req.ip || req.socket?.remoteAddress || "");
 }
 
 function imageUrlsFromBody(body = {}, files = []) {
@@ -881,10 +956,12 @@ function ensureEmarqetSchema(db) {
   ensureColumn(db, "emarqet_users", "billing_city", "TEXT");
   ensureColumn(db, "emarqet_users", "billing_county", "TEXT");
   ensureColumn(db, "emarqet_users", "billing_country", "TEXT DEFAULT 'Romania'");
+  ensureColumn(db, "emarqet_users", "registration_ip", "TEXT");
   backfillEmarqetUserIdentity(db);
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_emarqet_public_users_phone ON emarqet_users(company_id, phone_normalized, status);
     CREATE INDEX IF NOT EXISTS idx_emarqet_public_users_name ON emarqet_users(company_id, name_normalized, status);
+    CREATE INDEX IF NOT EXISTS idx_emarqet_public_users_registration_ip ON emarqet_users(company_id, registration_ip, status);
   `);
   ensureColumn(db, "emarqet_listings", "emarqet_user_id", "INTEGER");
   ensureColumn(db, "emarqet_listings", "metadata_json", "TEXT");
@@ -906,6 +983,11 @@ function ensureEmarqetSchema(db) {
   ensureColumn(db, "emarqet_listings", "billing_city", "TEXT");
   ensureColumn(db, "emarqet_listings", "billing_county", "TEXT");
   ensureColumn(db, "emarqet_listings", "billing_country", "TEXT DEFAULT 'Romania'");
+  ensureColumn(db, "emarqet_listings", "created_ip", "TEXT");
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_emarqet_public_listings_free_user ON emarqet_listings(company_id, emarqet_user_id, selected_plan_code, status);
+    CREATE INDEX IF NOT EXISTS idx_emarqet_public_listings_free_ip ON emarqet_listings(company_id, created_ip, selected_plan_code, status);
+  `);
   ensureColumn(db, "emarqet_partner_profiles", "founder_badge_enabled", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "emarqet_partner_profiles", "founder_badge_label", "TEXT DEFAULT 'Dealer Fondator'");
   ensureColumn(db, "emarqet_partner_profiles", "founder_benefits_enabled", "INTEGER NOT NULL DEFAULT 0");
@@ -999,6 +1081,8 @@ function listingSelectSql() {
       p.display_name AS partner_display_name,
       p.partner_type AS partner_type,
       p.status AS partner_status,
+      p.email AS partner_email,
+      p.phone AS partner_phone,
       p.website AS partner_website,
       p.city AS partner_city,
       p.county AS partner_county,
@@ -1079,6 +1163,26 @@ function loadListings(db, companyId, filters = {}, limit = 60) {
     .map((row) => ({ ...row, is_promoted: isListingPromoted(row) }));
 }
 
+function loadAutoSeoInventory(db, companyId) {
+  const listings = loadListings(db, companyId, { vertical: "auto" }, 1000);
+  const groups = new Map();
+  for (const listing of listings) {
+    const metadata = parseMetadata(listing.metadata_json);
+    const make = safeText(metadata?.vehicle?.make || metadata?.make);
+    if (!make) continue;
+    const brandSlug = slugify(make);
+    if (!brandSlug) continue;
+    const current = groups.get(brandSlug) || { slug: brandSlug, name: make, listings: [] };
+    current.listings.push(listing);
+    groups.set(brandSlug, current);
+  }
+  const brands = [...groups.values()]
+    .filter((item) => item.listings.length >= 2)
+    .map((item) => ({ ...item, count: item.listings.length }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "ro"));
+  return { listings, brands };
+}
+
 function findListing(db, companyId, slugOrCode) {
   const key = safeText(slugOrCode);
   if (!key) return null;
@@ -1089,6 +1193,15 @@ function findListing(db, companyId, slugOrCode) {
       AND (l.slug=? OR l.listing_code=? OR l.id=?)
     LIMIT 1
   `).get(companyId, key, key, Number(key || 0)) || null;
+}
+
+function verifyListingPublishedInCategory(db, companyId, listing = {}) {
+  const publicListing = findListing(db, companyId, listing.slug || listing.listing_code || listing.id);
+  if (!publicListing?.id) return { ok: false, reason: "detail_missing" };
+  const categoryRows = loadListings(db, companyId, { vertical: publicListing.vertical_code || publicListing.vertical_id }, 300);
+  const inCategory = categoryRows.some((row) => Number(row.id || 0) === Number(publicListing.id || 0));
+  if (!inCategory) return { ok: false, reason: "category_missing", listing: publicListing };
+  return { ok: true, listing: publicListing };
 }
 
 function findCheckoutListing(db, companyId, slugOrCode) {
@@ -1105,7 +1218,7 @@ function findCheckoutListing(db, companyId, slugOrCode) {
 }
 
 function loadUserListings(db, companyId, userId, filters = {}) {
-  const where = ["l.company_id=?", "l.emarqet_user_id=?"];
+  const where = ["l.company_id=?", "l.emarqet_user_id=?", "UPPER(COALESCE(l.status,''))<>'STERS'"];
   const params = [companyId, Number(userId || 0)];
   const status = safeText(filters.status);
   const q = safeText(filters.q);
@@ -1131,6 +1244,27 @@ function loadUserListings(db, companyId, userId, filters = {}) {
     ORDER BY l.id DESC
     LIMIT 300
   `).all(...params).map((row) => ({ ...row, is_promoted: isListingPromoted(row) }));
+}
+
+function findUserListingForAccount(db, companyId, user = {}, slugOrCode = "") {
+  const key = safeText(slugOrCode);
+  if (!key) return null;
+  const userId = Number(user?.id || 0);
+  const email = normalizeEmail(user?.email);
+  const ownerWhere = email
+    ? "(l.emarqet_user_id=? OR LOWER(COALESCE(l.owner_email,''))=?)"
+    : "l.emarqet_user_id=?";
+  const params = email
+    ? [companyId, userId, email, key, key, Number(key || 0)]
+    : [companyId, userId, key, key, Number(key || 0)];
+  return db.prepare(`
+    ${listingSelectSql()}
+    WHERE l.company_id=?
+      AND ${ownerWhere}
+      AND UPPER(COALESCE(l.status,''))<>'STERS'
+      AND (l.slug=? OR l.listing_code=? OR l.id=?)
+    LIMIT 1
+  `).get(...params) || null;
 }
 
 function findUserListingForMarketplace(db, companyId, user = {}, slugOrCode = "") {
@@ -1164,7 +1298,7 @@ function userListingStats(db, companyId, userId) {
       SUM(CASE WHEN UPPER(COALESCE(status,'')) IN ('PAUZAT','RESPINS') THEN 1 ELSE 0 END) AS inactive,
       SUM(CASE WHEN UPPER(COALESCE(status,''))='PUBLICAT' AND COALESCE(promotion_level,'') <> '' THEN 1 ELSE 0 END) AS promoted
     FROM emarqet_listings
-    WHERE company_id=? AND emarqet_user_id=?
+    WHERE company_id=? AND emarqet_user_id=? AND UPPER(COALESCE(status,''))<>'STERS'
   `).get(companyId, Number(userId || 0)) || {};
 }
 
@@ -1473,26 +1607,34 @@ function importNumber(value = "") {
 }
 
 function importMetadata(verticalCode = "", row = {}) {
-  if (verticalCode === "auto") {
-    return {
-      brand: firstImportValue(row, ["brand", "marca"]),
-      model: firstImportValue(row, ["model"]),
-      year: importNumber(firstImportValue(row, ["year", "an", "an_fabricatie"])),
-      fuel: firstImportValue(row, ["fuel", "combustibil"]),
-      transmission: firstImportValue(row, ["transmission", "cutie"]),
-      body_type: firstImportValue(row, ["body_type", "caroserie"]),
-      mileage: importNumber(firstImportValue(row, ["mileage", "km", "kilometri"])),
-      vin: firstImportValue(row, ["vin"])
-    };
-  }
-  return {
-    property_type: firstImportValue(row, ["property_type", "tip", "tip_proprietate"]),
-    transaction_type: firstImportValue(row, ["transaction_type", "tranzactie"]),
-    rooms: importNumber(firstImportValue(row, ["rooms", "camere"])),
-    surface: importNumber(firstImportValue(row, ["surface", "suprafata", "mp"])),
-    floor: firstImportValue(row, ["floor", "etaj"]),
-    year_built: importNumber(firstImportValue(row, ["year_built", "an_constructie"]))
+  const aliases = {
+    brand: ["marca"],
+    model: ["gama", "serie"],
+    year: ["an", "an_fabricatie"],
+    fuel: ["combustibil"],
+    transmission: ["cutie", "cutie_viteze"],
+    body_type: ["caroserie"],
+    mileage: ["km", "kilometri"],
+    property_type: ["tip", "tip_proprietate"],
+    property_subtype: ["subtip", "subtip_proprietate"],
+    transaction_type: ["tranzactie"],
+    rooms: ["camere"],
+    surface: ["suprafata", "suprafata_utila", "mp"],
+    land_surface: ["suprafata_teren", "teren_mp"],
+    floor: ["etaj"],
+    year_built: ["an_constructie"],
+    construction_state: ["stare_constructie", "stare"],
+    appliance_type: ["tip_electrocasnic", "tip_aparat"],
+    phone_brand: ["marca", "brand"],
+    phone_model: ["model", "gama"]
   };
+  const metadata = {};
+  for (const field of publishFieldsFor(verticalCode)) {
+    const raw = firstImportValue(row, [field.name, field.label, ...(aliases[field.name] || [])]);
+    if (!raw) continue;
+    metadata[field.name] = field.type === "number" ? importNumber(raw) : raw;
+  }
+  return metadata;
 }
 
 function compactMetadata(metadata = {}) {
@@ -1622,6 +1764,41 @@ function paymentRequiredForPlan(plan = {}) {
   return planAmount(plan) > 0;
 }
 
+function freePlanListingLimit(plan = {}) {
+  const code = safeText(plan.code || "free").toLowerCase();
+  if (code !== "free" || paymentRequiredForPlan(plan)) return 0;
+  const limit = Number(plan.listing_limit || 3);
+  return Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 3;
+}
+
+function freeListingUsage(db, companyId, userId, ip = "") {
+  const normalizedIp = safeText(ip);
+  const userCount = db.prepare(`
+    SELECT COUNT(*) AS total
+    FROM emarqet_listings
+    WHERE company_id=?
+      AND emarqet_user_id=?
+      AND LOWER(COALESCE(selected_plan_code,'free'))='free'
+  `).get(Number(companyId || 0), Number(userId || 0))?.total || 0;
+  const ipCount = normalizedIp ? db.prepare(`
+    SELECT COUNT(*) AS total
+    FROM emarqet_listings
+    WHERE company_id=?
+      AND created_ip=?
+      AND LOWER(COALESCE(selected_plan_code,'free'))='free'
+  `).get(Number(companyId || 0), normalizedIp)?.total || 0 : 0;
+  return { user: Number(userCount || 0), ip: Number(ipCount || 0) };
+}
+
+function freeListingLimitError(db, companyId, userId, ip, plan = {}) {
+  const limit = freePlanListingLimit(plan);
+  if (!limit) return "";
+  const usage = freeListingUsage(db, companyId, userId, ip);
+  if (usage.user >= limit) return `Ai folosit limita de ${limit} anunturi gratuite pentru acest cont. Alege un plan platit pentru publicari suplimentare.`;
+  if (usage.ip >= limit) return `De pe aceasta conexiune au fost deja folosite ${limit} anunturi gratuite. Alege un plan platit pentru publicari suplimentare.`;
+  return "";
+}
+
 function checkoutTokenMatches(listing = {}, token = "") {
   const expected = safeText(listing.checkout_token);
   return expected && safeText(token) && expected === safeText(token);
@@ -1636,7 +1813,7 @@ function createEmarqetBillingPayment(db, companyId, listing = {}, plan = {}, pay
 }
 
 function markListingPaidAwaitingApproval(db, companyId, listing = {}, payload = {}) {
-  return markEmarqetListingPaidAwaitingApproval(db, companyId, listing, payload);
+  return markEmarqetListingPaidAndPublished(db, companyId, listing, payload);
 }
 
 function stats(db, companyId) {
@@ -1810,6 +1987,7 @@ function bootstrap(db) {
   const companyId = publicCompanyId(db);
   ensureEmarqetSchema(db);
   ensureEmarqetAnalyticsSchema(db);
+  ensureEmarqetPromotionsSchema(db);
   if (companyId) {
     seedDefaultVerticals(db, companyId);
     seedEmarqetMonetizationCatalog(db, companyId);
@@ -1837,6 +2015,10 @@ function isListingPromoted(row = {}) {
   return until >= new Date().toISOString().slice(0, 10);
 }
 
+function loadPublicPromotionAddons(db, companyId) {
+  return loadEmarqetAddons(db, companyId, true).filter((addon) => isEmarqetPromotionAddon(addon));
+}
+
 function isEmarqetListingPaid(row = {}) {
   const checkoutStatus = safeText(row.stripe_checkout_status).toUpperCase();
   return checkoutStatus.startsWith("PAID") || Boolean(row.paid_at);
@@ -1846,6 +2028,14 @@ function paidListingRedirect(row = {}) {
   const status = safeText(row.status).toUpperCase();
   if (status === "PUBLICAT") return publicListingUrl(row, "?ok=paid");
   return "/cont?status=pending&ok=paid_pending";
+}
+
+function accountStatusKeyForListing(row = {}) {
+  const status = safeText(row.status).toUpperCase();
+  if (status === "PUBLICAT") return "active";
+  if (["PAUZAT", "RESPINS"].includes(status)) return "inactive";
+  if (status === "STERS") return "all";
+  return "pending";
 }
 
 function publicListingUrl(row = {}, suffix = "") {
@@ -1864,6 +2054,66 @@ function absolutePublicUrl(pathname = "/") {
   return `${emarqetPublicBaseUrl()}${path}`;
 }
 
+function publicAssetUrl(value = "") {
+  const url = safeText(value);
+  if (!url) return "";
+  if (/^https?:\/\//i.test(url)) return url;
+  return absolutePublicUrl(url.startsWith("/") ? url : `/${url}`);
+}
+
+function parseJsonArraySafe(value = "") {
+  try {
+    const parsed = JSON.parse(String(value || "[]"));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function publicListingImageUrls(row = {}) {
+  return [
+    row.primary_image_url,
+    ...parseJsonArraySafe(row.image_urls_json)
+  ]
+    .map(publicAssetUrl)
+    .filter((url, index, all) => url && all.indexOf(url) === index)
+    .slice(0, 24);
+}
+
+function editableNotesFromListing(row = {}) {
+  return safeText(row.notes).replace(/\n{1,2}Telefon contact:\s*[^\n]+$/i, "").trim();
+}
+
+function listingEditForm(row = {}) {
+  const rawMetadata = parseMetadata(row.metadata_json);
+  const vehicleMetadata = rawMetadata.vehicle && typeof rawMetadata.vehicle === "object" && !Array.isArray(rawMetadata.vehicle)
+    ? rawMetadata.vehicle
+    : {};
+  const metadata = { ...vehicleMetadata, ...rawMetadata };
+  const imageUrls = [
+    safeText(row.primary_image_url),
+    ...parseJsonArraySafe(row.image_urls_json).map(safeText)
+  ].filter((url, index, all) => url && all.indexOf(url) === index);
+  return {
+    ...metadata,
+    vertical_id: row.vertical_code || row.vertical_id || "",
+    title: row.title || "",
+    location: row.location || "",
+    price_amount: row.price_amount ?? "",
+    price_currency: row.price_currency || "RON",
+    seller_type: row.seller_type || metadata.seller_type || "",
+    partner_profile_id: row.partner_profile_id || "",
+    notes: editableNotesFromListing(row),
+    owner_name: row.owner_name || "",
+    owner_email: row.owner_email || "",
+    owner_phone: row.contact_phone || "",
+    primary_image_url: imageUrls[0] || "",
+    image_urls: imageUrls.slice(1).join("\n"),
+    existing_image_urls: imageUrls,
+    plan_code: row.selected_plan_code || "free"
+  };
+}
+
 function sitemapEntry(pathname = "/", lastmod = "", changefreq = "weekly", priority = "0.7") {
   return [
     "  <url>",
@@ -1873,6 +2123,144 @@ function sitemapEntry(pathname = "/", lastmod = "", changefreq = "weekly", prior
     priority ? `    <priority>${escapeXml(priority)}</priority>` : "",
     "  </url>"
   ].filter(Boolean).join("\n");
+}
+
+let cachedContactTransporter = null;
+
+function partnerContactRecipient(listing = {}) {
+  return normalizeEmail(listing.partner_email || listing.owner_email);
+}
+
+function contactTransporter(fallbackTransporter) {
+  if (cachedContactTransporter) return cachedContactTransporter;
+  try {
+    cachedContactTransporter = createEmarqetTransporter(emarqetOfficeEmail());
+    return cachedContactTransporter;
+  } catch (error) {
+    if (fallbackTransporter?.sendMail) return fallbackTransporter;
+    throw error;
+  }
+}
+
+async function sendPartnerListingContactEmail({ transporter, listing, lead, returnTo }) {
+  const to = partnerContactRecipient(listing);
+  if (!to) return { skipped: true, reason: "missing_partner_email" };
+  const mailer = contactTransporter(transporter);
+  const from = emarqetOfficeEmail();
+  const replyTo = normalizeEmail(lead.requester_email) || emarqetSupportEmail();
+  const listingUrl = absolutePublicUrl(returnTo || publicListingUrl(listing));
+  const partnerName = safeText(listing.partner_display_name || listing.owner_name || "partener e-Marqet");
+  const requesterContact = [
+    normalizeEmail(lead.requester_email) ? `Email: ${normalizeEmail(lead.requester_email)}` : "",
+    safeText(lead.requester_phone) ? `Telefon: ${safeText(lead.requester_phone)}` : ""
+  ].filter(Boolean).join("\n");
+  const subject = `Cerere e-Marqet: ${safeText(listing.title || listing.listing_code || "anunt")}`;
+  const text = [
+    `Salut, ${partnerName},`,
+    "",
+    "Ai primit o cerere noua prin e-Marqet.",
+    "",
+    `Anunt: ${safeText(listing.title || "-")}`,
+    `Link: ${listingUrl}`,
+    "",
+    `Nume client: ${safeText(lead.requester_name)}`,
+    requesterContact,
+    "",
+    "Mesaj:",
+    safeText(lead.message),
+    "",
+    "Poti raspunde direct la acest email; Reply-To este setat pe adresa clientului daca a completat email."
+  ].filter((line) => line !== "").join("\n");
+  const html = `
+    <div style="font-family:Arial,sans-serif;line-height:1.55;color:#0f172a">
+      <p>Salut, ${escapeXml(partnerName)},</p>
+      <p>Ai primit o cerere noua prin <strong>e-Marqet</strong>.</p>
+      <p>
+        <strong>Anunt:</strong> ${escapeXml(listing.title || "-")}<br>
+        <strong>Link:</strong> <a href="${escapeXml(listingUrl)}">${escapeXml(listingUrl)}</a>
+      </p>
+      <p>
+        <strong>Nume client:</strong> ${escapeXml(lead.requester_name)}<br>
+        ${normalizeEmail(lead.requester_email) ? `<strong>Email:</strong> ${escapeXml(normalizeEmail(lead.requester_email))}<br>` : ""}
+        ${safeText(lead.requester_phone) ? `<strong>Telefon:</strong> ${escapeXml(lead.requester_phone)}<br>` : ""}
+      </p>
+      <p><strong>Mesaj:</strong><br>${escapeXml(lead.message).replace(/\n/g, "<br>")}</p>
+      <p style="color:#64748b;font-size:13px">Poti raspunde direct la acest email; Reply-To este setat pe adresa clientului daca a completat email.</p>
+    </div>
+  `;
+  const info = await mailer.sendMail({
+    from,
+    to,
+    replyTo: replyTo || undefined,
+    subject,
+    text,
+    html
+  });
+  return { ok: true, messageId: safeText(info?.messageId), to };
+}
+
+async function sendEmarqetWelcomeEmail({ transporter, user }) {
+  const to = normalizeEmail(user?.email);
+  if (!to) return { skipped: true, reason: "missing_user_email" };
+  const mailer = contactTransporter(transporter);
+  const from = emarqetOfficeEmail();
+  const accountUrl = absolutePublicUrl("/cont");
+  const publishUrl = absolutePublicUrl("/publica");
+  const displayName = safeText(user?.display_name) || "bine ai venit";
+  const info = await mailer.sendMail({
+    from,
+    to,
+    replyTo: emarqetSupportEmail(),
+    subject: "Contul tau e-Marqet este activ",
+    text: [
+      `Salut, ${displayName}!`,
+      "",
+      "Contul tau e-Marqet este activ.",
+      `Intra in cont: ${accountUrl}`,
+      `Publica un anunt: ${publishUrl}`,
+      "",
+      `Suport: ${emarqetSupportEmail()}`
+    ].join("\n"),
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.55;color:#0f172a">
+        <p>Salut, ${escapeXml(displayName)}!</p>
+        <p>Contul tau <strong>e-Marqet</strong> este activ.</p>
+        <p><a href="${escapeXml(accountUrl)}">Intra in cont</a> sau <a href="${escapeXml(publishUrl)}">publica un anunt</a>.</p>
+        <p style="color:#64748b;font-size:13px">Suport: <a href="mailto:${escapeXml(emarqetSupportEmail())}">${escapeXml(emarqetSupportEmail())}</a></p>
+      </div>
+    `
+  });
+  return { ok: true, messageId: safeText(info?.messageId), to };
+}
+
+async function sendEmarqetListingPublishedEmail({ transporter, listing }) {
+  const to = normalizeEmail(listing?.owner_email);
+  if (!to) return { skipped: true, reason: "missing_owner_email" };
+  const mailer = contactTransporter(transporter);
+  const from = emarqetOfficeEmail();
+  const listingUrl = absolutePublicUrl(publicListingUrl(listing));
+  const listingTitle = safeText(listing?.title || listing?.listing_code || "anunt e-Marqet");
+  const info = await mailer.sendMail({
+    from,
+    to,
+    replyTo: emarqetSupportEmail(),
+    subject: "Anuntul tau e-Marqet este publicat",
+    text: [
+      `Anuntul "${listingTitle}" este publicat.`,
+      "",
+      listingUrl,
+      "",
+      `Suport: ${emarqetSupportEmail()}`
+    ].join("\n"),
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.55;color:#0f172a">
+        <p>Anuntul <strong>${escapeXml(listingTitle)}</strong> este publicat.</p>
+        <p><a href="${escapeXml(listingUrl)}">Vezi anuntul</a></p>
+        <p style="color:#64748b;font-size:13px">Suport: <a href="mailto:${escapeXml(emarqetSupportEmail())}">${escapeXml(emarqetSupportEmail())}</a></p>
+      </div>
+    `
+  });
+  return { ok: true, messageId: safeText(info?.messageId), to };
 }
 
 function loadSitemapListings(db, companyId, limit = 5000) {
@@ -1898,32 +2286,47 @@ function loadSitemapPartners(db, companyId, limit = 1000) {
 }
 
 function publicListingPayload(row = {}) {
+  const imageUrls = publicListingImageUrls(row);
+  const detailPath = publicListingUrl(row);
+  const partnerPath = row.partner_profile_id ? publicPartnerPath(row) : "";
   return {
     id: row.id,
     code: row.listing_code,
     title: row.title,
     slug: row.slug,
+    description: row.notes || "",
     vertical: {
       id: row.vertical_id,
       code: row.vertical_code,
       name: row.vertical_name
     },
     owner_name: row.owner_name,
+    owner_email: row.owner_email,
+    owner_phone: row.contact_phone,
     location: row.location,
     price_amount: row.price_amount,
     price_currency: row.price_currency,
-    primary_image_url: row.primary_image_url,
+    primary_image_url: publicAssetUrl(row.primary_image_url || imageUrls[0] || ""),
+    image_urls: imageUrls,
     partner: row.partner_profile_id ? {
       id: row.partner_profile_id,
       name: row.partner_display_name,
       type: row.partner_type,
-      status: row.partner_status
+      status: row.partner_status,
+      email: row.partner_email || row.owner_email,
+      phone: row.partner_phone || row.contact_phone,
+      website: row.partner_website,
+      city: row.partner_city,
+      county: row.partner_county,
+      url: partnerPath ? absolutePublicUrl(partnerPath) : ""
     } : null,
     metadata: parseMetadata(row.metadata_json),
     is_promoted: isListingPromoted(row),
     promotion_level: row.promotion_level,
     published_at: row.published_at,
-    url: `/anunt/${row.slug || row.listing_code || row.id}`
+    detail_path: detailPath,
+    public_url: absolutePublicUrl(detailPath),
+    url: detailPath
   };
 }
 
@@ -2006,10 +2409,11 @@ export function registerEmarqetPublicRoutes(app, { db, ensureFacturaXmlGenerated
     const staticPages = [
       ["/", "", "daily", "1.0"],
       ["/anunturi", "", "daily", "0.9"],
+      ["/masini-second-hand", "", "daily", "0.9"],
+      ["/verificare-istoric-auto-carvertical", "", "weekly", "0.9"],
       ["/parteneri", "", "weekly", "0.8"],
       ["/dealeri-auto", "", "weekly", "0.8"],
       ["/preturi", "", "weekly", "0.8"],
-      ["/publica", "", "weekly", "0.7"],
       ["/despre", "", "monthly", "0.5"],
       ["/contact", "", "monthly", "0.5"],
       ["/siguranta", "", "monthly", "0.4"],
@@ -2024,10 +2428,13 @@ export function registerEmarqetPublicRoutes(app, { db, ensureFacturaXmlGenerated
       .map((row) => [publicListingUrl(row), row.published_at || row.updated_at || row.created_at, "daily", "0.8"]);
     const partnerPages = loadSitemapPartners(db, companyId)
       .map((row) => [publicPartnerPath(row), row.verified_at || row.updated_at || row.created_at, "weekly", "0.7"]);
+    const autoBrandPages = loadAutoSeoInventory(db, companyId).brands
+      .map((brand) => [`/masini-second-hand/${brand.slug}`, "", "daily", "0.8"]);
     const urls = [
       ...staticPages,
       ...verticalPages,
       ...listingPages,
+      ...autoBrandPages,
       ...partnerPages
     ]
       .filter(([pathname]) => pathname)
@@ -2075,6 +2482,40 @@ export function registerEmarqetPublicRoutes(app, { db, ensureFacturaXmlGenerated
       filters,
       user: currentEmarqetUser(req),
       ok: safeText(req.query?.ok),
+      err: safeText(req.query?.err)
+    }));
+  });
+
+  const handleCarVerticalRedirect = (req, res) => {
+    const companyId = bootstrap(db);
+    const input = String(req.method || "GET").toUpperCase() === "POST" ? req.body || {} : req.query || {};
+    const listingId = Number(input.listing_id || 0);
+    const listing = listingId ? findListing(db, companyId, listingId) : null;
+    const submittedVin = safeText(input.vin).toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, "");
+    if (String(req.method || "GET").toUpperCase() === "POST" && !/^[A-HJ-NPR-Z0-9]{17}$/.test(submittedVin)) {
+      return res.redirect(303, "/verificare-istoric-auto-carvertical?err=vin_invalid");
+    }
+    const affiliateListing = listing || (submittedVin
+      ? { metadata_json: JSON.stringify({ vin: submittedVin }) }
+      : {});
+    trackPublicView(db, companyId, req, {
+      routeName: "affiliate_carvertical_click",
+      listingId: listing?.id || null,
+      verticalCode: listing?.vertical_code || "auto",
+      partnerProfileId: listing?.partner_profile_id || null
+    });
+    return res
+      .set("Cache-Control", "no-store")
+      .redirect(String(req.method || "GET").toUpperCase() === "POST" ? 303 : 302, carVerticalAffiliateUrl(affiliateListing));
+  };
+  app.get("/partener/carvertical", emarqetHostOnly, handleCarVerticalRedirect);
+  app.post("/partener/carvertical", emarqetHostOnly, handleCarVerticalRedirect);
+
+  app.get("/verificare-istoric-auto-carvertical", emarqetHostOnly, (req, res) => {
+    const companyId = bootstrap(db);
+    trackPublicView(db, companyId, req, { routeName: "seo_carvertical_history", verticalCode: "auto" });
+    return res.type("html").send(renderEmarqetCarVerticalSeoPage({
+      user: currentEmarqetUser(req),
       err: safeText(req.query?.err)
     }));
   });
@@ -2164,6 +2605,11 @@ export function registerEmarqetPublicRoutes(app, { db, ensureFacturaXmlGenerated
     const returnTo = loginTarget(req.body?.return_to);
     const user = verifyEmarqetUser(db, companyId, req.body?.email, req.body?.password);
     if (!user) return res.redirect(`/cont/login?err=invalid&return_to=${encodeURIComponent(returnTo)}`);
+    if (!safeText(user.registration_ip)) {
+      db.prepare("UPDATE emarqet_users SET registration_ip=?, updated_at=CURRENT_TIMESTAMP WHERE company_id=? AND id=?")
+        .run(requestIp(req), companyId, user.id);
+      user.registration_ip = requestIp(req);
+    }
     setEmarqetUserSession(req, user);
     return res.redirect(returnTo);
   });
@@ -2188,10 +2634,13 @@ export function registerEmarqetPublicRoutes(app, { db, ensureFacturaXmlGenerated
       email: req.body?.email,
       password: req.body?.password,
       display_name: req.body?.display_name,
-      phone: req.body?.phone
+      phone: req.body?.phone,
+      registration_ip: requestIp(req)
     });
     if (!created.ok) return res.redirect(`/cont/inregistrare?err=${encodeURIComponent(created.error || "required")}&return_to=${encodeURIComponent(returnTo)}`);
     setEmarqetUserSession(req, created.user);
+    sendEmarqetWelcomeEmail({ transporter, user: created.user })
+      .catch((error) => console.warn("[EMARQET] Welcome email failed", error?.message || error));
     return res.redirect(returnTo);
   });
 
@@ -2209,7 +2658,7 @@ export function registerEmarqetPublicRoutes(app, { db, ensureFacturaXmlGenerated
     }
     trackPublicView(db, companyId, req, { routeName: "account", userId: user.id });
     const filters = {
-      status: safeText(req.query?.status || "active"),
+      status: safeText(req.query?.status || "all"),
       q: safeText(req.query?.q),
       vertical: safeText(req.query?.vertical)
     };
@@ -2247,6 +2696,371 @@ export function registerEmarqetPublicRoutes(app, { db, ensureFacturaXmlGenerated
     return res.redirect("/cont?ok=billing_saved");
   });
 
+  app.get("/cont/anunt/:slugOrCode/edit", emarqetHostOnly, requireEmarqetUser, (req, res) => {
+    const companyId = bootstrap(db);
+    const user = findEmarqetUserById(db, companyId, currentEmarqetUser(req)?.id);
+    if (!user) {
+      req.session.emarqetUser = null;
+      return res.redirect(`/cont/login?err=invalid&return_to=${encodeURIComponent(req.originalUrl || "/cont")}`);
+    }
+    const listing = findUserListingForAccount(db, companyId, user, req.params?.slugOrCode);
+    if (!listing) return res.redirect("/cont?err=missing");
+    trackPublicView(db, companyId, req, { routeName: "account_listing_edit", userId: user.id, listingId: listing.id, verticalCode: listing.vertical_code });
+    const slug = listing.slug || listing.listing_code || listing.id;
+    return res.type("html").send(renderEmarqetPublicPublishPage({
+      mode: "edit",
+      actionPath: `/cont/anunt/${encodeURIComponent(slug)}/edit`,
+      verticals: loadVerticals(db, companyId, true),
+      pricingPlans: loadEmarqetPricingPlans(db, companyId, true),
+      partnerProfiles: loadPartnerProfiles(db, companyId, user.id),
+      user,
+      form: listingEditForm(listing),
+      ok: safeText(req.query?.ok),
+      err: safeText(req.query?.err)
+    }));
+  });
+
+  app.post("/cont/anunt/:slugOrCode/edit", emarqetHostOnly, requireEmarqetUser, handleEmarqetImageUpload, (req, res) => {
+    const companyId = bootstrap(db);
+    const user = findEmarqetUserById(db, companyId, currentEmarqetUser(req)?.id);
+    if (!user) {
+      cleanupUploadedFiles(req.files || []);
+      req.session.emarqetUser = null;
+      return res.redirect(`/cont/login?err=invalid&return_to=${encodeURIComponent(req.originalUrl || "/cont")}`);
+    }
+    const listing = findUserListingForAccount(db, companyId, user, req.params?.slugOrCode);
+    if (!listing) {
+      cleanupUploadedFiles(req.files || []);
+      return res.redirect("/cont?err=missing");
+    }
+
+    const body = req.body || {};
+    const partnerProfile = body.partner_profile_id
+      ? findPartnerProfile(db, companyId, user.id, body.partner_profile_id)
+      : null;
+    const vertical = findVertical(db, companyId, body.vertical_id);
+    const title = safeText(body.title);
+    const ownerName = safeText(body.owner_name || partnerProfile?.display_name || user.display_name || user.email);
+    const ownerEmail = normalizeEmail(body.owner_email || partnerProfile?.email || user.email);
+    const ownerPhone = safeText(body.owner_phone || partnerProfile?.phone);
+    const notes = safeText(body.notes);
+    const errors = [];
+
+    if (body.partner_profile_id && !partnerProfile) errors.push("Profilul business nu este valid.");
+    if (!vertical) errors.push("Alege un vertical activ.");
+    if (!title) errors.push("Completează titlul anunțului.");
+    if (!ownerName) errors.push("Completează numele.");
+    if (!ownerEmail) errors.push("Completează emailul.");
+    if (!notes) errors.push("Adaugă o descriere.");
+
+    const actionPath = `/cont/anunt/${encodeURIComponent(listing.slug || listing.listing_code || listing.id)}/edit`;
+    if (errors.length) {
+      cleanupUploadedFiles(req.files || []);
+      return res.status(400).type("html").send(renderEmarqetPublicPublishPage({
+        mode: "edit",
+        actionPath,
+        verticals: loadVerticals(db, companyId, true),
+        pricingPlans: loadEmarqetPricingPlans(db, companyId, true),
+        partnerProfiles: loadPartnerProfiles(db, companyId, user.id),
+        user,
+        form: {
+          ...body,
+          existing_image_urls: imageUrlsFromBody(body, [])
+        },
+        errors
+      }));
+    }
+
+    const previousMetadata = parseMetadata(listing.metadata_json);
+    const metadata = {
+      ...metadataFromBody(vertical.code, body)
+    };
+    const sellerType = safeText(body.seller_type || partnerTypeConfig(partnerProfile?.partner_type)?.sellerType);
+    if (sellerType) metadata.seller_type = sellerType;
+    if (partnerProfile?.id) metadata.partner_profile_id = partnerProfile.id;
+    if (previousMetadata.availability) metadata.availability = previousMetadata.availability;
+    metadata.source = {
+      ...(previousMetadata.source || {}),
+      owner_edited_at: new Date().toISOString(),
+      owner_edited_by: normalizeEmail(user.email)
+    };
+
+    const imageUrls = imageUrlsFromBody(body, req.files || []);
+    const publicNotes = [
+      notes,
+      ownerPhone ? `Telefon contact: ${ownerPhone}` : ""
+    ].filter(Boolean).join("\n\n");
+
+    db.prepare(`
+      UPDATE emarqet_listings
+      SET partner_profile_id=@partner_profile_id,
+          vertical_id=@vertical_id,
+          title=@title,
+          owner_name=@owner_name,
+          owner_email=@owner_email,
+          location=@location,
+          price_amount=@price_amount,
+          price_currency=@price_currency,
+          quality_score=MAX(COALESCE(quality_score, 0), 35),
+          ai_status='DE_REVIZUIT',
+          metadata_json=@metadata_json,
+          primary_image_url=@primary_image_url,
+          image_urls_json=@image_urls_json,
+          contact_phone=@contact_phone,
+          seller_type=@seller_type,
+          notes=@notes,
+          updated_at=CURRENT_TIMESTAMP
+      WHERE company_id=@company_id AND id=@id
+    `).run({
+      company_id: companyId,
+      id: listing.id,
+      partner_profile_id: partnerProfile?.id || null,
+      vertical_id: vertical.id,
+      title,
+      owner_name: ownerName,
+      owner_email: ownerEmail,
+      location: safeText(body.location),
+      price_amount: parseAmount(body.price_amount),
+      price_currency: safeText(body.price_currency).toUpperCase() || "RON",
+      metadata_json: safeJson(metadata),
+      primary_image_url: imageUrls[0] || "",
+      image_urls_json: safeJson(imageUrls),
+      contact_phone: ownerPhone,
+      seller_type: sellerType,
+      notes: publicNotes
+    });
+
+    return res.redirect(`/cont?status=${encodeURIComponent(accountStatusKeyForListing(listing))}&ok=listing_updated`);
+  });
+
+  app.post("/cont/anunt/:slugOrCode/status", emarqetHostOnly, requireEmarqetUser, (req, res) => {
+    const companyId = bootstrap(db);
+    const user = findEmarqetUserById(db, companyId, currentEmarqetUser(req)?.id);
+    if (!user) {
+      req.session.emarqetUser = null;
+      return res.redirect(`/cont/login?err=invalid&return_to=${encodeURIComponent(req.originalUrl || "/cont")}`);
+    }
+    const listing = findUserListingForAccount(db, companyId, user, req.params?.slugOrCode);
+    if (!listing) return res.redirect("/cont?err=missing");
+    const action = safeText(req.body?.action).toLowerCase();
+    const currentStatus = safeText(listing.status).toUpperCase();
+    const metadata = jsonParseSafe(listing.metadata_json, {});
+    metadata.source = { ...(metadata.source || {}) };
+    metadata.owner_control_updated_at = new Date().toISOString();
+
+    if (action === "deactivate" && currentStatus === "PUBLICAT") {
+      metadata.source.owner_paused_at = new Date().toISOString();
+      metadata.source.owner_paused_by = normalizeEmail(user.email);
+      db.prepare(`
+        UPDATE emarqet_listings
+        SET status='PAUZAT',
+            metadata_json=?,
+            updated_at=CURRENT_TIMESTAMP
+        WHERE company_id=? AND id=?
+      `).run(safeJson(metadata), companyId, listing.id);
+      return res.redirect("/cont?status=inactive&ok=listing_paused");
+    }
+
+    if (action === "reactivate" && currentStatus === "PAUZAT") {
+      delete metadata.source.owner_paused_at;
+      delete metadata.source.owner_paused_by;
+      db.prepare(`
+        UPDATE emarqet_listings
+        SET status='PUBLICAT',
+            metadata_json=?,
+            published_at=COALESCE(published_at, date('now')),
+            updated_at=CURRENT_TIMESTAMP
+        WHERE company_id=? AND id=?
+      `).run(safeJson(metadata), companyId, listing.id);
+      return res.redirect("/cont?status=active&ok=listing_published");
+    }
+
+    return res.redirect("/cont?err=listing_action");
+  });
+
+  app.post("/cont/anunt/:slugOrCode/delete", emarqetHostOnly, requireEmarqetUser, (req, res) => {
+    const companyId = bootstrap(db);
+    const user = findEmarqetUserById(db, companyId, currentEmarqetUser(req)?.id);
+    if (!user) {
+      req.session.emarqetUser = null;
+      return res.redirect(`/cont/login?err=invalid&return_to=${encodeURIComponent(req.originalUrl || "/cont")}`);
+    }
+    const listing = findUserListingForAccount(db, companyId, user, req.params?.slugOrCode);
+    if (!listing) return res.redirect("/cont?err=missing");
+    const metadata = jsonParseSafe(listing.metadata_json, {});
+    metadata.source = { ...(metadata.source || {}) };
+    metadata.source.owner_deleted_at = new Date().toISOString();
+    metadata.source.owner_deleted_by = normalizeEmail(user.email);
+    metadata.owner_control_updated_at = new Date().toISOString();
+    const notes = `${safeText(listing.notes)}\nȘters din contul e-Marqet de ${normalizeEmail(user.email)}.`.trim();
+    db.prepare(`
+      UPDATE emarqet_listings
+      SET status='STERS',
+          metadata_json=?,
+          notes=?,
+          updated_at=CURRENT_TIMESTAMP
+      WHERE company_id=? AND id=?
+    `).run(safeJson(metadata), notes, companyId, listing.id);
+    return res.redirect("/cont?status=active&ok=listing_deleted");
+  });
+
+  app.get("/cont/anunt/:slugOrCode/promoveaza", emarqetHostOnly, requireEmarqetUser, (req, res) => {
+    const companyId = bootstrap(db);
+    const user = findEmarqetUserById(db, companyId, currentEmarqetUser(req)?.id);
+    if (!user) {
+      req.session.emarqetUser = null;
+      return res.redirect(`/cont/login?err=invalid&return_to=${encodeURIComponent(req.originalUrl || "/cont")}`);
+    }
+    const listing = findUserListingForAccount(db, companyId, user, req.params?.slugOrCode);
+    if (!listing) return res.redirect("/cont?err=missing");
+    trackPublicView(db, companyId, req, { routeName: "account_listing_promotion", userId: user.id, listingId: listing.id, verticalCode: listing.vertical_code });
+    return res.type("html").send(renderEmarqetPromotionPage({
+      listing: { ...listing, is_promoted: isListingPromoted(listing) },
+      addons: loadPublicPromotionAddons(db, companyId),
+      stripeAvailable: Boolean(stripeClientForEmarqet()),
+      user,
+      ok: safeText(req.query?.ok),
+      err: safeText(req.query?.err)
+    }));
+  });
+
+  app.post("/cont/anunt/:slugOrCode/promoveaza/:addonCode/stripe", emarqetHostOnly, requireEmarqetUser, async (req, res) => {
+    const companyId = bootstrap(db);
+    const user = findEmarqetUserById(db, companyId, currentEmarqetUser(req)?.id);
+    if (!user) {
+      req.session.emarqetUser = null;
+      return res.redirect(`/cont/login?err=invalid&return_to=${encodeURIComponent(req.originalUrl || "/cont")}`);
+    }
+    const listing = findUserListingForAccount(db, companyId, user, req.params?.slugOrCode);
+    if (!listing) return res.redirect("/cont?err=missing");
+    const addon = findEmarqetAddon(db, companyId, req.params?.addonCode, true);
+    const slug = listing.slug || listing.listing_code || listing.id;
+    if (!addon || !isEmarqetPromotionAddon(addon)) {
+      return res.redirect(`/cont/anunt/${encodeURIComponent(slug)}/promoveaza?err=missing`);
+    }
+    const stripe = stripeClientForEmarqet();
+    const amount = Number(addon.price_amount || 0) || 0;
+    if (!stripe || amount <= 0) {
+      return res.redirect(`/cont/anunt/${encodeURIComponent(slug)}/promoveaza?err=stripe_disabled`);
+    }
+
+    const order = createEmarqetPromotionOrder(db, companyId, listing, addon, {
+      requester_name: user.display_name || listing.owner_name,
+      requester_email: user.email || listing.owner_email,
+      requester_phone: user.phone || listing.contact_phone,
+      metadata: {
+        listing_code: listing.listing_code,
+        listing_title: listing.title,
+        initiated_from: "account_listing_promote"
+      },
+      created_by: normalizeEmail(user.email)
+    });
+    const metadata = {
+      emarqet_company_id: String(companyId),
+      checkout_kind: "emarqet_promotion",
+      promotion_order_id: String(order.id),
+      listing_id: String(listing.id),
+      listing_code: String(listing.listing_code || ""),
+      listing_title: String(listing.title || ""),
+      addon_code: String(addon.code || ""),
+      addon_name: String(addon.name || addon.code || ""),
+      addon_category: String(addon.category || ""),
+      initiated_by_email: normalizeEmail(user.email || listing.owner_email),
+      source: "emarqet_promotion_checkout"
+    };
+
+    try {
+      const session = await stripe.checkout.sessions.create({
+        mode: "payment",
+        success_url: `${emarqetPublicBaseUrl()}/cont/anunt/${encodeURIComponent(slug)}/promoveaza/success?order=${encodeURIComponent(order.id)}&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${emarqetPublicBaseUrl()}/cont/anunt/${encodeURIComponent(slug)}/promoveaza?err=cancelled`,
+        customer_email: normalizeEmail(user.email || listing.owner_email) || undefined,
+        client_reference_id: `emq-promo-${order.id}`,
+        billing_address_collection: "required",
+        ...(emarqetStripeTaxIdCollectionEnabled() ? { tax_id_collection: { enabled: true } } : {}),
+        ...(emarqetStripeAutomaticTaxEnabled() ? { automatic_tax: { enabled: true } } : {}),
+        metadata,
+        line_items: [
+          {
+            price_data: {
+              currency: safeText(addon.currency || "RON").toLowerCase(),
+              unit_amount: toStripeAmount(amount),
+              product_data: {
+                name: `e-Marqet ${addon.name || addon.code || "promovare"}`,
+                description: `${addon.description || "Promovare e-Marqet"} - ${listing.title || listing.listing_code}`
+              }
+            },
+            quantity: 1
+          }
+        ]
+      });
+      attachStripeSessionToPromotionOrder(db, companyId, order.id, session.id);
+      return res.redirect(session.url);
+    } catch (error) {
+      console.error("[EMARQET] Stripe promotion checkout failed", error?.message || error);
+      markPromotionOrderFailed(db, companyId, order.id, error?.message || "stripe_checkout_failed");
+      return res.redirect(`/cont/anunt/${encodeURIComponent(slug)}/promoveaza?err=stripe`);
+    }
+  });
+
+  app.get("/cont/anunt/:slugOrCode/promoveaza/success", emarqetHostOnly, requireEmarqetUser, async (req, res) => {
+    const companyId = bootstrap(db);
+    const user = findEmarqetUserById(db, companyId, currentEmarqetUser(req)?.id);
+    if (!user) {
+      req.session.emarqetUser = null;
+      return res.redirect(`/cont/login?err=invalid&return_to=${encodeURIComponent(req.originalUrl || "/cont")}`);
+    }
+    const listing = findUserListingForAccount(db, companyId, user, req.params?.slugOrCode);
+    if (!listing) return res.redirect("/cont?err=missing");
+    const order = findEmarqetPromotionOrderById(db, companyId, Number(req.query?.order || 0));
+    const slug = listing.slug || listing.listing_code || listing.id;
+    if (!order || Number(order.listing_id || 0) !== Number(listing.id || 0)) {
+      return res.redirect(`/cont/anunt/${encodeURIComponent(slug)}/promoveaza?err=missing`);
+    }
+    if (String(order.status || "").toUpperCase() === "PAID") {
+      return res.redirect("/cont?status=active&ok=promotion_paid");
+    }
+    const stripe = stripeClientForEmarqet();
+    const sessionId = safeText(req.query?.session_id);
+    if (!stripe || !sessionId) {
+      return res.redirect(`/cont/anunt/${encodeURIComponent(slug)}/promoveaza?err=stripe`);
+    }
+    try {
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
+      if (String(session?.payment_status || "").toLowerCase() !== "paid") {
+        return res.redirect(`/cont/anunt/${encodeURIComponent(slug)}/promoveaza?err=unpaid`);
+      }
+      const paymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : safeText(session.payment_intent?.id);
+      await finalizeEmarqetPromotionStripePayment(db, {
+        companyId,
+        orderId: order.id,
+        metadata: {
+          ...(session.metadata || {}),
+          emarqet_company_id: String(companyId),
+          checkout_kind: "emarqet_promotion",
+          promotion_order_id: String(order.id)
+        },
+        providerEventType: "checkout.session.completed",
+        status: "paid",
+        amount: Number(session.amount_total || 0) > 0 ? Number(session.amount_total || 0) / 100 : Number(order.amount || 0),
+        currency: session.currency || order.currency || "RON",
+        stripeCheckoutSessionId: session.id,
+        stripeInvoiceId: safeText(session.invoice),
+        stripePaymentIntentId: paymentIntentId,
+        referenceCode: session.id,
+        paidAt: new Date(Number(session.created || 0) * 1000 || Date.now()).toISOString(),
+        livemode: Boolean(session.livemode),
+        stripeBillingDetails: emarqetStripeBillingDetails(session),
+        ensureFacturaXmlGenerated,
+        transporter
+      });
+      return res.redirect("/cont?status=active&ok=promotion_paid");
+    } catch (error) {
+      console.error("[EMARQET] Stripe promotion success sync failed", error?.message || error);
+      return res.redirect(`/cont/anunt/${encodeURIComponent(slug)}/promoveaza?err=stripe`);
+    }
+  });
+
   app.get("/cont/distribuie/:slugOrCode", emarqetHostOnly, requireEmarqetUser, (req, res) => {
     const companyId = bootstrap(db);
     const user = findEmarqetUserById(db, companyId, currentEmarqetUser(req)?.id);
@@ -2265,6 +3079,21 @@ export function registerEmarqetPublicRoutes(app, { db, ensureFacturaXmlGenerated
       ok: safeText(req.query?.ok),
       err: safeText(req.query?.err)
     }));
+  });
+
+  app.get("/cont/distribuie/:slugOrCode/facebook", emarqetHostOnly, requireEmarqetUser, (req, res) => {
+    const companyId = bootstrap(db);
+    const user = findEmarqetUserById(db, companyId, currentEmarqetUser(req)?.id);
+    if (!user) {
+      req.session.emarqetUser = null;
+      return res.redirect(`/cont/login?err=invalid&return_to=${encodeURIComponent(req.originalUrl || "/cont")}`);
+    }
+    const listing = findUserListingForMarketplace(db, companyId, user, req.params?.slugOrCode);
+    if (!listing) return res.redirect("/cont?err=missing");
+    const shareKit = emarqetReferralShareKit(db, companyId, listing);
+    registerEmarqetReferralShare(db, companyId, listing, user, "facebook");
+    trackPublicView(db, companyId, req, { routeName: "account_share_facebook", userId: user.id, listingId: listing.id, verticalCode: listing.vertical_code });
+    return res.redirect(302, shareKit.facebookShareUrl);
   });
 
   app.post("/cont/distribuie/:slugOrCode/share", emarqetHostOnly, requireEmarqetUser, (req, res) => {
@@ -2410,6 +3239,7 @@ export function registerEmarqetPublicRoutes(app, { db, ensureFacturaXmlGenerated
       : null;
     const vertical = findVertical(db, companyId, body.vertical_id);
     const selectedPlan = findPricingPlanRow(db, companyId, body.plan_code || partnerProfile?.selected_plan_code) || findPricingPlanRow(db, companyId, "free") || {};
+    const createdIp = requestIp(req);
     const title = safeText(body.title);
     const ownerName = safeText(body.owner_name || partnerProfile?.display_name || user.display_name || user.email);
     const ownerEmail = normalizeEmail(body.owner_email || partnerProfile?.email || user.email);
@@ -2422,9 +3252,44 @@ export function registerEmarqetPublicRoutes(app, { db, ensureFacturaXmlGenerated
     if (!ownerName) errors.push("Completează numele.");
     if (!ownerEmail) errors.push("Completează emailul.");
     if (!notes) errors.push("Adaugă o descriere.");
+    const freeLimitError = freeListingLimitError(db, companyId, user.id, createdIp, selectedPlan);
+    if (freeLimitError) errors.push(freeLimitError);
 
     if (errors.length) {
       cleanupUploadedFiles(req.files || []);
+      console.warn("[EMARQET] Public publish validation failed", {
+        user_id: user.id,
+        email: normalizeEmail(user.email),
+        ip: createdIp,
+        errors,
+        fields: {
+          vertical_id: safeText(body.vertical_id),
+          plan_code: safeText(body.plan_code || selectedPlan.code),
+          title_present: Boolean(title),
+          owner_email_present: Boolean(ownerEmail),
+          notes_present: Boolean(notes),
+          files: Array.isArray(req.files) ? req.files.length : 0
+        }
+      });
+      try {
+        createLead(db, companyId, {
+          listing_id: null,
+          vertical_id: vertical?.id || null,
+          requester_name: ownerName || user.display_name || user.email || "Utilizator e-Marqet",
+          requester_email: ownerEmail || normalizeEmail(user.email),
+          requester_phone: safeText(body.owner_phone || user.phone),
+          source: "public_publish_validation_failed",
+          message: [
+            `Avertizare formular publicare e-Marqet: ${title || "fără titlu"}`,
+            `Utilizator: ${user.display_name || "-"} <${normalizeEmail(user.email) || "-"}>`,
+            `Motiv: ${errors.join("; ")}`,
+            `Plan: ${safeText(body.plan_code || selectedPlan.code || "free")}`,
+            `IP: ${createdIp || "-"}`
+          ].join("\n")
+        });
+      } catch (err) {
+        console.warn("[EMARQET] Could not create validation warning lead", err?.message || err);
+      }
       return res.status(400).type("html").send(renderEmarqetPublicPublishPage({
         verticals: loadVerticals(db, companyId, true),
         pricingPlans: loadEmarqetPricingPlans(db, companyId, true),
@@ -2444,17 +3309,21 @@ export function registerEmarqetPublicRoutes(app, { db, ensureFacturaXmlGenerated
     if (sellerType) metadata.seller_type = sellerType;
     if (partnerProfile?.id) metadata.partner_profile_id = partnerProfile.id;
     const token = checkoutToken();
+    const requiresPayment = paymentRequiredForPlan(selectedPlan);
+    const initialStatus = requiresPayment ? "IN_REVIZIE" : "PUBLICAT";
+    const initialPublishedAt = requiresPayment ? null : new Date().toISOString().slice(0, 10);
     const publicNotes = [
       notes,
       ownerPhone ? `Telefon contact: ${ownerPhone}` : ""
     ].filter(Boolean).join("\n\n");
 
+    let createdListing = null;
     const tx = db.transaction(() => {
       const result = db.prepare(`
         INSERT INTO emarqet_listings
-          (company_id, emarqet_user_id, partner_profile_id, vertical_id, listing_code, title, slug, owner_name, owner_email, location, price_amount, price_currency, status, quality_score, ai_status, metadata_json, primary_image_url, image_urls_json, contact_phone, seller_type, selected_plan_code, stripe_checkout_status, checkout_token, notes, created_by)
+          (company_id, emarqet_user_id, partner_profile_id, vertical_id, listing_code, title, slug, owner_name, owner_email, location, price_amount, price_currency, status, quality_score, ai_status, published_at, metadata_json, primary_image_url, image_urls_json, contact_phone, seller_type, selected_plan_code, stripe_checkout_status, checkout_token, notes, created_ip, created_by)
         VALUES
-          (@company_id, @emarqet_user_id, @partner_profile_id, @vertical_id, @listing_code, @title, @slug, @owner_name, @owner_email, @location, @price_amount, @price_currency, 'IN_REVIZIE', 35, 'DE_REVIZUIT', @metadata_json, @primary_image_url, @image_urls_json, @contact_phone, @seller_type, @selected_plan_code, 'PENDING', @checkout_token, @notes, 'emarqet-public')
+          (@company_id, @emarqet_user_id, @partner_profile_id, @vertical_id, @listing_code, @title, @slug, @owner_name, @owner_email, @location, @price_amount, @price_currency, @status, 35, 'DE_REVIZUIT', @published_at, @metadata_json, @primary_image_url, @image_urls_json, @contact_phone, @seller_type, @selected_plan_code, 'PENDING', @checkout_token, @notes, @created_ip, 'emarqet-public')
       `).run({
         company_id: companyId,
         emarqet_user_id: user.id,
@@ -2468,6 +3337,8 @@ export function registerEmarqetPublicRoutes(app, { db, ensureFacturaXmlGenerated
         location: safeText(body.location),
         price_amount: parseAmount(body.price_amount),
         price_currency: safeText(body.price_currency).toUpperCase() || "RON",
+        status: initialStatus,
+        published_at: initialPublishedAt,
         metadata_json: safeJson(metadata),
         primary_image_url: imageUrls[0] || "",
         image_urls_json: safeJson(imageUrls),
@@ -2475,7 +3346,8 @@ export function registerEmarqetPublicRoutes(app, { db, ensureFacturaXmlGenerated
         seller_type: sellerType,
         selected_plan_code: safeText(selectedPlan.code || body.plan_code).toLowerCase() || "free",
         checkout_token: token,
-        notes: publicNotes
+        notes: publicNotes,
+        created_ip: createdIp
       });
       createLead(db, companyId, {
         listing_id: result.lastInsertRowid,
@@ -2484,28 +3356,71 @@ export function registerEmarqetPublicRoutes(app, { db, ensureFacturaXmlGenerated
         requester_email: ownerEmail,
         requester_phone: ownerPhone,
         source: "public_publish_request",
-        message: `Solicitare publicare e-Marqet: ${title}`
+          message: `Solicitare publicare e-Marqet: ${title}`
       });
+      createdListing = {
+        id: result.lastInsertRowid,
+        company_id: companyId,
+        listing_code: listingCode,
+        title,
+        slug,
+        owner_email: ownerEmail,
+        status: initialStatus
+      };
     });
     tx();
 
-    if (paymentRequiredForPlan(selectedPlan)) {
+    if (requiresPayment) {
       return res.redirect(`/checkout/${encodeURIComponent(listingCode)}?token=${encodeURIComponent(token)}`);
     }
-    return res.redirect("/cont?status=pending&ok=sent");
+    const publishCheck = verifyListingPublishedInCategory(db, companyId, createdListing);
+    if (!publishCheck.ok) {
+      db.prepare(`
+        UPDATE emarqet_listings
+        SET status='IN_REVIZIE',
+            published_at=NULL,
+            updated_at=CURRENT_TIMESTAMP
+        WHERE company_id=? AND id=?
+      `).run(companyId, createdListing.id);
+      console.warn("[EMARQET] Public publish verification failed", {
+        listing_id: createdListing.id,
+        listing_code: createdListing.listing_code,
+        reason: publishCheck.reason
+      });
+      createLead(db, companyId, {
+        listing_id: createdListing.id,
+        vertical_id: vertical.id,
+        requester_name: ownerName,
+        requester_email: ownerEmail,
+        requester_phone: ownerPhone,
+        source: "public_publish_verification_failed",
+        message: [
+          `Avertizare publicare e-Marqet: ${title}`,
+          `Cod anunt: ${listingCode}`,
+          `Motiv: ${publishCheck.reason || "verificare_publica_esuat"}`,
+          `Status automat: IN_REVIZIE`,
+          `IP: ${createdIp || "-"}`
+        ].join("\n")
+      });
+      return res.status(500).type("html").send(renderEmarqetPublicPublishPage({
+        verticals: loadVerticals(db, companyId, true),
+        pricingPlans: loadEmarqetPricingPlans(db, companyId, true),
+        partnerProfiles: loadPartnerProfiles(db, companyId, user.id),
+        user,
+        form: body,
+        errors: ["Anunțul a fost salvat, dar nu a apărut încă în categoria publică. Echipa e-Marqet verifică publicarea."]
+      }));
+    }
+    createdListing = publishCheck.listing;
+    sendEmarqetListingPublishedEmail({ transporter, listing: createdListing })
+      .catch((error) => console.warn("[EMARQET] Listing published email failed", error?.message || error));
+    return res.redirect(publicListingUrl(createdListing, "?ok=sent"));
   });
 
-  app.post("/contact", emarqetHostOnly, (req, res) => {
+  app.post("/contact", emarqetHostOnly, async (req, res) => {
     const companyId = bootstrap(db);
     const body = req.body || {};
-    const listing = db.prepare(`
-      SELECT id, vertical_id, slug, listing_code
-      FROM emarqet_listings
-      WHERE company_id=?
-        AND id=?
-        AND UPPER(COALESCE(status,''))='PUBLICAT'
-      LIMIT 1
-    `).get(companyId, Number(body.listing_id || 0));
+    const listing = findListing(db, companyId, body.listing_id);
     const fallback = listing ? `/anunt/${listing.slug || listing.listing_code || listing.id}` : "/anunturi";
     const returnTo = safeReturnTo(body.return_to, fallback);
     const name = safeText(body.requester_name);
@@ -2516,15 +3431,30 @@ export function registerEmarqetPublicRoutes(app, { db, ensureFacturaXmlGenerated
     if (!listing) return res.redirect(`${returnTo}?err=missing`);
     if (!name || (!email && !phone) || !message) return res.redirect(`${returnTo}?err=required`);
 
-    createLead(db, companyId, {
+    const leadPayload = {
       listing_id: listing.id,
       vertical_id: listing.vertical_id,
       requester_name: name,
       requester_email: email,
       requester_phone: phone,
-      source: "public_contact",
+      source: partnerContactRecipient(listing) ? "public_partner_contact" : "public_contact",
       message
-    });
+    };
+    createLead(db, companyId, leadPayload);
+
+    if (partnerContactRecipient(listing)) {
+      try {
+        await sendPartnerListingContactEmail({
+          transporter,
+          listing,
+          lead: leadPayload,
+          returnTo
+        });
+      } catch (error) {
+        console.warn("[EMARQET] Partner contact email failed", error?.message || error);
+        return res.redirect(`${returnTo}?err=partner_email`);
+      }
+    }
 
     return res.redirect(`${returnTo}?ok=lead`);
   });
@@ -2840,6 +3770,33 @@ export function registerEmarqetPublicRoutes(app, { db, ensureFacturaXmlGenerated
     }));
   });
 
+  app.get("/masini-second-hand", emarqetHostOnly, (req, res) => {
+    const companyId = bootstrap(db);
+    const inventory = loadAutoSeoInventory(db, companyId);
+    trackPublicView(db, companyId, req, { routeName: "seo_auto" });
+    return res.type("html").send(renderEmarqetSeoAutoPage({
+      listings: inventory.listings,
+      brands: inventory.brands,
+      user: currentEmarqetUser(req)
+    }));
+  });
+
+  app.get("/masini-second-hand/:brandSlug", emarqetHostOnly, (req, res) => {
+    const companyId = bootstrap(db);
+    const inventory = loadAutoSeoInventory(db, companyId);
+    const brand = inventory.brands.find((item) => item.slug === slugify(req.params.brandSlug));
+    if (!brand) {
+      return res.status(404).type("html").send(renderEmarqetPublicNotFoundPage({ user: currentEmarqetUser(req) }));
+    }
+    trackPublicView(db, companyId, req, { routeName: "seo_auto_brand", verticalCode: "auto" });
+    return res.type("html").send(renderEmarqetSeoAutoPage({
+      brand,
+      listings: brand.listings,
+      brands: inventory.brands,
+      user: currentEmarqetUser(req)
+    }));
+  });
+
   app.get("/:verticalCode", emarqetHostOnly, (req, res) => {
     const companyId = bootstrap(db);
     const vertical = findVertical(db, companyId, req.params.verticalCode);
@@ -2870,6 +3827,67 @@ export function registerEmarqetPublicRoutes(app, { db, ensureFacturaXmlGenerated
         listings: Number(row.published_listings || 0)
       }))
     });
+  });
+
+  app.get("/api/e-marqet/config", (req, res) => {
+    const companyId = bootstrap(db);
+    return res.json({
+      ok: true,
+      base_url: emarqetPublicBaseUrl(),
+      auto_brand_models: AUTO_BRAND_MODELS,
+      verticals: loadVerticals(db, companyId).map((row) => ({
+        id: row.id,
+        code: row.code,
+        name: row.name,
+        status: row.status,
+        public_path: row.public_path,
+        listings: Number(row.published_listings || 0)
+      }))
+    });
+  });
+
+  app.get("/api/e-marqet/auth/me", (req, res) => {
+    const companyId = bootstrap(db);
+    const sessionUser = currentEmarqetUser(req);
+    const user = sessionUser?.id ? findEmarqetUserById(db, companyId, sessionUser.id) : null;
+    if (!user) return res.json({ ok: true, authenticated: false });
+    return res.json({
+      ok: true,
+      authenticated: true,
+      user: {
+        id: user.id,
+        email: normalizeEmail(user.email),
+        display_name: safeText(user.display_name || user.email),
+        phone: safeText(user.phone)
+      }
+    });
+  });
+
+  app.post("/api/e-marqet/auth/login", (req, res) => {
+    const companyId = bootstrap(db);
+    const user = verifyEmarqetUser(db, companyId, req.body?.email, req.body?.password);
+    if (!user) return res.status(401).json({ ok: false, error: "invalid_login" });
+    if (!safeText(user.registration_ip)) {
+      db.prepare("UPDATE emarqet_users SET registration_ip=?, updated_at=CURRENT_TIMESTAMP WHERE company_id=? AND id=?")
+        .run(requestIp(req), companyId, user.id);
+      user.registration_ip = requestIp(req);
+    }
+    setEmarqetUserSession(req, user);
+    return res.json({
+      ok: true,
+      authenticated: true,
+      user: {
+        id: user.id,
+        email: normalizeEmail(user.email),
+        display_name: safeText(user.display_name || user.email),
+        phone: safeText(user.phone)
+      }
+    });
+  });
+
+  app.post("/api/e-marqet/auth/logout", (req, res) => {
+    req.session.emarqetUser = null;
+    return res.json({ ok: true, authenticated: false });
   });
 
   app.get("/api/e-marqet/listings", (req, res) => {
@@ -2976,7 +3994,7 @@ export function registerEmarqetPublicRoutes(app, { db, ensureFacturaXmlGenerated
     return res.status(decoded.ok ? 200 : 400).json(decoded);
   });
 
-  app.post("/api/e-marqet/leads", (req, res) => {
+  app.post("/api/e-marqet/leads", async (req, res) => {
     const companyId = bootstrap(db);
     const body = req.body || {};
     const listing = body.listing_id ? findListing(db, companyId, body.listing_id) : null;
@@ -2987,15 +4005,31 @@ export function registerEmarqetPublicRoutes(app, { db, ensureFacturaXmlGenerated
     if (!name || (!email && !phone) || !message) {
       return res.status(400).json({ ok: false, error: "required_fields" });
     }
-    createLead(db, companyId, {
+    const leadPayload = {
       listing_id: listing?.id || null,
       vertical_id: listing?.vertical_id || Number(body.vertical_id || 0) || null,
       requester_name: name,
       requester_email: email,
       requester_phone: phone,
-      source: "public_api",
+      source: listing && partnerContactRecipient(listing) ? "public_mobile_partner_contact" : "public_api",
       message
-    });
+    };
+    createLead(db, companyId, leadPayload);
+
+    if (listing && partnerContactRecipient(listing)) {
+      try {
+        await sendPartnerListingContactEmail({
+          transporter,
+          listing,
+          lead: leadPayload,
+          returnTo: publicListingUrl(listing)
+        });
+      } catch (error) {
+        console.warn("[EMARQET] Mobile partner contact email failed", error?.message || error);
+        return res.status(502).json({ ok: false, error: "partner_email_failed", saved: true });
+      }
+    }
+
     return res.json({ ok: true });
   });
 }

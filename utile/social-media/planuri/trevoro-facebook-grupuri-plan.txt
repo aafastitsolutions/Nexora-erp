@@ -49,8 +49,8 @@ Zilnic:
 
 De 2-3 ori pe saptamana:
 - postare pentru proprietari care vor cost predictibil
-- postare despre 0% comision pe rezervari
-- postare despre planuri fixe Basic 99 lei/luna, Premium 149 lei/luna si Business 249 lei/luna
+- postare despre programul de lansare pentru proprietari
+- postare despre listare clara, poze reale, calendar si cereri directe
 
 TIPURI DE POSTARI CARE MERG IN GRUPURI
 Nu incepem cu reclama directa.
@@ -59,7 +59,7 @@ Postari bune:
 - "Ce destinatii recomandati pentru weekend cu copii?"
 - "Unde mergeti vara asta: litoral, munte sau Delta?"
 - "Facem o lista cu pensiuni romanesti bune. Ce zone sa acoperim primele?"
-- "Ai cazare si vrei cost predictibil? Trevoro are planuri fixe de la 99 lei/luna si 0% comision pe rezervari."
+- "Ai cazare si vrei vizibilitate? Trevoro a deschis programul de lansare pentru proprietari."
 
 Postari riscante:
 - acelasi link in multe grupuri
@@ -107,7 +107,7 @@ ADS MINIM RECOMANDAT
 Campanie 1 - proprietari:
 - buget: 20-50 lei/zi
 - target: Romania, interese hoteluri, pensiuni, antreprenori, turism
-- mesaj: planuri fixe de la 99 lei/luna si 0% comision pe rezervari
+- mesaj: program de lansare pentru proprietari si cereri directe
 - landing: https://www.trevoro.ro/proprietari
 
 Campanie 2 - turisti:

@@ -18,13 +18,13 @@ const drafts = [
     url: "https://www.trevoro.ro/proprietari",
     propertyId: null,
     headline: "Inscrie-ti proprietatea pe Trevoro",
-    subline: "Planuri fixe de la 99 lei/luna si 0% comision pe rezervari.",
+    subline: "Inscriere gratuita in programul de lansare Trevoro.",
     cta: "www.trevoro.ro/proprietari",
     caption: `Ai o pensiune, cabana, vila, apartament sau casa de vacanta?
 
-Trevoro cauta proprietari parteneri care vor cost predictibil si promovare clara.
+Trevoro cauta proprietari parteneri pentru lansare. Inscrierea si pregatirea listarii sunt gratuite in programul de lansare.
 
-Modelul este transparent: Basic 99 lei/luna, Premium 149 lei/luna sau Business 249 lei/luna, fara comision la fiecare rezervare.
+Fluxul este simplu: cont proprietar, pagina de prezentare, contact direct cu turistii si suport pentru publicare.
 
 Ce primesti:
 - listare online a proprietatii
@@ -49,7 +49,7 @@ WhatsApp suport: 0774362975`,
 
 Construim o comunitate pentru pensiuni, cabane, vile, apartamente si case de vacanta din Romania.
 
-Fara comision la fiecare rezervare pentru proprietarii parteneri. Simplu, transparent si gandit pentru promovare pe termen lung.
+Simplu, clar si gandit pentru promovare pe termen lung.
 
 Descopera Trevoro:
 https://www.trevoro.ro`,
@@ -66,7 +66,7 @@ https://www.trevoro.ro`,
 
 Pagina include prezentarea proprietatii, detalii utile pentru turisti, poze, facilitati si flux pentru cereri de rezervare.
 
-Pentru proprietari, scopul este simplu: o prezenta online clara si o metoda usoara de a primi cereri, fara comision la fiecare rezervare.
+Pentru proprietari, scopul este simplu: o prezenta online clara si o metoda usoara de a primi cereri.
 
 Inscrie proprietatea:
 https://www.trevoro.ro/proprietari`,

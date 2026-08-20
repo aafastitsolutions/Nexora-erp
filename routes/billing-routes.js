@@ -10,6 +10,11 @@ import {
   findEmarqetListingForStripe,
   findEmarqetPlanForListing
 } from "../lib/emarqet-billing.js";
+import {
+  finalizeEmarqetPromotionStripePayment,
+  isEmarqetPromotionStripeMetadata,
+  markPromotionOrderFailed
+} from "../lib/emarqet-promotions.js";
 import { planChargeAmount, planChargeQuantity } from "../lib/app-config.js";
 
 function escapeHtml(value) {
@@ -38,7 +43,8 @@ function stripeWebhookConfigured() {
 function stripeWebhookSecrets() {
   return [
     process.env.STRIPE_WEBHOOK_SECRET,
-    process.env.EMARQET_STRIPE_WEBHOOK_SECRET
+    process.env.EMARQET_STRIPE_WEBHOOK_SECRET,
+    process.env.NEXORA_STRIPE_WEBHOOK_SECRET
   ]
     .map((value) => String(value || "").trim())
     .filter((value, index, all) => value && all.indexOf(value) === index);
@@ -177,10 +183,156 @@ function emarqetMetadata(source = {}) {
   return metadata?.emarqet_company_id ? metadata : {};
 }
 
+function nextPdfPriceIds() {
+  return new Set([
+    process.env.NEXTPDF_STRIPE_MONTHLY_PRICE_ID,
+    process.env.NEXTPDF_STRIPE_ANNUAL_PRICE_ID,
+    process.env.STRIPE_NEXTPDF_MONTHLY_PRICE_ID,
+    process.env.STRIPE_NEXTPDF_ANNUAL_PRICE_ID
+  ].map((value) => String(value || "").trim()).filter(Boolean));
+}
+
+function stripePriceIds(source = {}) {
+  const lines = Array.isArray(source?.lines?.data) ? source.lines.data : [];
+  const directItems = Array.isArray(source?.line_items?.data) ? source.line_items.data : [];
+  return [...lines, ...directItems]
+    .map((line) => String(line?.price?.id || line?.pricing?.price_details?.price || "").trim())
+    .filter(Boolean);
+}
+
+function nextPdfAccountId(source = {}) {
+  const metadata = stripeSubscriptionMetadata(source);
+  const metadataId = Number(metadata.nextpdf_account_id || 0);
+  if (metadataId) return metadataId;
+  const reference = String(source?.client_reference_id || "");
+  const match = reference.match(/^np_(\d+)_/);
+  return match ? Number(match[1] || 0) : 0;
+}
+
+export function isNextPdfStripeObject(source = {}) {
+  const metadata = stripeSubscriptionMetadata(source);
+  if (metadata.nextpdf_account_id || String(metadata.nextpdf_product || "").toLowerCase() === "nextpdf") return true;
+  if (/^np_\d+_[ma]_/.test(String(source?.client_reference_id || ""))) return true;
+  const configured = nextPdfPriceIds();
+  return stripePriceIds(source).some((priceId) => configured.has(priceId));
+}
+
+function nextPdfIssuerCompanyId(db) {
+  const explicitId = Number(process.env.BILLING_ISSUER_COMPANY_ID || 0);
+  if (explicitId) return explicitId;
+  const adminEmail = String(process.env.ADMIN_EMAIL || "").trim().toLowerCase();
+  const row = adminEmail
+    ? db.prepare("SELECT company_id FROM users WHERE LOWER(email)=? AND company_id IS NOT NULL ORDER BY id LIMIT 1").get(adminEmail)
+    : null;
+  return Number(row?.company_id || db.prepare("SELECT id FROM companies ORDER BY id LIMIT 1").get()?.id || 0);
+}
+
+export function nextPdfPlanDetails(source = {}) {
+  const ids = stripePriceIds(source);
+  const monthlyId = String(process.env.NEXTPDF_STRIPE_MONTHLY_PRICE_ID || process.env.STRIPE_NEXTPDF_MONTHLY_PRICE_ID || "").trim();
+  const annualId = String(process.env.NEXTPDF_STRIPE_ANNUAL_PRICE_ID || process.env.STRIPE_NEXTPDF_ANNUAL_PRICE_ID || "").trim();
+  if (annualId && ids.includes(annualId)) return { plan: "premium_annual", label: "Abonament NextPDF Premium anual", unit: "an" };
+  if (monthlyId && ids.includes(monthlyId)) return { plan: "premium_monthly", label: "Abonament NextPDF Premium lunar", unit: "luna" };
+  const metadata = stripeSubscriptionMetadata(source);
+  return String(metadata.nextpdf_plan_id || "").includes("annual")
+    ? { plan: "premium_annual", label: "Abonament NextPDF Premium anual", unit: "an" }
+    : { plan: "premium_monthly", label: "Abonament NextPDF Premium lunar", unit: "luna" };
+}
+
+async function handleNextPdfStripePayment(db, source = {}, eventType = "", options = {}) {
+  if (!isNextPdfStripeObject(source)) return { handled: false };
+  const companyId = nextPdfIssuerCompanyId(db);
+  if (!companyId) return { handled: true, ok: false, reason: "issuer_company_missing" };
+  const billingDetails = stripeBillingDetails(source);
+  const subscription = typeof source?.subscription === "string"
+    ? source.subscription
+    : String(source?.subscription?.id || source?.parent?.subscription_details?.subscription || "");
+  const paymentIntent = typeof source?.payment_intent === "string" ? source.payment_intent : String(source?.payment_intent?.id || "");
+  const checkoutId = eventType === "checkout.session.completed" ? String(source?.id || "") : "";
+  const invoiceId = eventType.startsWith("invoice.")
+    ? String(source?.id || "")
+    : typeof source?.invoice === "string"
+      ? source.invoice
+      : String(source?.invoice?.id || "");
+  const paid = eventType === "invoice.paid" || (eventType === "checkout.session.completed" && ["paid", "no_payment_required"].includes(String(source?.payment_status || "").toLowerCase()));
+  const failed = eventType === "invoice.payment_failed";
+  const plan = nextPdfPlanDetails(source);
+  const amount = fromStripeAmount(source?.amount_paid || source?.amount_total || source?.amount_due || 0);
+  const paidAt = isoFromStripeTimestamp(source?.status_transitions?.paid_at || source?.created) || new Date().toISOString();
+  const metadata = {
+    ...stripeSubscriptionMetadata(source),
+    product: "nextpdf",
+    nextpdf: true,
+    nextpdf_account_id: nextPdfAccountId(source) || undefined,
+    nextpdf_plan_id: plan.plan,
+    external_payer: true,
+    allow_consumer_without_fiscal_id: true,
+    invoice_line_label: plan.label,
+    invoice_label_prefix: "Abonament NextPDF",
+    invoice_unit: plan.unit,
+    payer_name: billingDetails.name || billingDetails.email || "Client NextPDF",
+    payer_email: billingDetails.email,
+    payer_cui: billingDetails.tax_id,
+    payer_address: billingDetails.address,
+    payer_country: billingDetails.country || "Romania",
+    stripe_billing_details: billingDetails
+  };
+  const paymentId = upsertBillingPayment(db, {
+    companyId,
+    source: "stripe",
+    providerEventType: eventType,
+    paymentKind: "nextpdf_subscription",
+    status: paid ? "paid" : failed ? "failed" : "processing",
+    amount,
+    currency: String(source?.currency || "ron"),
+    payerName: billingDetails.name,
+    payerEmail: billingDetails.email || String(source?.customer_email || ""),
+    referenceCode: String(source?.number || source?.id || ""),
+    stripeCheckoutSessionId: checkoutId,
+    stripeSubscriptionId: subscription,
+    stripeInvoiceId: invoiceId,
+    stripePaymentIntentId: paymentIntent,
+    paidAt: paid ? paidAt : null,
+    failureReason: failed ? String(source?.last_finalization_error?.message || source?.status || "payment_failed") : "",
+    notes: paid ? "Plată NextPDF confirmată" : failed ? "Plată NextPDF eșuată" : "Plată NextPDF în procesare",
+    metadata
+  });
+  if (paid && paymentId) {
+    const invoiceResult = maybeGenerateBillingInvoice(db, paymentId, { livemode: source?.livemode ? 1 : 0 });
+    if (invoiceResult?.facturaId) {
+      await runBillingInvoiceAutomationSteps(db, invoiceResult.facturaId, options);
+    }
+  }
+  return { handled: true, ok: true, paymentId };
+}
+
+
 async function handleEmarqetStripeCheckoutCompleted(db, source = {}, eventType = "", options = {}) {
   const metadata = emarqetMetadata(source);
   const companyId = Number(metadata.emarqet_company_id || 0);
   if (!companyId) return { handled: false };
+  if (isEmarqetPromotionStripeMetadata(metadata)) {
+    const paid = String(source?.payment_status || "").toLowerCase() === "paid";
+    const paymentIntentId = typeof source?.payment_intent === "string" ? source.payment_intent : String(source?.payment_intent?.id || "");
+    await finalizeEmarqetPromotionStripePayment(db, {
+      companyId,
+      metadata,
+      providerEventType: eventType || "checkout.session.completed",
+      status: paid ? "paid" : "processing",
+      amount: fromStripeAmount(source?.amount_total || source?.amount_subtotal || 0),
+      currency: source?.currency || "RON",
+      stripeCheckoutSessionId: String(source?.id || ""),
+      stripeInvoiceId: String(source?.invoice || ""),
+      stripePaymentIntentId: paymentIntentId,
+      referenceCode: String(source?.id || ""),
+      paidAt: isoFromStripeTimestamp(source?.created) || new Date().toISOString(),
+      livemode: Boolean(source?.livemode),
+      stripeBillingDetails: emarqetStripeBillingDetails(source),
+      ensureFacturaXmlGenerated: options.ensureFacturaXmlGenerated,
+      transporter: options.transporter
+    });
+    return { handled: true, ok: true };
+  }
   const listing = findEmarqetListingForStripe(db, companyId, metadata, String(source?.id || ""));
   if (!listing) return { handled: true, ok: false, reason: "listing_missing" };
   const plan = findEmarqetPlanForListing(db, companyId, listing);
@@ -214,6 +366,27 @@ async function handleEmarqetStripeInvoicePaid(db, source = {}, eventType = "", o
   const metadata = emarqetMetadata(source);
   const companyId = Number(metadata.emarqet_company_id || 0);
   if (!companyId) return { handled: false };
+  if (isEmarqetPromotionStripeMetadata(metadata)) {
+    const paymentIntentId = typeof source?.payment_intent === "string" ? source.payment_intent : String(source?.payment_intent?.id || "");
+    await finalizeEmarqetPromotionStripePayment(db, {
+      companyId,
+      metadata,
+      providerEventType: eventType || "invoice.paid",
+      status: "paid",
+      amount: fromStripeAmount(source?.amount_paid || source?.amount_due || 0),
+      currency: source?.currency || "RON",
+      stripeCheckoutSessionId: String(metadata.stripe_checkout_session_id || ""),
+      stripeInvoiceId: String(source?.id || ""),
+      stripePaymentIntentId: paymentIntentId,
+      referenceCode: String(source?.number || source?.id || ""),
+      paidAt: isoFromStripeTimestamp(source?.status_transitions?.paid_at || source?.created) || new Date().toISOString(),
+      livemode: Boolean(source?.livemode),
+      stripeBillingDetails: emarqetStripeBillingDetails(source),
+      ensureFacturaXmlGenerated: options.ensureFacturaXmlGenerated,
+      transporter: options.transporter
+    });
+    return { handled: true, ok: true };
+  }
   const listing = findEmarqetListingForStripe(db, companyId, metadata, "");
   if (!listing) return { handled: true, ok: false, reason: "listing_missing" };
   const plan = findEmarqetPlanForListing(db, companyId, listing);
@@ -245,6 +418,11 @@ function handleEmarqetStripeInvoiceFailed(db, source = {}, eventType = "") {
   const metadata = emarqetMetadata(source);
   const companyId = Number(metadata.emarqet_company_id || 0);
   if (!companyId) return { handled: false };
+  if (isEmarqetPromotionStripeMetadata(metadata)) {
+    const orderId = Number(metadata.promotion_order_id || 0);
+    if (orderId) markPromotionOrderFailed(db, companyId, orderId, eventType || "invoice.payment_failed");
+    return { handled: true, ok: true, eventType };
+  }
   const listing = findEmarqetListingForStripe(db, companyId, metadata, "");
   if (!listing) return { handled: true, ok: false, reason: "listing_missing" };
   db.prepare(`
@@ -637,6 +815,8 @@ export function registerBillingWebhook(app, { db, ensureFacturaXmlGenerated, tra
       switch (event.type) {
         case "checkout.session.completed": {
           const session = event.data.object;
+          const nextPdfHandled = await handleNextPdfStripePayment(db, session, event.type, { ensureFacturaXmlGenerated, transporter });
+          if (nextPdfHandled.handled) break;
           const emarqetHandled = await handleEmarqetStripeCheckoutCompleted(db, session, event.type, { ensureFacturaXmlGenerated, transporter });
           if (emarqetHandled.handled) break;
           const companyId = Number(session?.metadata?.company_id || 0);
@@ -755,6 +935,8 @@ export function registerBillingWebhook(app, { db, ensureFacturaXmlGenerated, tra
         }
         case "invoice.payment_failed": {
           const invoice = event.data.object;
+          const nextPdfHandled = await handleNextPdfStripePayment(db, invoice, event.type, { ensureFacturaXmlGenerated, transporter });
+          if (nextPdfHandled.handled) break;
           const emarqetHandled = handleEmarqetStripeInvoiceFailed(db, invoice, event.type);
           if (emarqetHandled.handled) break;
           const subscriptionId = String(invoice?.subscription || "");
@@ -805,6 +987,8 @@ export function registerBillingWebhook(app, { db, ensureFacturaXmlGenerated, tra
         }
         case "invoice.paid": {
           const invoice = event.data.object;
+          const nextPdfHandled = await handleNextPdfStripePayment(db, invoice, event.type, { ensureFacturaXmlGenerated, transporter });
+          if (nextPdfHandled.handled) break;
           const emarqetHandled = await handleEmarqetStripeInvoicePaid(db, invoice, event.type, { ensureFacturaXmlGenerated, transporter });
           if (emarqetHandled.handled) break;
           const subscriptionId = String(invoice?.subscription || "");

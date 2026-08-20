@@ -1,0 +1,11 @@
+[Unit]
+Description=e-Marqet approved auto partner site sync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=server
+WorkingDirectory=/home/server/Nexora
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node scripts/sync-emarqet-approved-auto-partner-sites.mjs --commit

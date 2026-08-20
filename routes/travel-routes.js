@@ -79,6 +79,7 @@ const BOOKING_CHANNELS = [
   "manual_request",
   "trevoro_calendar",
   "pynbooking",
+  "retrooffice",
   "5stardesk",
   "smoobu",
   "hostaway",
@@ -109,6 +110,7 @@ const TREVORO_OUTREACH_LOG_DIR = process.env.TREVORO_OUTREACH_LOG_DIR
 const BOOKING_AVAILABILITY_PROVIDERS = [
   "trevoro",
   "pynbooking",
+  "retrooffice",
   "5stardesk",
   "manual",
   "smoobu",
@@ -134,6 +136,7 @@ const BOOKING_AVAILABILITY_PROVIDERS = [
 const BOOKING_PAYMENT_FLOWS = ["owner_policy", "legacy_stripe"];
 const CHANNEL_MANAGER_PROVIDER_LABELS = {
   pynbooking: "PynBooking",
+  retrooffice: "RetroOffice",
   "5stardesk": "5StarDesk",
   smoobu: "Smoobu",
   hostaway: "Hostaway",
@@ -161,6 +164,8 @@ const CHANNEL_MANAGER_PROVIDERS = Object.keys(CHANNEL_MANAGER_PROVIDER_LABELS);
 const CHANNEL_MANAGER_PROVIDER_ALIASES = {
   fivestardesk: "5stardesk",
   stardesk: "5stardesk",
+  retrooffice: "retrooffice",
+  retro: "retrooffice",
   rentalunited: "rentalsunited",
   rentalsunited: "rentalsunited",
   ownerrez: "ownerrez",
@@ -189,6 +194,16 @@ const CHANNEL_MANAGER_PARTNER_DEFAULTS = [
     contacted_at: "2026-06-16",
     follow_up_at: "2026-06-23",
     next_step: "Așteptăm acces developer/sandbox și confirmare pentru disponibilitate, tarife, rezervări."
+  },
+  {
+    provider_key: "retrooffice",
+    name: "RetroOffice",
+    kind: "Hostel booking system / PMS",
+    status: "aplicat",
+    method: "Documentație API primită de la hotel",
+    contacted_at: "2026-07-21",
+    follow_up_at: "2026-07-22",
+    next_step: "Cerem Client ID, Client Secret, Partner Identifier, endpoint OAuth2 token și confirmare cum se transmite opțiunea/camera aleasă la create booking."
   },
   {
     provider_key: "5stardesk",
@@ -767,7 +782,7 @@ function ownerListingPlansForCountry(country = "") {
       amount,
       currency,
       amountRon: international ? 0 : amount,
-      label: international ? `${plan.name} ${amount} EUR/month` : `${plan.name} ${amount} lei/luna`,
+      label: `Program lansare - ${plan.name}`,
       summary: international ? plan.summaryEn : plan.summaryRo,
       features: international ? plan.featuresEn : plan.featuresRo
     };
@@ -823,7 +838,7 @@ function ownerBillingPlanForProperty(property = {}, requestedPlan = "") {
       amount: storedAmount,
       currency: storedCurrency,
       amountRon: storedCurrency === "RON" ? storedAmount : Math.max(0, Math.round(Number(property.monthly_price_ron || 0) || 0)),
-      label: `${storedAmount} ${storedCurrency === "RON" ? "lei" : storedCurrency}/luna`
+      label: "Program Trevoro proprietar"
     };
   }
 
@@ -837,7 +852,7 @@ function ownerBillingPlanForProperty(property = {}, requestedPlan = "") {
     amount,
     currency: "RON",
     amountRon: amount,
-    label: `${amount} lei/luna`
+    label: "Program Trevoro proprietar"
   };
 }
 
@@ -978,8 +993,8 @@ function publicOwnerBillingPortfolioPayload(portfolio = {}) {
 
 function agencyMonthlyPriceForCountry(country = "") {
   return normalizeTravelCountry(country) === "Romania"
-    ? { amount: AGENCY_MONTHLY_PRICE_RON, currency: "RON", ron: AGENCY_MONTHLY_PRICE_RON, label: `${AGENCY_MONTHLY_PRICE_RON} lei/luna` }
-    : { amount: AGENCY_INTERNATIONAL_MONTHLY_PRICE_EUR, currency: "EUR", ron: 0, label: `${AGENCY_INTERNATIONAL_MONTHLY_PRICE_EUR} EUR/luna` };
+    ? { amount: AGENCY_MONTHLY_PRICE_RON, currency: "RON", ron: AGENCY_MONTHLY_PRICE_RON, label: "Program lansare agenție" }
+    : { amount: AGENCY_INTERNATIONAL_MONTHLY_PRICE_EUR, currency: "EUR", ron: 0, label: "Agency launch program" };
 }
 
 function agencyMonthlyPriceLabel(agency = {}) {
@@ -1089,10 +1104,10 @@ const OWNER_LISTING_PLAN_DEFS = [
     name: "Basic",
     priceRon: STANDARD_TRAVEL_MONTHLY_PRICE_RON,
     priceEur: INTERNATIONAL_OWNER_BASIC_PRICE_EUR,
-    summaryRo: "Pagina publica, poze, preturi, disponibilitate, calendar iCal/ICS si contact direct.",
-    summaryEn: "Public page, photos, prices, availability, iCal/ICS calendar and direct contact.",
-    featuresRo: ["Pagina publica Trevoro", "Poze, descriere, facilitati si preturi", "Disponibilitate si calendar iCal/ICS", "Contact direct cu turistii", "0% comision pe rezervari"],
-    featuresEn: ["Public Trevoro page", "Photos, description, amenities and prices", "Availability and iCal/ICS calendar", "Direct guest requests", "0% booking commission"]
+    summaryRo: "Pagina publica, poze, disponibilitate, calendar iCal/ICS si contact direct.",
+    summaryEn: "Public page, photos, availability, iCal/ICS calendar and direct contact.",
+    featuresRo: ["Pagina publica Trevoro", "Poze, descriere si facilitati", "Disponibilitate si calendar iCal/ICS", "Contact direct cu turistii"],
+    featuresEn: ["Public Trevoro page", "Photos, description and amenities", "Availability and iCal/ICS calendar", "Direct guest requests"]
   },
   {
     key: "premium",
@@ -1980,7 +1995,7 @@ function facebookCollaborationMessage(candidate = {}, classification = "") {
     "",
     facebookLine,
     "",
-    "Trevoro este gândit pentru proprietari care vor vizibilitate, promovare locală și un model clar, cu 0% comision pe rezervări. Înainte să publicăm orice, verificăm datele împreună cu proprietarul.",
+    "Trevoro este gândit pentru proprietari care vor vizibilitate, promovare locală și suport de publicare. Înainte să publicăm orice, verificăm datele împreună cu proprietarul.",
     "",
     "Dacă sunteți deschiși la o discuție, vă putem trimite detaliile de colaborare și pașii pentru listare.",
     "",
@@ -2852,6 +2867,7 @@ function loadPublicTravelSeoRows(db, limit = 50000) {
            price_per_night, price_currency, updated_at, created_at
     FROM travel_properties
     WHERE status='activ'
+      AND COALESCE(public_status, 'published')='published'
     ORDER BY updated_at DESC, created_at DESC, id DESC
     LIMIT ?
   `).all(Math.max(1, Math.min(50000, Number(limit || 50000))));
@@ -2908,6 +2924,7 @@ function loadPublicTravelPropertiesForSeoLocation(db, type = "", slug = "", { li
     SELECT *
     FROM travel_properties
     WHERE status='activ'
+      AND COALESCE(public_status, 'published')='published'
     ORDER BY updated_at DESC, created_at DESC, id DESC
   `).all();
   const matches = rows.filter((row) => slugify(seoLocationLabel(row, locationType)) === targetSlug);
@@ -4385,6 +4402,20 @@ function trevoroSignupOkCode(result = {}) {
   return result.activation?.type === "founding_partner" ? "founding" : "1";
 }
 
+function trevoroFreeOwnerSignupPlan() {
+  const freeUntil = addMonthsDateValue(12);
+  return {
+    type: "founding_partner",
+    partnerPlan: "founding_partner",
+    subscriptionStatus: "free_12_months",
+    status: "activ",
+    monthlyPriceRon: 0,
+    monthlyPriceAmount: 0,
+    monthlyPriceCurrency: "RON",
+    freeUntil
+  };
+}
+
 function transporterConfigured(transporter) {
   return Boolean(transporter) &&
     Boolean(safeText(process.env.SMTP_USER)) &&
@@ -4441,7 +4472,7 @@ function trevoroOwnerEmailSubject({ lead = {}, property = {}, activation = null 
     return `Trevoro: contul pentru ${name} este pregătit`;
   }
   if (activation?.type === "founding_partner" || property.partner_plan === "founding_partner") {
-    return `Trevoro: ${name} are o excepție comercială activă`;
+    return `Trevoro: ${name} este în programul de lansare`;
   }
   return `Trevoro: am primit înscrierea pentru ${name}`;
 }
@@ -4462,33 +4493,31 @@ export function buildTrevoroOwnerWelcomeEmail({ lead = {}, property = {}, activa
   const loginUrl = `${siteUrl}/login?next=%2Fdashboard%2Fpartner`;
   const subject = trevoroOwnerEmailSubject({ lead, property, activation });
   const programLine = isFounding
-    ? isFree30Days
-      ? `Proprietatea are o excepție comercială activată manual: 0 lei/lună timp de 30 de zile${freeUntil ? `, până la ${freeUntil}` : ""}. După această perioadă, proprietarul poate continua cu unul dintre planurile fixe Trevoro, de la ${STANDARD_TRAVEL_MONTHLY_PRICE_RON} lei/lună, fără comisioane pe rezervări.`
-      : `Proprietatea are o excepție comercială activată manual: 0 lei/lună timp de 12 luni${freeUntil ? `, până la ${freeUntil}` : ""}. După cele 12 luni, abonamentul standard va fi ${STANDARD_TRAVEL_MONTHLY_PRICE_RON} lei/lună, fără alte comisioane, indiferent de câte rezervări are proprietatea.`
+    ? `Înscrierea a fost activată gratuit în programul de lansare Trevoro${freeUntil ? `, până la ${freeUntil}` : ""}. Detaliile comerciale vor fi comunicate separat după finalizarea strategiei.`
     : isPaymentRequired
-      ? isInternationalPropertyCountry(property.country || lead.country)
-        ? `Contul de proprietar este pregătit. Publicarea pe Trevoro se activează pe abonament lunar fix: Basic ${INTERNATIONAL_OWNER_BASIC_PRICE_EUR} EUR/month include pagina publică, poze, prețuri, disponibilitate, calendar iCal/ICS și contact direct; Premium 29 EUR/month adaugă afișare prioritară, SEO și suport prioritar; Business 59 EUR/month adaugă promovare social media, conținut dedicat, badge Verified Partner și prioritate maximă. Trevoro are 0% comision pe rezervări.`
-        : `Contul de proprietar este pregătit. Publicarea pe Trevoro se activează pe abonament lunar fix: Basic ${STANDARD_TRAVEL_MONTHLY_PRICE_RON} lei/lună include pagina publică, poze, prețuri, disponibilitate, calendar iCal/ICS și contact direct; Premium 149 lei/lună adaugă afișare prioritară, SEO și suport prioritar; Business 249 lei/lună adaugă promovare social media, conținut dedicat, badge Partener Verificat și prioritate maximă. Trevoro are 0% comision pe rezervări.`
+      ? "Contul de proprietar este pregătit. Echipa Trevoro va valida listarea și va confirma pașii de publicare."
     : "Înscrierea a fost primită. Echipa Trevoro te va contacta pentru validare și pentru pașii următori.";
-  const publicLine = isPaymentRequired
-    ? `Pagina publică se activează după alegerea abonamentului și publicare. Verifică listarea în contul proprietarului: ${loginUrl}`
-    : publicUrl
-      ? `Pagina publică de verificare: ${publicUrl}`
-      : "Pagina publică va fi pregătită după validarea datelor.";
-  const nextSteps = [
-    `1. Intră în cont: ${loginUrl}`,
-    "2. Folosește emailul din formularul de înscriere și parola creată la înscriere.",
-    "3. Confirmă codul de verificare primit pe email.",
-    "4. Verifică datele proprietății, adaugă poze reale și conectează calendarul.",
-    "5. Pregătim listarea și promovarea Trevoro. Rezervările online, camerele și plățile vin într-o etapă următoare."
-  ];
+	  const publicLine = isPaymentRequired
+	    ? `Verifică listarea în contul proprietarului: ${loginUrl}`
+	    : publicUrl
+	      ? `Pagina publică de verificare: ${publicUrl}`
+	      : "Pagina publică va fi pregătită după validarea datelor.";
+	  const loginNote = "După înscriere poți continua în contul de proprietar. Dacă revii ulterior pe pagina de login, folosește emailul din formularul de înscriere și parola creată la înscriere.";
+	  const nextSteps = [
+	    `1. Intră sau continuă în contul de proprietar: ${loginUrl}`,
+	    "2. Verifică datele proprietății și completează informațiile lipsă.",
+	    "3. Adaugă poze reale: exterior, camere, baie, facilități și zone comune.",
+	    "4. Conectează calendarul iCal/ICS, dacă folosești deja un calendar de rezervări.",
+	    "5. Pregătim listarea și promovarea Trevoro. Funcțiile suplimentare vor fi activate etapizat."
+	  ];
   const text = [
     `Bună ziua,`,
     ``,
-    `Mulțumim pentru înscrierea proprietății ${name} (${propertyType}, ${city}) pe Trevoro.`,
-    programLine,
-    publicLine,
-    ``,
+	    `Mulțumim pentru înscrierea proprietății ${name} (${propertyType}, ${city}) pe Trevoro.`,
+	    programLine,
+	    publicLine,
+	    loginNote,
+	    ``,
     `Ce urmează:`,
     ...nextSteps,
     ``,
@@ -4503,19 +4532,19 @@ export function buildTrevoroOwnerWelcomeEmail({ lead = {}, property = {}, activa
       <p>Mulțumim pentru înscrierea proprietății <strong>${escapeHtml(name)}</strong> (${escapeHtml(propertyType)}, ${escapeHtml(city)}) pe Trevoro.</p>
       <p style="padding:14px 16px;background:#ecfdf5;border:1px solid #bbf7d0;border-radius:8px"><strong>${escapeHtml(programLine)}</strong></p>
       <p><a href="${escapeHtml(loginUrl)}" style="display:inline-block;background:#0f766e;color:#ffffff;text-decoration:none;padding:12px 16px;border-radius:8px;font-weight:bold">Intră în contul de proprietar</a></p>
-      <p style="color:#475569">Folosește emailul din formularul de înscriere și parola creată la înscriere. După introducerea parolei, Trevoro îți trimite un cod de verificare pe email.</p>
+	      <p style="color:#475569">${escapeHtml(loginNote)}</p>
       <p>${isPaymentRequired
-        ? `Pagina publică se activează după alegerea abonamentului și publicare. Verifică listarea în contul proprietarului: <a href="${escapeHtml(loginUrl)}">${escapeHtml(loginUrl)}</a>`
+        ? `Verifică listarea în contul proprietarului: <a href="${escapeHtml(loginUrl)}">${escapeHtml(loginUrl)}</a>`
         : publicUrl
           ? `Pagina publică de verificare: <a href="${escapeHtml(publicUrl)}">${escapeHtml(publicUrl)}</a>`
           : escapeHtml(publicLine)
       }</p>
       <h2 style="font-size:18px;margin:22px 0 8px">Ce urmează</h2>
       <ol>
-        <li>Intră în contul de proprietar din linkul de mai sus.</li>
-        <li>Confirmă codul de verificare primit pe email.</li>
-        <li>Verifică datele proprietății, adaugă poze reale și conectează calendarul.</li>
-        <li>Pregătim listarea și promovarea Trevoro. Rezervările online, camerele și plățile vin într-o etapă următoare.</li>
+	        <li>Intră sau continuă în contul de proprietar din linkul de mai sus.</li>
+	        <li>Verifică datele proprietății și completează informațiile lipsă.</li>
+	        <li>Adaugă poze reale și conectează calendarul, dacă folosești deja unul.</li>
+        <li>Pregătim listarea și promovarea Trevoro. Funcțiile suplimentare vor fi activate etapizat.</li>
       </ol>
       <p>Dacă datele nu sunt corecte, răspunde la acest email și le actualizăm.</p>
       <p style="margin-top:24px">Echipa Trevoro</p>
@@ -4581,17 +4610,17 @@ function buildTrevoroAgencyWelcomeEmail({ agency = {}, baseUrl = "" } = {}) {
     `Login: ${loginUrl}`,
     publicUrl ? `Mini-site agentie: ${publicUrl}` : "",
     "",
-    `Abonament agentie: ${priceLabel}, cu listari/oferte nelimitate.`,
+    "Agentia este inclusa in programul de lansare Trevoro.",
     "Promovarea se poate face pe platforma Trevoro si in campaniile social media Trevoro.",
     "",
     "Procedura de publicare:",
     "1. Intrati in dashboardul agentiei din linkul de login.",
     "2. Completati logo, descriere, WhatsApp, Facebook/Instagram si URL personalizat.",
     "3. Incarcati imaginea de fundal si galeria paginii agentiei.",
-    "4. Adaugati ofertele cu destinatie, descriere, pret, perioada de valabilitate si maximum 15 poze pentru fiecare oferta.",
+    "4. Adaugati ofertele cu destinatie, descriere, perioada de valabilitate si maximum 15 poze pentru fiecare oferta.",
     "5. Publicati ofertele si alegeti ce doriti sa fie promovat pe Trevoro si social media.",
     "",
-    "Platile turist-agentie raman direct intre client si agentie; Trevoro incaseaza doar abonamentul agentiei.",
+    "Detaliile comerciale vor fi comunicate separat dupa finalizarea strategiei.",
     "",
     "Echipa Trevoro"
   ].filter(Boolean).join("\n");
@@ -4602,16 +4631,16 @@ function buildTrevoroAgencyWelcomeEmail({ agency = {}, baseUrl = "" } = {}) {
       <p>Contul de administrare este pregatit. Puteti actualiza profilul agentiei, imaginea de fundal, galeria si ofertele promovate.</p>
       <p><a href="${escapeHtml(loginUrl)}" style="display:inline-block;background:#0f766e;color:#fff;padding:12px 16px;border-radius:8px;text-decoration:none;font-weight:700">Intra in dashboard</a></p>
       ${publicUrl ? `<p>Mini-site agentie: <a href="${escapeHtml(publicUrl)}">${escapeHtml(publicUrl)}</a></p>` : ""}
-      <p style="padding:14px 16px;background:#ecfdf5;border:1px solid #bbf7d0;border-radius:8px"><strong>${escapeHtml(priceLabel)}</strong>, cu listari/oferte nelimitate si promovare pe Trevoro.</p>
+      <p style="padding:14px 16px;background:#ecfdf5;border:1px solid #bbf7d0;border-radius:8px"><strong>Program de lansare Trevoro</strong> pentru listari/oferte si promovare pe platforma.</p>
       <p><strong>Procedura de publicare:</strong></p>
       <ol>
         <li>Intrati in dashboardul agentiei din linkul de login.</li>
         <li>Completati logo, descriere, WhatsApp, Facebook/Instagram si URL personalizat.</li>
         <li>Incarcati imaginea de fundal si galeria paginii agentiei.</li>
-        <li>Adaugati ofertele cu destinatie, descriere, pret, perioada de valabilitate si maximum 15 poze pentru fiecare oferta.</li>
+        <li>Adaugati ofertele cu destinatie, descriere, perioada de valabilitate si maximum 15 poze pentru fiecare oferta.</li>
         <li>Publicati ofertele si alegeti ce doriti sa fie promovat pe Trevoro si social media.</li>
       </ol>
-      <p>Platile turist-agentie raman direct intre client si agentie; Trevoro incaseaza doar abonamentul agentiei.</p>
+      <p>Detaliile comerciale vor fi comunicate separat dupa finalizarea strategiei.</p>
       <p style="margin-top:24px">Echipa Trevoro</p>
     </div>
   `;
@@ -4672,7 +4701,7 @@ function buildTrevoroPropertyInquiryEmail({ property = {}, inquiry = {} } = {}) 
     email ? `Email: ${email}` : "",
     message ? `Mesaj: ${message}` : "",
     ``,
-    `Te rugăm să contactezi clientul pentru confirmare. Rezervările online și plățile vor fi activate într-o etapă următoare.`,
+    `Te rugăm să contactezi clientul pentru confirmare. Funcțiile suplimentare vor fi activate etapizat.`,
     ``,
     `Echipa Trevoro`
   ].filter((line) => line !== "").join("\n");
@@ -4688,7 +4717,7 @@ function buildTrevoroPropertyInquiryEmail({ property = {}, inquiry = {} } = {}) 
         ${email ? `<p><strong>Email:</strong> ${escapeHtml(email)}</p>` : ""}
         ${message ? `<p><strong>Mesaj:</strong> ${escapeHtml(message)}</p>` : ""}
       </div>
-      <p>Te rugăm să contactezi clientul pentru confirmare. Rezervările online și plățile vor fi activate într-o etapă următoare.</p>
+      <p>Te rugăm să contactezi clientul pentru confirmare. Funcțiile suplimentare vor fi activate etapizat.</p>
       <p style="margin-top:24px">Echipa Trevoro</p>
     </div>
   `;
@@ -4796,8 +4825,7 @@ function attachTrevoroPartnerSignupToExistingLead(db, companyId, duplicateLead =
     website: safeText(lead.website || existing.website),
 	    notes: [safeText(existing.notes), safeText(lead.notes)].filter(Boolean).join("\n\n")
 	  };
-  const isInternationalSignup = source === "trevoro_site_en" || isInternationalPropertyCountry(mergedLead.country);
-  const internationalPlan = internationalOwnerListingPlanForType(mergedLead.property_type);
+  const freeSignup = trevoroFreeOwnerSignupPlan();
 
   const save = db.transaction(() => {
     const score = scoreLead(mergedLead, loadTravelScoringConfig(db, companyId));
@@ -4847,13 +4875,6 @@ function attachTrevoroPartnerSignupToExistingLead(db, companyId, duplicateLead =
     );
 
     if (property?.id) {
-      const existingPlan = isInternationalSignup ? ownerBillingPlanForProperty({
-        ...property,
-        country: mergedLead.country,
-        property_type: mergedLead.property_type,
-        monthly_price_amount: property.monthly_price_amount || internationalPlan.amount,
-        monthly_price_currency: property.monthly_price_currency || internationalPlan.currency
-      }, planKey) : ownerBillingPlanForProperty(property, planKey);
       db.prepare(`
         UPDATE travel_properties
         SET name=?,
@@ -4865,11 +4886,13 @@ function attachTrevoroPartnerSignupToExistingLead(db, companyId, duplicateLead =
             email=?,
             website=?,
             account_email=?,
-            password_salt=?,
-            password_hash=?,
-            account_status='active',
-            status=?,
-            partner_plan=?,
+	            password_salt=?,
+	            password_hash=?,
+	            account_status='active',
+	            status=?,
+	            public_status='published',
+	            published_at=COALESCE(NULLIF(published_at, ''), datetime('now')),
+	            partner_plan=?,
             subscription_status=?,
             monthly_price_ron=?,
             monthly_price_amount=?,
@@ -4889,13 +4912,13 @@ function attachTrevoroPartnerSignupToExistingLead(db, companyId, duplicateLead =
         accountEmail,
         credentials.salt,
         credentials.hash,
-        isInternationalSignup ? "plata_necesara" : "activ",
-        existingPlan.partnerPlan || "basic_monthly",
-        isInternationalSignup ? "payment_required" : safeText(property.subscription_status || "active"),
-        isInternationalSignup ? existingPlan.amountRon : Math.max(0, Math.round(Number(property.monthly_price_ron || 0) || 0)),
-        isInternationalSignup ? existingPlan.amount : Math.max(0, Math.round(Number(property.monthly_price_amount || property.monthly_price_ron || 0) || 0)),
-        isInternationalSignup ? existingPlan.currency : normalizeBillingCurrency(property.monthly_price_currency || "RON"),
-        isInternationalSignup ? null : (safeText(property.free_until) || null),
+        freeSignup.status,
+        freeSignup.partnerPlan,
+        freeSignup.subscriptionStatus,
+        freeSignup.monthlyPriceRon,
+        freeSignup.monthlyPriceAmount,
+        freeSignup.monthlyPriceCurrency,
+        safeText(property.free_until) || freeSignup.freeUntil,
         property.id,
         companyId
       );
@@ -4906,43 +4929,43 @@ function attachTrevoroPartnerSignupToExistingLead(db, companyId, duplicateLead =
         WHERE id=? AND company_id=?
       `).run(existing.id, companyId);
       property = getTravelProperty(db, companyId, property.id) || property;
-      activation = { type: isInternationalSignup ? "payment_required" : "existing_property", propertyId: property.id };
+      activation = {
+        type: freeSignup.type,
+        propertyId: property.id,
+        subscriptionStatus: freeSignup.subscriptionStatus,
+        freeUntil: safeText(property.free_until) || freeSignup.freeUntil,
+        freePeriod: "12_months"
+      };
       createLeadActivity(
         db,
         companyId,
         existing.id,
         "property_account_updated",
         "Cont proprietar actualizat",
-        isInternationalSignup
-          ? `Cont activ pe ${accountEmail}. Publicarea necesită abonament ${existingPlan.amount} ${existingPlan.currency}/lună.`
-          : `Cont activ pe ${accountEmail}.`
+        `Cont activ pe ${accountEmail}. Înscriere gratuită Trevoro 12 luni, până la ${activation.freeUntil}.`
       );
     } else {
-      const signupPlan = standardOwnerListingPlanForSignup({
-        country: storedLead.country,
-        propertyType: storedLead.property_type
-      }, planKey);
       const propertyId = createTravelPropertyFromLead(db, companyId, storedLead, {
-        status: "plata_necesara",
-        partnerPlan: signupPlan.partnerPlan || "basic_monthly",
-        subscriptionStatus: "payment_required",
-        monthlyPriceRon: signupPlan.amountRon,
-        monthlyPriceAmount: signupPlan.amount,
-        monthlyPriceCurrency: signupPlan.currency,
+        status: freeSignup.status,
+        partnerPlan: freeSignup.partnerPlan,
+        subscriptionStatus: freeSignup.subscriptionStatus,
+        monthlyPriceRon: freeSignup.monthlyPriceRon,
+        monthlyPriceAmount: freeSignup.monthlyPriceAmount,
+        monthlyPriceCurrency: freeSignup.monthlyPriceCurrency,
+        freeUntil: freeSignup.freeUntil,
         activationSource: source,
         accountEmail,
         passwordSalt: credentials.salt,
         passwordHash: credentials.hash,
-        convertedSubject: isInternationalSignup ? "International property account created" : "Cont proprietar creat",
-        convertedDetails: isInternationalSignup
-          ? `International paid listing plan: ${signupPlan.amount} ${signupPlan.currency}/month (${signupPlan.label}). Publication starts after subscription payment.`
-          : `Plan proprietar plătit: ${signupPlan.amount} ${signupPlan.currency}/lună (${signupPlan.label}). Publicarea începe după activarea abonamentului.`
+        convertedSubject: "Cont proprietar creat gratuit",
+        convertedDetails: `Înscriere gratuită Trevoro 12 luni, până la ${freeSignup.freeUntil}.`
       });
       activation = {
-        type: "payment_required",
+        type: freeSignup.type,
         propertyId,
-        monthlyPriceAmount: signupPlan.amount,
-        monthlyPriceCurrency: signupPlan.currency
+        subscriptionStatus: freeSignup.subscriptionStatus,
+        freeUntil: freeSignup.freeUntil,
+        freePeriod: "12_months"
       };
       property = getTravelProperty(db, companyId, propertyId) || null;
     }
@@ -4970,8 +4993,7 @@ function createTrevoroPartnerLead(db, companyId, payload = {}) {
     notes: safeText(payload.notes),
     source
   };
-  const isInternationalSignup = source === "trevoro_site_en" || isInternationalPropertyCountry(lead.country);
-  const internationalPlan = internationalOwnerListingPlanForType(lead.property_type);
+  const freeSignup = trevoroFreeOwnerSignupPlan();
   const errors = [];
   const accountEmail = normalizeEmail(payload.account_email || payload.email);
   const password = String(payload.password || "");
@@ -5035,31 +5057,27 @@ function createTrevoroPartnerLead(db, companyId, payload = {}) {
     );
 
     {
-      const signupPlan = standardOwnerListingPlanForSignup({
-        country: storedLead.country,
-        propertyType: storedLead.property_type
-      }, planKey);
       const propertyId = createTravelPropertyFromLead(db, companyId, storedLead, {
-        status: "plata_necesara",
-        partnerPlan: signupPlan.partnerPlan || "basic_monthly",
-        subscriptionStatus: "payment_required",
-        monthlyPriceRon: signupPlan.amountRon,
-        monthlyPriceAmount: signupPlan.amount,
-        monthlyPriceCurrency: signupPlan.currency,
+        status: freeSignup.status,
+        partnerPlan: freeSignup.partnerPlan,
+        subscriptionStatus: freeSignup.subscriptionStatus,
+        monthlyPriceRon: freeSignup.monthlyPriceRon,
+        monthlyPriceAmount: freeSignup.monthlyPriceAmount,
+        monthlyPriceCurrency: freeSignup.monthlyPriceCurrency,
+        freeUntil: freeSignup.freeUntil,
         activationSource: lead.source,
         accountEmail,
         passwordSalt: credentials.salt,
         passwordHash: credentials.hash,
-        convertedSubject: isInternationalSignup ? "International property account created" : "Cont proprietar creat",
-        convertedDetails: isInternationalSignup
-          ? `International paid listing plan: ${signupPlan.amount} ${signupPlan.currency}/month (${signupPlan.label}). Publication starts after subscription payment.`
-          : `Plan proprietar plătit: ${signupPlan.amount} ${signupPlan.currency}/lună (${signupPlan.label}). Publicarea începe după activarea abonamentului.`
+        convertedSubject: "Cont proprietar creat gratuit",
+        convertedDetails: `Înscriere gratuită Trevoro 12 luni, până la ${freeSignup.freeUntil}.`
       });
       activation = {
-        type: "payment_required",
+        type: freeSignup.type,
         propertyId,
-        monthlyPriceAmount: signupPlan.amount,
-        monthlyPriceCurrency: signupPlan.currency
+        subscriptionStatus: freeSignup.subscriptionStatus,
+        freeUntil: freeSignup.freeUntil,
+        freePeriod: "12_months"
       };
       property = getTravelProperty(db, companyId, propertyId) || null;
     }
@@ -5889,6 +5907,49 @@ function loadTrevoroTrafficSummary(db, companyId, { excludedVisitorHashes = [] }
   };
 }
 
+function loadLotoGenTrafficSummary(db, companyId) {
+  const summary = db.prepare(`
+    SELECT COUNT(*) AS totalViews,
+      COUNT(DISTINCT visitor_hash) AS totalVisitors,
+      SUM(CASE WHEN created_at >= datetime('now', '-24 hours') THEN 1 ELSE 0 END) AS views24h,
+      COUNT(DISTINCT CASE WHEN created_at >= datetime('now', '-24 hours') THEN visitor_hash END) AS visitors24h,
+      SUM(CASE WHEN created_at >= datetime('now', '-30 days') THEN 1 ELSE 0 END) AS views30d,
+      COUNT(DISTINCT CASE WHEN created_at >= datetime('now', '-30 days') THEN visitor_hash END) AS visitors30d,
+      MAX(created_at) AS lastVisitAt
+    FROM travel_site_pageviews
+    WHERE company_id=? AND site='lotogen.qr-lab.ro' AND is_bot=0
+  `).get(companyId) || {};
+  const dailySeries = db.prepare(`
+    SELECT date(created_at) AS day, COUNT(*) AS views,
+      COUNT(DISTINCT visitor_hash) AS visitors
+    FROM travel_site_pageviews
+    WHERE company_id=? AND site='lotogen.qr-lab.ro' AND is_bot=0
+      AND created_at >= datetime('now', '-14 days')
+    GROUP BY date(created_at) ORDER BY day ASC
+  `).all(companyId);
+  const topPages = db.prepare(`
+    SELECT path, COUNT(*) AS views, COUNT(DISTINCT visitor_hash) AS visitors
+    FROM travel_site_pageviews
+    WHERE company_id=? AND site='lotogen.qr-lab.ro' AND is_bot=0
+      AND created_at >= datetime('now', '-30 days')
+    GROUP BY path ORDER BY views DESC, visitors DESC LIMIT 8
+  `).all(companyId);
+  const topSources = db.prepare(`
+    SELECT COALESCE(NULLIF(source,''),'direct') AS source, COUNT(*) AS views,
+      COUNT(DISTINCT visitor_hash) AS visitors
+    FROM travel_site_pageviews
+    WHERE company_id=? AND site='lotogen.qr-lab.ro' AND is_bot=0
+      AND created_at >= datetime('now', '-30 days')
+    GROUP BY COALESCE(NULLIF(source,''),'direct') ORDER BY visitors DESC LIMIT 8
+  `).all(companyId);
+  return {
+    totalViews: Number(summary.totalViews || 0), totalVisitors: Number(summary.totalVisitors || 0),
+    views24h: Number(summary.views24h || 0), visitors24h: Number(summary.visitors24h || 0),
+    views30d: Number(summary.views30d || 0), visitors30d: Number(summary.visitors30d || 0),
+    lastVisitAt: safeText(summary.lastVisitAt), dailySeries, topPages, topSources
+  };
+}
+
 function loadDashboardPaymentStats(db, companyId) {
   const baseJoin = `
     WITH owner_companies AS (
@@ -6146,16 +6207,16 @@ function dashboardAnalyticsToCsv({ stats = {}, analytics = {} } = {}) {
     push("trafic_pagini", "views", row.path || "-", row.views || 0, `${row.visitors || 0} vizitatori; tip=${row.page_type || "-"}`);
   }
 
-  push("plati", "total", "Total plati", payments.totalPayments || 0);
-  push("plati", "paid", "Plati confirmate", payments.paidPayments || 0);
-  push("plati", "pending", "Plati pending", payments.pendingPayments || 0);
-  push("plati", "failed", "Plati esuate", payments.failedPayments || 0);
-  push("plati", "cancelled", "Plati anulate", payments.cancelledPayments || 0);
+  push("confirmari", "total", "Total confirmari", payments.totalPayments || 0);
+  push("confirmari", "paid", "Confirmari finalizate", payments.paidPayments || 0);
+  push("confirmari", "pending", "Confirmari pending", payments.pendingPayments || 0);
+  push("confirmari", "failed", "Confirmari cu eroare", payments.failedPayments || 0);
+  push("confirmari", "cancelled", "Confirmari anulate", payments.cancelledPayments || 0);
   for (const row of payments.paidAmounts || []) {
-    push("plati_incasari", "amount", row.currency || "-", row.amount || 0);
+    push("confirmari_valori", "amount", row.currency || "-", row.amount || 0);
   }
   for (const row of payments.statusRows || []) {
-    push("plati_status", row.status || "-", row.currency || "-", row.total || 0, `amount=${row.amount || 0}`);
+    push("confirmari_status", row.status || "-", row.currency || "-", row.total || 0, `amount=${row.amount || 0}`);
   }
 
   push("facebook", "posts_total", "Postari Facebook total", social.facebookTotal || 0);
@@ -7993,7 +8054,9 @@ function getPublicTravelProperty(db, propertySlug = "") {
   return db.prepare(`
     SELECT *
     FROM travel_properties
-    WHERE id=? AND status='activ'
+    WHERE id=?
+      AND status='activ'
+      AND COALESCE(public_status, 'published')='published'
   `).get(id) || null;
 }
 
@@ -10129,6 +10192,7 @@ function analyticsCorsOrigin(req) {
     "https://www.trevoro.ro",
     "https://trevoro.ro",
     "https://beta.trevoro.ro",
+    "https://lotogen.qr-lab.ro",
     "http://localhost:3000",
     "http://127.0.0.1:3000"
   ]);
@@ -10223,7 +10287,7 @@ function storeTrevoroPageview(db, req) {
   const ip = analyticsClientIp(req);
   const sessionId = safeText(body.session_id || body.sessionId).slice(0, 120);
   const userAgent = safeText(req.headers?.["user-agent"] || body.user_agent).slice(0, 500);
-  const visitorHash = analyticsVisitorHash(ip || `${sessionId}:${userAgent}`);
+  const visitorHash = analyticsVisitorHash(sessionId || ip || userAgent);
   if (!visitorHash) return { ok: false, error: "missing_visitor" };
   const referrer = safeText(body.referrer || req.headers?.referer).slice(0, 500);
   const query = analyticsSearchParams(body);
@@ -10251,6 +10315,30 @@ function storeTrevoroPageview(db, req) {
     campaign,
     isAnalyticsBot(userAgent) ? 1 : 0
   );
+  return { ok: true };
+}
+
+function storeLotoGenPageview(db, req) {
+  const companyId = publicTravelCompanyId(db);
+  if (!companyId) return { ok: false, error: "missing_company" };
+  const body = req.body || {};
+  const pathname = normalizeAnalyticsPath(body.path || body.url || "/");
+  if (pathname.startsWith("/api") || pathname.startsWith("/static")) return { ok: true, skipped: true };
+  const ip = analyticsClientIp(req);
+  const sessionId = safeText(body.session_id || body.sessionId).slice(0, 120);
+  const userAgent = safeText(req.headers?.["user-agent"] || body.user_agent).slice(0, 500);
+  const visitorHash = analyticsVisitorHash(ip || `${sessionId}:${userAgent}`);
+  if (!visitorHash) return { ok: false, error: "missing_visitor" };
+  const referrer = safeText(body.referrer || req.headers?.referer).slice(0, 500);
+  const query = analyticsSearchParams(body);
+  const source = safeText(query.get("utm_source") || analyticsReferrerSource(referrer) || "direct").slice(0, 120);
+  db.prepare(`INSERT INTO travel_site_pageviews
+    (company_id,site,path,page_type,property_id,visitor_hash,session_id,referrer,user_agent,country,source,medium,campaign,is_bot,created_at)
+    VALUES (?, 'lotogen.qr-lab.ro', ?, 'lotogen', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+  `).run(companyId, pathname.slice(0,500), visitorHash, sessionId, referrer, userAgent,
+    safeText(req.headers?.["cf-ipcountry"]).slice(0,12), source,
+    safeText(query.get("utm_medium")).slice(0,120), safeText(query.get("utm_campaign")).slice(0,160),
+    isAnalyticsBot(userAgent) ? 1 : 0);
   return { ok: true };
 }
 
@@ -10454,9 +10542,9 @@ function ensureTrevoroOwnerPlan(db) {
     )
     VALUES (
       'trevoro-owner-monthly', 'Trevoro Proprietar', 'monthly', 'flat', ?, 1,
-      0, 0, '["travel"]', 'Abonament proprietar Trevoro',
-      'Abonament lunar pentru publicarea proprietatii pe Trevoro, fara comision pe rezervari.',
-      '["Listare proprietate", "Dashboard proprietar", "Suport publicare", "Fara comision pe rezervari"]',
+	      0, 0, '["travel"]', 'Program proprietar Trevoro',
+      'Program proprietar pentru publicarea proprietatii pe Trevoro.',
+      '["Listare proprietate", "Dashboard proprietar", "Suport publicare"]',
       'Suport pentru publicarea proprietatii.', NULL, NULL, 0, 500, 'active'
     )
   `).run(STANDARD_TRAVEL_MONTHLY_PRICE_RON);
@@ -10608,14 +10696,16 @@ function restoreFoundingPartnerIfEligible(db, property = {}) {
 
   db.prepare(`
     UPDATE travel_properties
-    SET status='activ',
-        partner_plan='founding_partner',
-        subscription_status=?,
-        monthly_price_ron=0,
-        monthly_price_amount=0,
-        monthly_price_currency='RON',
-        free_until=?,
-        updated_at=datetime('now')
+	    SET status='activ',
+	        partner_plan='founding_partner',
+	        subscription_status=?,
+	        monthly_price_ron=0,
+	        monthly_price_amount=0,
+	        monthly_price_currency='RON',
+	        free_until=?,
+	        public_status='published',
+	        published_at=COALESCE(NULLIF(published_at, ''), datetime('now')),
+	        updated_at=datetime('now')
     WHERE id=?
   `).run(restoredSubscriptionStatus, freeUntil || addMonthsDateValue(12), propertyId);
   return { active: true, freeUntil: freeUntil || addMonthsDateValue(12) };
@@ -10732,12 +10822,12 @@ async function createTravelOwnerBillingCheckout(db, property = {}, payload = {})
           unit_amount: Math.max(1, Math.round(Number(group.amount || 0) || 0)) * 100,
           recurring: { interval: "month" },
           product_data: {
-            name: billingCurrency === "RON" ? "Abonament Trevoro Proprietar" : "Trevoro Property Listing",
+            name: billingCurrency === "RON" ? "Program Trevoro Proprietar" : "Trevoro Property Listing",
             description: group.quantity > 1
-              ? `${group.quantity} properties on Trevoro, with no booking commission.`
+              ? `${group.quantity} properties on Trevoro, with publishing support.`
               : (billingCurrency === "RON"
-                  ? "Listare proprietate pe Trevoro, fara comision pe rezervari."
-                  : "Property publication on Trevoro, with no booking commission.")
+                  ? "Listare proprietate pe Trevoro, cu suport de publicare."
+                  : "Property publication on Trevoro, with publishing support.")
           }
         },
         quantity: Math.max(1, Number(group.quantity || 1))
@@ -10771,7 +10861,7 @@ async function createTravelOwnerBillingCheckout(db, property = {}, payload = {})
     email || null,
     session.id,
     session.id,
-    "Checkout abonament proprietar Trevoro.",
+    "Checkout program proprietar Trevoro.",
     JSON.stringify({
       property_id: property.id,
       property_slug: propertySlug,
@@ -11245,13 +11335,16 @@ function upsertPartnerProperty(db, companyId, provider = "", externalPropertyId 
   const tx = db.transaction(() => {
     let propertyId = Number(current?.property_id || 0);
     if (propertyId) {
-      db.prepare(`
-        UPDATE travel_properties
-        SET name=?, property_type=?, tourist_zone=?, description=?, country=?, city=?, county=?, address=?,
-            phone=?, email=?, website=?, amenities=?, meal_types=?, max_adults=?, max_children=?,
-            price_per_night=?, price_currency=?, status=?, updated_at=datetime('now')
-        WHERE id=? AND company_id=?
-      `).run(
+	      db.prepare(`
+	        UPDATE travel_properties
+	        SET name=?, property_type=?, tourist_zone=?, description=?, country=?, city=?, county=?, address=?,
+	            phone=?, email=?, website=?, amenities=?, meal_types=?, max_adults=?, max_children=?,
+	            price_per_night=?, price_currency=?, status=?,
+	            public_status=CASE WHEN ?='activ' THEN 'published' ELSE 'hidden' END,
+	            published_at=CASE WHEN ?='activ' THEN COALESCE(NULLIF(published_at, ''), datetime('now')) ELSE published_at END,
+	            updated_at=datetime('now')
+	        WHERE id=? AND company_id=?
+	      `).run(
         propertyFields.name,
         propertyFields.property_type,
         propertyFields.tourist_zone,
@@ -11267,23 +11360,25 @@ function upsertPartnerProperty(db, companyId, provider = "", externalPropertyId 
         propertyFields.meal_types,
         propertyFields.max_adults,
         propertyFields.max_children,
-        propertyFields.price_per_night,
-        propertyFields.price_currency,
-        propertyFields.status,
-        propertyId,
-        companyId
-      );
+	        propertyFields.price_per_night,
+	        propertyFields.price_currency,
+	        propertyFields.status,
+	        propertyFields.status,
+	        propertyFields.status,
+	        propertyId,
+	        companyId
+	      );
     } else {
       const result = db.prepare(`
-        INSERT INTO travel_properties (
-          company_id, name, property_type, tourist_zone, description, country, city, county, address,
-          phone, email, website, amenities, meal_types, max_adults, max_children,
-          price_per_night, price_currency, status, partner_plan, subscription_status,
-          monthly_price_ron, monthly_price_amount, monthly_price_currency, activation_source,
-          account_status, updated_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'partner_api', 'active',
-          0, 0, 'RON', ?, 'pending', datetime('now'))
+	        INSERT INTO travel_properties (
+	          company_id, name, property_type, tourist_zone, description, country, city, county, address,
+	          phone, email, website, amenities, meal_types, max_adults, max_children,
+	          price_per_night, price_currency, status, public_status, published_at, partner_plan, subscription_status,
+	          monthly_price_ron, monthly_price_amount, monthly_price_currency, activation_source,
+	          account_status, updated_at
+	        )
+	        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'published', datetime('now'), 'partner_api', 'active',
+	          0, 0, 'RON', ?, 'pending', datetime('now'))
       `).run(
         companyId,
         propertyFields.name,
@@ -12032,13 +12127,13 @@ function ownerGuidePayload(property = {}) {
         },
         {
           title: "10. Reply to requests",
-          body: "Booking requests and guest messages appear in the Requests section. An accepted request can block the period in the calendar. Payment, deposits and guarantees are handled according to the property's policy, outside Trevoro.",
+          body: "Booking requests and guest messages appear in the Requests section. An accepted request can block the period in the calendar. The owner confirms the next steps and stay conditions directly with the guest.",
           checklist: [
             "Check pending requests regularly.",
             "Accept only dates that you can confirm.",
             "Decline unsuitable requests quickly so the guest receives a clear answer.",
             "After accepting, verify that the dates are blocked in the calendar.",
-            "Tell the guest clearly how payment, deposit or pay-at-property works for your property."
+            "Tell the guest clearly which operational conditions apply for the confirmed stay."
           ]
         },
         {
@@ -12181,13 +12276,13 @@ function ownerGuidePayload(property = {}) {
       },
       {
         title: "10. Răspunde la cereri",
-        body: "Cererile de rezervare și mesajele clienților apar în secțiunea Cereri. O cerere acceptată poate bloca perioada în calendar. Plata, avansul și garanția se gestionează conform politicii proprietății, în afara Trevoro.",
+        body: "Cererile de rezervare și mesajele clienților apar în secțiunea Cereri. O cerere acceptată poate bloca perioada în calendar. Proprietarul confirmă pașii următori și condițiile sejurului direct cu turistul.",
         checklist: [
           "Verifică periodic cererile în așteptare.",
           "Acceptă doar perioadele pe care le poți confirma.",
           "Refuză cererile care nu se potrivesc, ca turistul să primească răspuns rapid.",
           "După acceptare, verifică dacă perioada este blocată în calendar.",
-          "Spune clar turistului cum se face plata, avansul sau plata la proprietate conform politicii tale."
+          "Spune clar turistului care sunt conditiile operative ale rezervarii conform politicii tale."
         ]
       },
       {
@@ -12495,6 +12590,7 @@ function loadPublicTravelProperties(db, { limit = 60, checkIn = "", checkOut = "
     SELECT *
     FROM travel_properties
     WHERE status='activ'
+      AND COALESCE(public_status, 'published')='published'
     ORDER BY updated_at DESC, created_at DESC, id DESC
     LIMIT ?
   `).all(Math.max(1, Math.min(200, Number(limit || 60))));
@@ -12512,13 +12608,15 @@ function loadPublicTravelProperties(db, { limit = 60, checkIn = "", checkOut = "
 }
 
 function loadPublicTravelCountries(db) {
-  const rows = db.prepare(`
-    SELECT country, COUNT(*) AS properties_count
-    FROM travel_properties
-    WHERE status='activ' AND COALESCE(country, '') <> ''
-    GROUP BY country
-    ORDER BY country COLLATE NOCASE ASC
-  `).all();
+	  const rows = db.prepare(`
+	    SELECT country, COUNT(*) AS properties_count
+	    FROM travel_properties
+	    WHERE status='activ'
+	      AND COALESCE(public_status, 'published')='published'
+	      AND COALESCE(country, '') <> ''
+	    GROUP BY country
+	    ORDER BY country COLLATE NOCASE ASC
+	  `).all();
   const countries = new Map();
   for (const row of rows) {
     const country = normalizeTravelCountry(row.country);
@@ -13565,7 +13663,7 @@ function buildTrevoroBookingRequestEmail({ property = {}, booking = {} } = {}) {
     total ? `Total estimat: ${total} lei` : "",
     booking.message ? `Mesaj: ${safeText(booking.message)}` : "",
     ``,
-    `Cererea este in asteptare. Accept-o sau refuz-o din contul de proprietar Trevoro. Plata/avansul/garantia se gestioneaza conform politicii proprietatii.`,
+    `Cererea este in asteptare. Accept-o sau refuz-o din contul de proprietar Trevoro. Dupa acceptare, comunica turistului pasii urmatori si conditiile sejurului.`,
     booking.owner_whatsapp_url ? `WhatsApp proprietar: ${safeText(booking.owner_whatsapp_url)}` : "",
     ``,
     `Echipa Trevoro`
@@ -13589,7 +13687,7 @@ function buildTrevoroBookingRequestEmail({ property = {}, booking = {} } = {}) {
         ${total ? `<p><strong>Total estimat:</strong> ${total} lei</p>` : ""}
         ${booking.message ? `<p><strong>Mesaj:</strong> ${escapeHtml(booking.message)}</p>` : ""}
       </div>
-      <p>Cererea este in asteptare. Accept-o sau refuz-o din contul de proprietar Trevoro. Plata, avansul sau garantia se gestioneaza conform politicii proprietatii, nu prin Trevoro.</p>
+      <p>Cererea este in asteptare. Accept-o sau refuz-o din contul de proprietar Trevoro. Dupa acceptare, comunica turistului pasii urmatori si conditiile sejurului.</p>
       ${booking.owner_whatsapp_url ? `<p><a href="${escapeHtml(booking.owner_whatsapp_url)}" style="color:#0f766e;font-weight:bold">Deschide mesaj WhatsApp</a></p>` : ""}
       <p style="margin-top:24px">Echipa Trevoro</p>
     </div>
@@ -13686,8 +13784,8 @@ function buildTrevoroPropertyDeletionNoticeEmail({ property = {}, scheduledAt = 
   const text = [
     "Buna ziua,",
     "",
-    `Proprietatea ${propertyName} este marcata cu plata necesara in Trevoro.`,
-    `Daca abonamentul nu este achitat, proprietatea va fi scoasa din public la data ${scheduledDate}.`,
+    `Proprietatea ${propertyName} trebuie verificata in Trevoro.`,
+    `Daca nu este reactivata manual, proprietatea va fi scoasa din public la data ${scheduledDate}.`,
     "",
     "Ce inseamna asta:",
     "- pagina publica nu va mai fi vizibila in Trevoro;",
@@ -13695,16 +13793,16 @@ function buildTrevoroPropertyDeletionNoticeEmail({ property = {}, scheduledAt = 
     "- istoricul ramane pastrat pentru verificare.",
     "",
     `Pentru reactivare, intra in contul de proprietar: ${loginUrl}`,
-    `Daca plata a fost deja facuta sau ai nevoie de ajutor, raspunde la acest email sau scrie la ${supportEmail}.`,
+    `Daca ai nevoie de ajutor, raspunde la acest email sau scrie la ${supportEmail}.`,
     "",
     "Echipa Trevoro"
   ].join("\n");
   const html = `
     <div style="font-family:Arial,sans-serif;line-height:1.55;color:#0f172a;max-width:680px">
-      <h1 style="font-size:22px;margin:0 0 12px;color:#92400e">Plata necesara pentru listarea Trevoro</h1>
-      <p>Proprietatea <strong>${escapeHtml(propertyName)}</strong> este marcata cu plata necesara in Trevoro.</p>
+      <h1 style="font-size:22px;margin:0 0 12px;color:#92400e">Verificare necesara pentru listarea Trevoro</h1>
+      <p>Proprietatea <strong>${escapeHtml(propertyName)}</strong> trebuie verificata in Trevoro.</p>
       <p style="padding:14px 16px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px">
-        Daca abonamentul nu este achitat, proprietatea va fi scoasa din public la data <strong>${escapeHtml(scheduledDate)}</strong>.
+        Daca nu este reactivata manual, proprietatea va fi scoasa din public la data <strong>${escapeHtml(scheduledDate)}</strong>.
       </p>
       <p><strong>Ce inseamna asta:</strong></p>
       <ul>
@@ -13713,7 +13811,7 @@ function buildTrevoroPropertyDeletionNoticeEmail({ property = {}, scheduledAt = 
         <li>istoricul ramane pastrat pentru verificare.</li>
       </ul>
       <p><a href="${escapeHtml(loginUrl)}" style="display:inline-block;background:#0f766e;color:#ffffff;text-decoration:none;font-weight:700;padding:11px 16px;border-radius:8px">Intra in contul de proprietar</a></p>
-      <p>Daca plata a fost deja facuta sau ai nevoie de ajutor, raspunde la acest email sau scrie la <a href="mailto:${escapeHtml(supportEmail)}">${escapeHtml(supportEmail)}</a>.</p>
+      <p>Daca ai nevoie de ajutor, raspunde la acest email sau scrie la <a href="mailto:${escapeHtml(supportEmail)}">${escapeHtml(supportEmail)}</a>.</p>
       <p style="margin-top:24px">Echipa Trevoro</p>
     </div>
   `;
@@ -13729,7 +13827,7 @@ function buildTrevoroPropertyDeletedEmail({ property = {}, baseUrl = "" } = {}) 
   const text = [
     "Buna ziua,",
     "",
-    `Proprietatea ${propertyName} a fost scoasa din public in Trevoro din cauza statusului de plata.`,
+    `Proprietatea ${propertyName} a fost scoasa din public in Trevoro pentru verificare manuala.`,
     "Contul de proprietar este suspendat pana la reactivare.",
     "",
     `Pentru reactivare, intra in contul de proprietar sau contacteaza-ne: ${loginUrl}`,
@@ -13740,10 +13838,10 @@ function buildTrevoroPropertyDeletedEmail({ property = {}, baseUrl = "" } = {}) 
   const html = `
     <div style="font-family:Arial,sans-serif;line-height:1.55;color:#0f172a;max-width:680px">
       <h1 style="font-size:22px;margin:0 0 12px;color:#991b1b">Listare dezactivata</h1>
-      <p>Proprietatea <strong>${escapeHtml(propertyName)}</strong> a fost scoasa din public in Trevoro din cauza statusului de plata.</p>
+      <p>Proprietatea <strong>${escapeHtml(propertyName)}</strong> a fost scoasa din public in Trevoro pentru verificare manuala.</p>
       <p>Contul de proprietar este suspendat pana la reactivare.</p>
       <p><a href="${escapeHtml(loginUrl)}" style="display:inline-block;background:#0f766e;color:#ffffff;text-decoration:none;font-weight:700;padding:11px 16px;border-radius:8px">Intra in contul de proprietar</a></p>
-      <p>Pentru reactivare sau verificarea platii, scrie la <a href="mailto:${escapeHtml(supportEmail)}">${escapeHtml(supportEmail)}</a>.</p>
+      <p>Pentru reactivare sau verificare, scrie la <a href="mailto:${escapeHtml(supportEmail)}">${escapeHtml(supportEmail)}</a>.</p>
       <p style="margin-top:24px">Echipa Trevoro</p>
     </div>
   `;
@@ -13810,8 +13908,9 @@ async function operationallyDeleteTravelProperty(db, companyId, propertyId, {
   const actor = normalizeEmail(actorEmail || "");
   db.prepare(`
     UPDATE travel_properties
-    SET status='sters',
-        account_status='suspended',
+	    SET status='sters',
+	        public_status='hidden',
+	        account_status='suspended',
         subscription_status=CASE
           WHEN lower(trim(COALESCE(subscription_status, ''))) IN ('payment_required', 'past_due', 'expired', 'unpaid')
           THEN subscription_status
@@ -13910,7 +14009,7 @@ function buildTrevoroBookingGuestStatusEmail({ property = {}, booking = {}, stat
     ? [
         "Pasii urmatori:",
         "1. Verifica sumarul rezervarii.",
-        "2. Plata, avansul sau garantia se gestioneaza conform politicii proprietatii, direct cu proprietarul sau prin sistemele lui conectate.",
+        "2. Proprietarul iti comunica pasii urmatori si conditiile sejurului.",
         "3. Pentru detalii operative, poti contacta proprietarul folosind datele de mai jos."
       ]
     : [
@@ -13928,7 +14027,7 @@ function buildTrevoroBookingGuestStatusEmail({ property = {}, booking = {}, stat
     `Perioada: ${period}`,
     `Oaspeti: ${Number(booking.guests || 1)}`,
     total ? `Total estimat: ${Math.round(total)} lei` : "",
-    accepted ? "Plata/avansul/garantia se gestioneaza conform politicii proprietatii. Trevoro nu proceseaza plata dintre turist si proprietar." : "",
+    accepted ? "Conditiile rezervarii se gestioneaza conform politicii proprietatii." : "",
     "",
     ...nextSteps,
     accepted && contactLines.length ? "" : "",
@@ -13952,10 +14051,10 @@ function buildTrevoroBookingGuestStatusEmail({ property = {}, booking = {}, stat
         <p><strong>Perioada:</strong> ${escapeHtml(period)}</p>
         <p><strong>Oaspeti:</strong> ${Number(booking.guests || 1)}</p>
         ${total ? `<p><strong>Total estimat:</strong> ${Math.round(total)} lei</p>` : ""}
-        ${accepted ? `<p><strong>Plata:</strong> Se gestioneaza conform politicii proprietatii. Trevoro nu proceseaza plata dintre turist si proprietar.</p>` : ""}
+        ${accepted ? `<p><strong>Conditii:</strong> Se gestioneaza conform politicii proprietatii.</p>` : ""}
       </div>
       ${accepted ? `
-        <p style="margin-top:16px">Pentru avans, garantie, plata la proprietate sau factura se aplica politica proprietatii. Contacteaza proprietarul pentru detalii operative.</p>
+        <p style="margin-top:16px">Pentru conditii operative si documente, contacteaza proprietarul.</p>
         ${contactLines.length || whatsAppUrl ? `
           <div style="padding:14px 16px;background:#ecfdf5;border:1px solid #99f6e4;border-radius:8px;margin-top:16px">
             <p style="margin-top:0"><strong>Date contact proprietar</strong></p>
@@ -14175,7 +14274,7 @@ function markBookingPaidByStripeSession(db, sessionId = "", paymentIntentId = ""
         hold_expires_at=NULL,
         updated_at=datetime('now')
     WHERE company_id=? AND property_id=? AND booking_request_id=?
-  `).run(`Rezervare platita #${booking.id}`, booking.company_id, booking.property_id, booking.id);
+  `).run(`Rezervare confirmata #${booking.id}`, booking.company_id, booking.property_id, booking.id);
   const next = db.prepare(`SELECT * FROM travel_booking_requests WHERE id=?`).get(booking.id);
   return { ok: true, booking: bookingRequestPayload(next) };
 }
@@ -15399,9 +15498,9 @@ function fallbackTravelContent(type, property = {}) {
         "",
         `${name} este o ${propertyType} localizată în ${place || city}, potrivită pentru turiști care caută cazare locală și suport în limba română.`,
         "",
-        `Prin Trevoro, proprietățile din ${city} pot obține vizibilitate mai bună, cost fix de publicare și promovare în campaniile Trevoro.`,
+        `Prin Trevoro, proprietățile din ${city} pot obține vizibilitate mai bună și promovare în campaniile Trevoro.`,
         "",
-        "Platforma nu include încă rezervări online, plăți sau camere în această etapă, dar pregătește baza pentru un flux local mai simplu pentru proprietari."
+        "Platforma pregătește baza pentru un flux local mai simplu pentru proprietari."
       ].join("\n"),
       keywords: [`cazare ${city}`, `${propertyType} ${city}`, "Trevoro", "Nexora Travel"].join(", "),
       category: blogCategoryForProperty(property)
@@ -15421,7 +15520,7 @@ function fallbackTravelContent(type, property = {}) {
     return {
       platform: "instagram",
       contentType: "instagram_post",
-      caption: `${name} pune ${city} pe harta Trevoro. O ${propertyType} pentru călători care caută experiențe locale și proprietari care vor vizibilitate fără comisioane mari.`,
+      caption: `${name} pune ${city} pe harta Trevoro. O ${propertyType} pentru călători care caută experiențe locale și proprietari care vor vizibilitate clară.`,
       hashtags: `${trevoroTags} #VacanteRomania #WeekendRomania`
     };
   }
@@ -15449,9 +15548,9 @@ function fallbackTravelContent(type, property = {}) {
       "",
       `Salut,`,
       "",
-      `${name}, ${propertyType} din ${place || city}, este un exemplu bun pentru direcția Trevoro: proprietăți locale promovate clar, cu suport în limba română și 0% comision pe rezervări pentru partenerii Trevoro.`,
+      `${name}, ${propertyType} din ${place || city}, este un exemplu bun pentru direcția Trevoro: proprietăți locale promovate clar, cu suport în limba română pentru partenerii Trevoro.`,
       "",
-      "În această etapă pregătim listarea, promovarea și dashboard-ul Nexora Travel. Rezervările online vor intra în faza următoare."
+      "În această etapă pregătim listarea, promovarea și portalul de administrare. Funcțiile suplimentare vor intra etapizat."
     ].join("\n"),
     hashtags: ""
   };
@@ -16006,15 +16105,17 @@ function grantPropertyFree12Months(db, companyId, propertyId = 0, { actorEmail =
 
   const freeUntil = addMonthsDateValue(12);
   const result = db.prepare(`
-    UPDATE travel_properties
-    SET status='activ',
-        partner_plan='founding_partner',
-        subscription_status='free_12_months',
-        monthly_price_ron=0,
-        monthly_price_amount=0,
-        monthly_price_currency='RON',
-        free_until=?,
-        updated_at=datetime('now')
+	    UPDATE travel_properties
+	    SET status='activ',
+	        partner_plan='founding_partner',
+	        subscription_status='free_12_months',
+	        monthly_price_ron=0,
+	        monthly_price_amount=0,
+	        monthly_price_currency='RON',
+	        free_until=?,
+	        public_status='published',
+	        published_at=COALESCE(NULLIF(published_at, ''), datetime('now')),
+	        updated_at=datetime('now')
     WHERE id=? AND company_id=?
   `).run(freeUntil, property.id, companyId);
   if (!result.changes) return { ok: false, error: "missing_property" };
@@ -16193,14 +16294,14 @@ function createTravelPropertyFromLead(db, companyId, lead = {}, options = {}) {
   const passwordHash = safeText(options.passwordHash);
   const accountStatus = accountEmail && passwordSalt && passwordHash ? "active" : "pending";
   const result = db.prepare(`
-	    INSERT INTO travel_properties (
-	      company_id, lead_id, name, property_type, tourist_zone, country, city, county, address,
-	      phone, email, website, google_place_id, status, partner_plan, subscription_status,
-	      monthly_price_ron, monthly_price_amount, monthly_price_currency, free_until, activation_source, account_email, password_salt,
-	      password_hash, account_status, updated_at
-	    )
-	    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-	  `).run(
+		    INSERT INTO travel_properties (
+		      company_id, lead_id, name, property_type, tourist_zone, country, city, county, address,
+		      phone, email, website, google_place_id, status, public_status, published_at, partner_plan, subscription_status,
+		      monthly_price_ron, monthly_price_amount, monthly_price_currency, free_until, activation_source, account_email, password_salt,
+		      password_hash, account_status, updated_at
+		    )
+		    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ?='activ' THEN 'published' ELSE 'draft' END, CASE WHEN ?='activ' THEN datetime('now') ELSE NULL END, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+		  `).run(
     companyId,
     Number(lead.id || 0),
     safeText(lead.name),
@@ -16212,10 +16313,12 @@ function createTravelPropertyFromLead(db, companyId, lead = {}, options = {}) {
     safeText(lead.address),
     safeText(lead.phone),
 	    safeText(lead.email),
-	    safeText(lead.website),
-	    safeText(lead.google_place_id),
+		    safeText(lead.website),
+		    safeText(lead.google_place_id),
+		    status,
 	    status,
-    partnerPlan,
+	    status,
+	    partnerPlan,
     subscriptionStatus,
     monthlyPriceRon,
     monthlyPriceAmount,
@@ -16923,12 +17026,6 @@ export function registerTravelRoutes(app, { db, requireAuth, upload: providedUpl
     const email = normalizeEmail(req.body?.email);
     const property = propertyAccountForEmail(db, email);
     if (property) {
-      db.prepare(`
-        UPDATE travel_properties
-        SET last_login_at=datetime('now'),
-            updated_at=datetime('now')
-        WHERE id=? AND company_id=?
-      `).run(property.id, property.company_id);
       return res.json({
         ok: true,
         account: {
@@ -16944,12 +17041,6 @@ export function registerTravelRoutes(app, { db, requireAuth, upload: providedUpl
     }
     const agency = agencyAccountForEmail(db, email);
     if (!agency) return res.status(404).json({ ok: false, error: "not_found" });
-    db.prepare(`
-      UPDATE travel_agency_leads
-      SET last_login_at=datetime('now'),
-          updated_at=datetime('now')
-      WHERE id=? AND company_id=?
-    `).run(agency.id, agency.company_id);
     return res.json({
       ok: true,
       account: {
@@ -16962,6 +17053,78 @@ export function registerTravelRoutes(app, { db, requireAuth, upload: providedUpl
         passwordHash: safeText(agency.password_hash)
       }
     });
+  });
+
+  app.post("/api/trevoro/auth/login-event", (req, res) => {
+    if (!requireTrevoroOwnerApi(req, res, db)) return;
+    const email = normalizeEmail(req.body?.email);
+    const rawEvent = safeText(req.body?.event || req.body?.result);
+    const allowedEvents = new Set([
+      "account_not_found",
+      "password_failed",
+      "password_verified",
+      "verification_email_failed",
+      "login_completed"
+    ]);
+    const event = allowedEvents.has(rawEvent) ? rawEvent : "login_event";
+    const property = propertyAccountForEmail(db, email);
+    const agency = property ? null : agencyAccountForEmail(db, email);
+    const companyId = Number(property?.company_id || agency?.company_id || publicTravelCompanyId(db) || 0);
+    const found = Boolean(property || agency);
+    const role = property ? "owner" : agency ? "agency" : "unknown";
+    const subjectByEvent = {
+      account_not_found: "Login eșuat: cont negăsit",
+      password_failed: "Login eșuat: parolă greșită",
+      password_verified: "Parolă validată",
+      verification_email_failed: "Login eșuat: cod netrimis",
+      login_completed: "Login finalizat",
+      login_event: "Eveniment login"
+    };
+    const severityByEvent = {
+      account_not_found: "warning",
+      password_failed: "warning",
+      password_verified: "success",
+      verification_email_failed: "error",
+      login_completed: "success",
+      login_event: "info"
+    };
+
+    if (event === "login_completed" && property?.id) {
+      db.prepare(`
+        UPDATE travel_properties
+        SET last_login_at=datetime('now'),
+            updated_at=datetime('now')
+        WHERE id=? AND company_id=?
+      `).run(property.id, property.company_id);
+    } else if (event === "login_completed" && agency?.id) {
+      db.prepare(`
+        UPDATE travel_agency_leads
+        SET last_login_at=datetime('now'),
+            updated_at=datetime('now')
+        WHERE id=? AND company_id=?
+      `).run(agency.id, agency.company_id);
+    }
+
+    logOwnerAccountEvent(db, {
+      companyId,
+      property,
+      eventType: `owner_${event}`,
+      severity: severityByEvent[event] || "info",
+      actorEmail: email,
+      subject: subjectByEvent[event] || "Eveniment login",
+      details: email
+        ? `Email: ${email}. Rol: ${role}. Cont găsit: ${found ? "da" : "nu"}.`
+        : "Încercare de login fără email valid.",
+      metadata: {
+        email_present: Boolean(email),
+        found,
+        role,
+        next_path: safeText(req.body?.next_path || req.body?.nextPath),
+        reason: safeText(req.body?.reason || "")
+      },
+      req
+    });
+    return res.json({ ok: true });
   });
 
   app.get("/api/trevoro/agency/:agencySlug/dashboard", (req, res) => {
@@ -17249,7 +17412,7 @@ export function registerTravelRoutes(app, { db, requireAuth, upload: providedUpl
           property,
           eventType: "owner_billing_checkout_error",
           severity: "error",
-          subject: "Checkout plată eșuat",
+          subject: "Program proprietar eșuat",
           details: result.error || "checkout_failed",
           metadata: { error: result.error || "checkout_failed" },
           req
@@ -17260,8 +17423,8 @@ export function registerTravelRoutes(app, { db, requireAuth, upload: providedUpl
         property,
         eventType: "owner_billing_checkout_created",
         severity: "success",
-        subject: "Checkout plată creat",
-        details: "Proprietarul a pornit plata abonamentului.",
+        subject: "Program proprietar creat",
+        details: "Proprietarul a pornit fluxul de program proprietar.",
         metadata: { checkout_url_created: Boolean(result.url) },
         req
       });
@@ -17272,7 +17435,7 @@ export function registerTravelRoutes(app, { db, requireAuth, upload: providedUpl
         property,
         eventType: "owner_billing_checkout_error",
         severity: "error",
-        subject: "Eroare checkout plată",
+        subject: "Eroare program proprietar",
         details: error?.message || "checkout_failed",
         metadata: { error: error?.message || "checkout_failed" },
         req
@@ -18119,6 +18282,21 @@ export function registerTravelRoutes(app, { db, requireAuth, upload: providedUpl
     }
   });
 
+  app.options("/api/lotogen/analytics/pageview", (req, res) => {
+    setAnalyticsCors(req, res);
+    return res.sendStatus(204);
+  });
+  app.post("/api/lotogen/analytics/pageview", (req, res) => {
+    setAnalyticsCors(req, res);
+    try {
+      const result = storeLotoGenPageview(db, req);
+      return res.status(result.ok ? 204 : 400).send("");
+    } catch (error) {
+      console.error("[LOTOGEN] analytics pageview failed:", error?.message || error);
+      return res.status(204).send("");
+    }
+  });
+
   app.use("/nexora/travel", requireAuth, (req, res, next) => {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0, s-maxage=0");
     res.setHeader("Pragma", "no-cache");
@@ -18135,6 +18313,7 @@ export function registerTravelRoutes(app, { db, requireAuth, upload: providedUpl
       req.travelTrafficSummary = loadTrevoroTrafficSummary(db, companyId, {
         excludedVisitorHashes: analyticsExcludedVisitorHashes(req)
       });
+      req.lotogenTrafficSummary = loadLotoGenTrafficSummary(db, companyId);
     } catch (error) {
       console.error("Travel daily outreach summary failed:", error);
       req.travelDailyOutreachSummary = { dailyLimit: DAILY_OUTREACH_EMAIL_LIMIT, sentToday: 0 };
@@ -18155,6 +18334,7 @@ export function registerTravelRoutes(app, { db, requireAuth, upload: providedUpl
       ...pageOptions(req),
       stats: loadDashboardStats(db, companyId),
       analytics,
+      lotogenTraffic: req.lotogenTrafficSummary || loadLotoGenTrafficSummary(db, companyId),
       outreachJob
     }));
   }

@@ -15,6 +15,7 @@ const DEFAULT_SOURCE = "all";
 const DEFAULT_MIN_SCORE = 40;
 const DEFAULT_DELAY_MS = 45000;
 const DEFAULT_DAILY_QUOTA = 800;
+const DEFAULT_RELAUNCH_CAMPAIGN_KEY = "trevoro-free-12m-launch-2026-07";
 
 function argValue(name, fallback = "") {
   const inline = process.argv.find((item) => item.startsWith(`${name}=`));
@@ -64,13 +65,18 @@ function parseJsonOutput(value = "") {
   try {
     return JSON.parse(text);
   } catch {
-    const start = text.indexOf("{");
     const end = text.lastIndexOf("}");
-    if (start >= 0 && end > start) {
+    const lineStarts = [];
+    let index = 0;
+    for (const line of text.split(/\r?\n/)) {
+      if (line.trimStart().startsWith("{")) lineStarts.push(index + line.indexOf("{"));
+      index += line.length + 1;
+    }
+    for (const start of lineStarts) {
       try {
         return JSON.parse(text.slice(start, end + 1));
       } catch {
-        return null;
+        // Keep scanning; dotenv or wrappers may print braces before the actual JSON.
       }
     }
     return null;
@@ -116,6 +122,8 @@ function writeReport(report) {
 async function main() {
   exitIfTrevoroEmailSendingPaused("scripts/run-trevoro-outreach.mjs");
   const dryRun = hasFlag("--dry-run");
+  const resendContacted = hasFlag("--resend-contacted") || hasFlag("--allow-resend");
+  const campaignKey = safeText(argValue("--campaign-key", resendContacted ? DEFAULT_RELAUNCH_CAMPAIGN_KEY : ""));
   const romaniaLimit = numericArg("--romania-limit", DEFAULT_ROMANIA_LIMIT, { min: 0 });
   const internationalLimit = numericArg("--international-limit", DEFAULT_INTERNATIONAL_LIMIT, { min: 0 });
   const localLimit = numericArg("--local-limit", DEFAULT_LOCAL_LIMIT, { min: 0 });
@@ -140,6 +148,8 @@ async function main() {
     source,
     min_score: minScore,
     delay_ms: delayMs,
+    resend_contacted: resendContacted,
+    campaign_key: campaignKey || null,
     romania_fallback_from_international: romaniaFallbackFromInternational,
     daily_quota: dailyQuota || null,
     sent_today_before: sentToday(companyId),
@@ -177,6 +187,8 @@ async function main() {
         String(delayMs)
       ];
       if (dryRun) romaniaArgs.push("--dry-run");
+      if (resendContacted) romaniaArgs.push("--resend-contacted");
+      if (campaignKey) romaniaArgs.push("--campaign-key", campaignKey);
       const romania = await runNode(romaniaArgs);
       ownersOk = ownersOk && romania.ok;
       report.steps.push({
@@ -218,6 +230,8 @@ async function main() {
         String(delayMs)
       ];
       if (dryRun) internationalArgs.push("--dry-run");
+      if (resendContacted) internationalArgs.push("--resend-contacted");
+      if (campaignKey) internationalArgs.push("--campaign-key", campaignKey);
       const international = await runNode(internationalArgs);
       ownersOk = ownersOk && international.ok;
       report.steps.push({
@@ -230,7 +244,9 @@ async function main() {
         stdout: international.parsed ? undefined : international.stdout
       });
 
-      const internationalSent = Number(international.parsed?.sent || 0);
+      const internationalSent = dryRun
+        ? Number(international.parsed?.attempted || 0)
+        : Number(international.parsed?.sent || 0);
       const romaniaFallbackLimit = romaniaFallbackFromInternational
         ? Math.max(0, internationalLimit - internationalSent)
         : 0;
@@ -262,6 +278,8 @@ async function main() {
             String(delayMs)
           ];
           if (dryRun) romaniaFallbackArgs.push("--dry-run");
+          if (resendContacted) romaniaFallbackArgs.push("--resend-contacted");
+          if (campaignKey) romaniaFallbackArgs.push("--campaign-key", campaignKey);
           const romaniaFallback = await runNode(romaniaFallbackArgs);
           ownersOk = ownersOk && romaniaFallback.ok;
           report.steps.push({
@@ -299,6 +317,8 @@ async function main() {
   console.log(JSON.stringify({
     ok: report.ok,
     dryRun,
+    resendContacted,
+    campaignKey: campaignKey || undefined,
     reportPath: report.report_path,
     sentTodayBefore: report.sent_today_before,
     sentTodayAfter: report.sent_today_after,

@@ -9,6 +9,7 @@ import {
   renderNexoraAccountingDeclarationsPage,
   renderNexoraAccountingExpensesPage,
   renderNexoraAccountingFixedAssetsPage,
+  renderNexoraAccountingInvoiceAutomationPage,
   renderNexoraAccountingRegistersPage,
   renderNexoraAccountingTransactionsPage,
   renderNexoraAccountingTrialBalancePage,
@@ -208,6 +209,32 @@ function moneyInput(value) {
   return Number.isFinite(normalized) ? normalized : 0;
 }
 
+function safeText(value = "") {
+  return String(value || "").trim();
+}
+
+function asArray(value) {
+  if (Array.isArray(value)) return value;
+  if (value === undefined || value === null) return [];
+  return [value];
+}
+
+function positiveNumber(value, fallback = 0) {
+  const normalized = Number(String(value ?? "").replace(",", "."));
+  return Number.isFinite(normalized) && normalized >= 0 ? normalized : fallback;
+}
+
+function integerBetween(value, min, max, fallback) {
+  const parsed = Math.round(positiveNumber(value, fallback));
+  return Math.min(max, Math.max(min, parsed));
+}
+
+function normalizeVatRate(value) {
+  const parsed = positiveNumber(value, 0);
+  if (parsed > 1) return parsed / 100;
+  return parsed;
+}
+
 function normalizeAccountingStatus(value, fallback = "NECORELATA") {
   return String(value || fallback).trim().toUpperCase().replace(/\s+/g, "_");
 }
@@ -234,6 +261,65 @@ function addPeriodWhere({ where, params, dateExpression, filters }) {
 
 function currentDateIso() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function dateParts(dateIso = currentDateIso()) {
+  const safeDate = parseDateFilter(dateIso) || currentDateIso();
+  const [year, month, day] = safeDate.split("-").map(Number);
+  return { year, month, day };
+}
+
+function daysInMonth(year, month) {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+function scheduledDateForMonth(year, month, issueDay) {
+  const day = Math.min(daysInMonth(year, month), integerBetween(issueDay, 1, 31, 1));
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function periodLabelFromDate(dateIso = currentDateIso()) {
+  return String(parseDateFilter(dateIso) || currentDateIso()).slice(0, 7);
+}
+
+function addDaysIso(dateIso, days = 0) {
+  const safeDate = parseDateFilter(dateIso) || currentDateIso();
+  const date = new Date(`${safeDate}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + Math.max(0, Math.round(Number(days || 0))));
+  return date.toISOString().slice(0, 10);
+}
+
+function monthlyScheduleFor(automation = {}, nowIso = currentDateIso()) {
+  const { year, month } = dateParts(nowIso);
+  const scheduledDate = scheduledDateForMonth(year, month, automation.issue_day || 1);
+  return {
+    periodLabel: `${year}-${String(month).padStart(2, "0")}`,
+    scheduledDate
+  };
+}
+
+function isAutomationDue(automation = {}, nowIso = currentDateIso(), force = false) {
+  const { periodLabel, scheduledDate } = monthlyScheduleFor(automation, nowIso);
+  if (!force && scheduledDate > nowIso) return { due: false, periodLabel, scheduledDate, reason: "not_due" };
+  const startDate = parseDateFilter(automation.start_date) || "";
+  if (startDate && scheduledDate < startDate) return { due: false, periodLabel, scheduledDate, reason: "before_start" };
+  const endDate = parseDateFilter(automation.end_date) || "";
+  if (endDate && scheduledDate > endDate) return { due: false, periodLabel, scheduledDate, reason: "after_end" };
+  return { due: true, periodLabel, scheduledDate };
+}
+
+function nextAccountingAutomationNumber(db, companyId) {
+  const year = new Date().getFullYear();
+  const prefix = `AIF-${year}-`;
+  const row = db.prepare(`
+    SELECT automation_number
+    FROM accounting_invoice_automations
+    WHERE company_id=? AND automation_number LIKE ?
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(companyId, `${prefix}%`);
+  const seq = Number(String(row?.automation_number || "").split("-").pop() || 0) + 1;
+  return `${prefix}${String(seq).padStart(4, "0")}`;
 }
 
 function monthsBetween(startDate, endDate) {
@@ -291,7 +377,388 @@ function buildInboxWhereClause(filters, companyId) {
   return { whereSql: where.join(" AND "), params };
 }
 
-export function registerAccountingRoutes(app, { db, requireAuth, requireSpvAccess, canAccessSpvUser, escapeHtml, fmtMoney, crmShellStart, crmShellEnd, fs, path, __dirname, upload }) {
+export function registerAccountingRoutes(app, {
+  db,
+  requireAuth,
+  requireSpvAccess,
+  canAccessSpvUser,
+  escapeHtml,
+  fmtMoney,
+  crmShellStart,
+  crmShellEnd,
+  fs,
+  path,
+  __dirname,
+  upload,
+  COMPANY = {},
+  anafUploadFactura,
+  ensureFacturaXmlGenerated,
+  ensureOfficialInvoiceNumber,
+  getCompanySetting,
+  getSetting
+}) {
+  const scopedSetting = (companyId, key, fallback = "") => {
+    if (typeof getCompanySetting === "function") return getCompanySetting(companyId, key, fallback);
+    if (typeof getSetting === "function") return getSetting(key, fallback);
+    return fallback;
+  };
+
+  function normalizeAutomationLines(body = {}) {
+    const names = asArray(body.line_name);
+    const descriptions = asArray(body.line_description);
+    const quantities = asArray(body.line_qty);
+    const units = asArray(body.line_unit);
+    const prices = asArray(body.line_price);
+    const rows = [];
+
+    for (let index = 0; index < names.length; index += 1) {
+      const denumire = safeText(names[index]);
+      if (!denumire) continue;
+      const cantitate = positiveNumber(quantities[index], 1) || 1;
+      const pretUnitar = positiveNumber(prices[index], 0);
+      rows.push({
+        denumire,
+        descriere: safeText(descriptions[index]),
+        cantitate,
+        unitate: safeText(units[index]) || "buc",
+        pret_unitar: pretUnitar,
+        total_linie: cantitate * pretUnitar,
+        sort_order: rows.length + 1
+      });
+    }
+
+    return rows;
+  }
+
+  function invoiceAutomationWithLines(automationId, companyId) {
+    const automation = db.prepare(`
+      SELECT a.*, c.name AS client_name, c.cui AS client_cui, c.email AS client_email
+      FROM accounting_invoice_automations a
+      JOIN clients c ON c.id=a.client_id AND c.company_id=a.company_id
+      WHERE a.id=? AND a.company_id=?
+    `).get(automationId, companyId);
+    if (!automation) return null;
+    automation.lines = db.prepare(`
+      SELECT denumire, descriere, cantitate, unitate, pret_unitar, sort_order
+      FROM accounting_invoice_automation_lines
+      WHERE automation_id=? AND company_id=?
+      ORDER BY sort_order ASC, id ASC
+    `).all(automationId, companyId);
+    return automation;
+  }
+
+  async function sendInvoiceToEfactura({ facturaId, companyId, automationId, runId }) {
+    if (typeof ensureFacturaXmlGenerated !== "function" || typeof anafUploadFactura !== "function") {
+      const message = "Integrarea e-Factura nu este disponibilă în procesul curent.";
+      db.prepare("UPDATE facturi SET efactura_status=?, efactura_last_error=?, efactura_last_checked_at=CURRENT_TIMESTAMP WHERE id=? AND company_id=?")
+        .run("EROARE", message, facturaId, companyId);
+      db.prepare("UPDATE accounting_invoice_automation_runs SET status='ERROR_EFACTURA', details=?, updated_at=datetime('now') WHERE id=? AND company_id=?")
+        .run(message, runId, companyId);
+      db.prepare("UPDATE accounting_invoice_automations SET last_error=?, updated_at=datetime('now') WHERE id=? AND company_id=?")
+        .run(message, automationId, companyId);
+      return { ok: false, message };
+    }
+
+    const generated = ensureFacturaXmlGenerated(facturaId, companyId);
+    if (generated?.error) {
+      const message = generated.error;
+      db.prepare("UPDATE facturi SET efactura_status=?, efactura_last_error=?, efactura_last_checked_at=CURRENT_TIMESTAMP WHERE id=? AND company_id=?")
+        .run("EROARE", message, facturaId, companyId);
+      db.prepare("UPDATE accounting_invoice_automation_runs SET status='ERROR_EFACTURA', details=?, updated_at=datetime('now') WHERE id=? AND company_id=?")
+        .run(message, runId, companyId);
+      db.prepare("UPDATE accounting_invoice_automations SET last_error=?, updated_at=datetime('now') WHERE id=? AND company_id=?")
+        .run(message, automationId, companyId);
+      return { ok: false, message };
+    }
+
+    const payload = String(generated?.xml || (generated?.absPath && fs?.existsSync?.(generated.absPath) ? fs.readFileSync(generated.absPath, "utf8") : ""));
+    if (!payload) {
+      const message = "XML-ul e-Factura nu a putut fi citit.";
+      db.prepare("UPDATE facturi SET efactura_status=?, efactura_last_error=?, efactura_last_checked_at=CURRENT_TIMESTAMP WHERE id=? AND company_id=?")
+        .run("EROARE", message, facturaId, companyId);
+      db.prepare("UPDATE accounting_invoice_automation_runs SET status='ERROR_EFACTURA', details=?, updated_at=datetime('now') WHERE id=? AND company_id=?")
+        .run(message, runId, companyId);
+      return { ok: false, message };
+    }
+
+    const company = db.prepare("SELECT is_demo FROM companies WHERE id=?").get(companyId) || {};
+    const demoUploadIndex = Number(company.is_demo || 0) === 1 ? `DEMO-AIF-${facturaId}-${Date.now()}` : "";
+    if (demoUploadIndex) {
+      db.prepare(`
+        INSERT INTO anaf_messages(company_id, account_id, message_id, factura_id, direction, status, payload, details)
+        VALUES (?, NULL, ?, ?, 'OUT', 'DEMO_LOCAL', ?, ?)
+      `).run(companyId, demoUploadIndex, facturaId, payload, "Flux e-Factura simulat local pentru automatizare facturi.");
+      db.prepare(`
+        UPDATE facturi
+        SET efactura_status='DEMO_LOCAL',
+            efactura_message_id=?,
+            efactura_upload_index=?,
+            efactura_download_id=NULL,
+            efactura_response_zip_path=NULL,
+            efactura_last_error=NULL,
+            efactura_last_checked_at=CURRENT_TIMESTAMP,
+            status='TRIMIS_EFACTURA'
+        WHERE id=? AND company_id=?
+      `).run(demoUploadIndex, demoUploadIndex, facturaId, companyId);
+      db.prepare("UPDATE accounting_invoice_automation_runs SET status='SENT_EFACTURA', details=?, updated_at=datetime('now') WHERE id=? AND company_id=?")
+        .run("Trimitere e-Factura simulată pentru companie demo.", runId, companyId);
+      return { ok: true, demo: true };
+    }
+
+    try {
+      const environment = safeText(scopedSetting(companyId, "anaf_environment", "test")) || "test";
+      const companyCui = String(scopedSetting(companyId, "company_cui", COMPANY.cui || "") || "").replace(/^RO/i, "").trim();
+      const getScopedSetting = (key, fallback = "") => scopedSetting(companyId, key, fallback);
+      const uploaded = await anafUploadFactura({
+        cif: companyCui,
+        companyId,
+        db,
+        environment,
+        getSetting: getScopedSetting,
+        xml: payload
+      });
+
+      if (!uploaded.ok) {
+        const message = uploaded.message || uploaded.rawText || `ANAF upload error (${uploaded.httpStatus || "necunoscut"})`;
+        db.prepare(`
+          UPDATE facturi
+          SET efactura_status='EROARE_UPLOAD',
+              efactura_last_error=?,
+              efactura_last_checked_at=CURRENT_TIMESTAMP
+          WHERE id=? AND company_id=?
+        `).run(message, facturaId, companyId);
+        db.prepare(`
+          INSERT INTO anaf_messages(company_id, account_id, message_id, factura_id, direction, status, payload, details)
+          VALUES (?, NULL, ?, ?, 'OUT', 'EROARE', ?, ?)
+        `).run(companyId, uploaded.uploadIndex || "", facturaId, payload, uploaded.rawText || message);
+        db.prepare("UPDATE accounting_invoice_automation_runs SET status='ERROR_EFACTURA', details=?, updated_at=datetime('now') WHERE id=? AND company_id=?")
+          .run(message, runId, companyId);
+        db.prepare("UPDATE accounting_invoice_automations SET last_error=?, updated_at=datetime('now') WHERE id=? AND company_id=?")
+          .run(message, automationId, companyId);
+        return { ok: false, message };
+      }
+
+      db.prepare(`
+        INSERT INTO anaf_messages(company_id, account_id, message_id, factura_id, direction, status, payload, details)
+        VALUES (?, NULL, ?, ?, 'OUT', 'TRIMIS', ?, ?)
+      `).run(companyId, uploaded.uploadIndex, facturaId, payload, uploaded.rawText || "");
+      db.prepare(`
+        UPDATE facturi
+        SET efactura_status='TRIMIS',
+            efactura_message_id=?,
+            efactura_upload_index=?,
+            efactura_download_id=NULL,
+            efactura_response_zip_path=NULL,
+            efactura_last_error=NULL,
+            efactura_last_checked_at=CURRENT_TIMESTAMP,
+            status='TRIMIS_EFACTURA'
+        WHERE id=? AND company_id=?
+      `).run(uploaded.uploadIndex, uploaded.uploadIndex, facturaId, companyId);
+      db.prepare("UPDATE accounting_invoice_automation_runs SET status='SENT_EFACTURA', details=?, updated_at=datetime('now') WHERE id=? AND company_id=?")
+        .run(`Trimis la ANAF cu index ${uploaded.uploadIndex}.`, runId, companyId);
+      db.prepare("UPDATE accounting_invoice_automations SET last_error=NULL, updated_at=datetime('now') WHERE id=? AND company_id=?")
+        .run(automationId, companyId);
+      return { ok: true, uploadIndex: uploaded.uploadIndex };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error || "Nu există conexiune ANAF activă.");
+      db.prepare(`
+        UPDATE facturi
+        SET efactura_status='FARA_CONEXIUNE',
+            efactura_last_error=?,
+            efactura_last_checked_at=CURRENT_TIMESTAMP
+        WHERE id=? AND company_id=?
+      `).run(message, facturaId, companyId);
+      db.prepare("UPDATE accounting_invoice_automation_runs SET status='ERROR_EFACTURA', details=?, updated_at=datetime('now') WHERE id=? AND company_id=?")
+        .run(message, runId, companyId);
+      db.prepare("UPDATE accounting_invoice_automations SET last_error=?, updated_at=datetime('now') WHERE id=? AND company_id=?")
+        .run(message, automationId, companyId);
+      return { ok: false, message };
+    }
+  }
+
+  async function generateInvoiceForAutomation(automation, { nowIso = currentDateIso(), force = false, actorEmail = "system@nexora.local" } = {}) {
+    const companyId = Number(automation?.company_id || 0);
+    const schedule = isAutomationDue(automation, nowIso, force);
+    if (!companyId || !schedule.due) return { ok: false, skipped: true, reason: schedule.reason || "not_due" };
+    const lines = Array.isArray(automation.lines) && automation.lines.length
+      ? automation.lines
+      : db.prepare(`
+          SELECT denumire, descriere, cantitate, unitate, pret_unitar, sort_order
+          FROM accounting_invoice_automation_lines
+          WHERE company_id=? AND automation_id=?
+          ORDER BY sort_order ASC, id ASC
+        `).all(companyId, automation.id);
+    if (!lines.length) return { ok: false, skipped: true, reason: "no_lines" };
+
+    let runId = 0;
+    let facturaId = 0;
+    let subtotal = 0;
+    const invoiceDate = force ? nowIso : schedule.scheduledDate;
+    const dueDate = addDaysIso(invoiceDate, automation.due_days || 0);
+
+    try {
+      const created = db.transaction(() => {
+        const run = db.prepare(`
+          INSERT INTO accounting_invoice_automation_runs (
+            company_id, automation_id, period_label, scheduled_date, status, details
+          )
+          VALUES (?, ?, ?, ?, 'RUNNING', ?)
+        `).run(companyId, automation.id, schedule.periodLabel, schedule.scheduledDate, "Generare factură recurentă pornită.");
+        runId = Number(run.lastInsertRowid || 0);
+
+        const temporaryNumber = `PENDING-AIF-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+        const invoice = db.prepare(`
+          INSERT INTO facturi (
+            factura_nr, an, seq, client_id, contract_id, status, moneda,
+            tva_procent, data_emitere, scadenta, observatii, company_id, created_at
+          )
+          VALUES (?, ?, 0, ?, ?, 'FACTURA_GENERATA', ?, ?, ?, ?, ?, ?, datetime('now'))
+        `).run(
+          temporaryNumber,
+          Number(invoiceDate.slice(0, 4)),
+          Number(automation.client_id || 0),
+          Number(automation.contract_id || 0) || null,
+          safeText(automation.currency) || "RON",
+          Number(automation.vat_rate || 0),
+          invoiceDate,
+          dueDate,
+          [
+            `Factură generată automat din regula ${automation.automation_number || automation.name}.`,
+            `Perioadă: ${schedule.periodLabel}.`,
+            safeText(automation.notes)
+          ].filter(Boolean).join(" "),
+          companyId
+        );
+        facturaId = Number(invoice.lastInsertRowid || 0);
+        db.prepare("UPDATE facturi SET factura_nr=? WHERE id=? AND company_id=?")
+          .run(`DRAFT-${facturaId}`, facturaId, companyId);
+
+        const insertLine = db.prepare(`
+          INSERT INTO facturi_linii (
+            factura_id, denumire, descriere, cantitate, unitate, pret_unitar, total_linie, sort_order, company_id
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        for (const [index, line] of lines.entries()) {
+          const quantity = positiveNumber(line.cantitate, 1) || 1;
+          const unitPrice = positiveNumber(line.pret_unitar, 0);
+          const lineTotal = quantity * unitPrice;
+          subtotal += lineTotal;
+          insertLine.run(
+            facturaId,
+            safeText(line.denumire),
+            safeText(line.descriere),
+            quantity,
+            safeText(line.unitate) || "buc",
+            unitPrice,
+            lineTotal,
+            Number(line.sort_order || index + 1),
+            companyId
+          );
+        }
+
+        const vatAmount = subtotal * Number(automation.vat_rate || 0);
+        const total = subtotal + vatAmount;
+        db.prepare(`
+          UPDATE facturi
+          SET subtotal=?, tva_valoare=?, total=?
+          WHERE id=? AND company_id=?
+        `).run(subtotal, vatAmount, total, facturaId, companyId);
+        db.prepare(`
+          UPDATE accounting_invoice_automation_runs
+          SET factura_id=?, status='GENERATED', details=?, updated_at=datetime('now')
+          WHERE id=? AND company_id=?
+        `).run(facturaId, `Factura a fost generată pentru perioada ${schedule.periodLabel}.`, runId, companyId);
+        return { runId, facturaId };
+      })();
+
+      runId = created.runId;
+      facturaId = created.facturaId;
+      if (typeof ensureOfficialInvoiceNumber === "function") {
+        ensureOfficialInvoiceNumber(db, facturaId, { companyId, year: Number(invoiceDate.slice(0, 4)) });
+      }
+
+      db.prepare(`
+        UPDATE accounting_invoice_automations
+        SET last_generated_for=?,
+            last_run_at=datetime('now'),
+            last_error=NULL,
+            updated_at=datetime('now')
+        WHERE id=? AND company_id=?
+      `).run(schedule.periodLabel, automation.id, companyId);
+
+      if (Number(automation.auto_send_efactura || 0) === 1) {
+        await sendInvoiceToEfactura({ facturaId, companyId, automationId: automation.id, runId });
+      } else {
+        db.prepare(`
+          UPDATE accounting_invoice_automation_runs
+          SET status='GENERATED',
+              details=?,
+              updated_at=datetime('now')
+          WHERE id=? AND company_id=?
+        `).run("Factura a fost generată. Trimiterea e-Factura este dezactivată pentru această regulă.", runId, companyId);
+      }
+
+      return { ok: true, facturaId, runId, periodLabel: schedule.periodLabel };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error || "Eroare generare factură.");
+      if (/UNIQUE constraint failed/i.test(message)) {
+        return { ok: false, skipped: true, reason: "already_generated", periodLabel: schedule.periodLabel };
+      }
+      if (runId) {
+        db.prepare("UPDATE accounting_invoice_automation_runs SET status='ERROR', details=?, updated_at=datetime('now') WHERE id=? AND company_id=?")
+          .run(message, runId, companyId);
+      }
+      if (companyId && automation?.id) {
+        db.prepare("UPDATE accounting_invoice_automations SET last_error=?, last_run_at=datetime('now'), updated_at=datetime('now') WHERE id=? AND company_id=?")
+          .run(message, automation.id, companyId);
+      }
+      return { ok: false, error: message };
+    }
+  }
+
+  async function runDueInvoiceAutomations({ companyId = null, automationId = null, force = false, actorEmail = "system@nexora.local" } = {}) {
+    const params = [];
+    const where = ["UPPER(COALESCE(status,''))='ACTIVE'"];
+    if (companyId) {
+      where.push("company_id=?");
+      params.push(Number(companyId));
+    }
+    if (automationId) {
+      where.push("id=?");
+      params.push(Number(automationId));
+    }
+    const automations = db.prepare(`
+      SELECT *
+      FROM accounting_invoice_automations
+      WHERE ${where.join(" AND ")}
+      ORDER BY company_id ASC, id ASC
+      LIMIT 500
+    `).all(...params);
+
+    const results = [];
+    const nowIso = currentDateIso();
+    for (const row of automations) {
+      const automation = invoiceAutomationWithLines(row.id, row.company_id);
+      if (!automation) continue;
+      results.push(await generateInvoiceForAutomation(automation, { nowIso, force, actorEmail }));
+    }
+    return results;
+  }
+
+  if (!globalThis.__nexoraAccountingInvoiceAutomationTimer && String(process.env.DISABLE_ACCOUNTING_INVOICE_AUTOMATION || "") !== "1") {
+    globalThis.__nexoraAccountingInvoiceAutomationTimer = setInterval(() => {
+      runDueInvoiceAutomations().catch((error) => {
+        console.warn("[ACCOUNTING] invoice automation scheduler failed", String(error?.message || error));
+      });
+    }, 30 * 60 * 1000);
+    setTimeout(() => {
+      runDueInvoiceAutomations().catch((error) => {
+        console.warn("[ACCOUNTING] invoice automation startup run failed", String(error?.message || error));
+      });
+    }, 45 * 1000);
+  }
+
   app.get("/nexora/accounting", requireAuth, (req, res) => {
     const companyId = Number(req.session.user.company_id || 0);
     const invoiceStats = db.prepare(`
@@ -355,6 +822,7 @@ export function registerAccountingRoutes(app, { db, requireAuth, requireSpvAcces
       ],
       links: [
         { label: "Cheltuieli", href: "/nexora/accounting/expenses" },
+        { label: "Automatizare facturi", href: "/nexora/accounting/invoice-automation" },
         { label: "Declarații", href: "/nexora/accounting/declarations" },
         { label: "Plăți", href: "/nexora/accounting/payments" },
         { label: "Încasări", href: "/nexora/accounting/receipts" },
@@ -368,6 +836,182 @@ export function registerAccountingRoutes(app, { db, requireAuth, requireSpvAcces
         { label: "Bonuri de consum", href: "/nexora/accounting/consumption" }
       ]
     }));
+  });
+
+  app.get("/nexora/accounting/invoice-automation", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const rows = db.prepare(`
+      SELECT a.*,
+             c.name AS client_name,
+             c.cui AS client_cui,
+             c.email AS client_email,
+             ct.contract_number,
+             ct.service_description AS contract_description,
+             IFNULL((SELECT SUM(l.cantitate * l.pret_unitar) FROM accounting_invoice_automation_lines l WHERE l.company_id=a.company_id AND l.automation_id=a.id), 0) AS subtotal_template,
+             (SELECT COUNT(*) FROM accounting_invoice_automation_lines l WHERE l.company_id=a.company_id AND l.automation_id=a.id) AS line_count,
+             (SELECT COUNT(*) FROM accounting_invoice_automation_runs r WHERE r.company_id=a.company_id AND r.automation_id=a.id) AS run_count,
+             (SELECT r.status FROM accounting_invoice_automation_runs r WHERE r.company_id=a.company_id AND r.automation_id=a.id ORDER BY r.id DESC LIMIT 1) AS last_run_status,
+             (SELECT r.details FROM accounting_invoice_automation_runs r WHERE r.company_id=a.company_id AND r.automation_id=a.id ORDER BY r.id DESC LIMIT 1) AS last_run_details
+      FROM accounting_invoice_automations a
+      JOIN clients c ON c.id=a.client_id AND c.company_id=a.company_id
+      LEFT JOIN contracts ct ON ct.id=a.contract_id AND ct.company_id=a.company_id
+      WHERE a.company_id=? AND UPPER(COALESCE(a.status,'')) <> 'ARCHIVED'
+      ORDER BY UPPER(COALESCE(a.status,''))='ACTIVE' DESC, a.id DESC
+      LIMIT 500
+    `).all(companyId).map((row) => {
+      const schedule = monthlyScheduleFor(row, currentDateIso());
+      const dueState = isAutomationDue(row, currentDateIso(), false);
+      return {
+        ...row,
+        next_period_label: schedule.periodLabel,
+        next_scheduled_date: schedule.scheduledDate,
+        is_due_now: dueState.due ? 1 : 0
+      };
+    });
+
+    const clients = db.prepare(`
+      SELECT id, name, cui, email
+      FROM clients
+      WHERE company_id=? AND COALESCE(inactive,0)=0
+      ORDER BY LOWER(name) ASC
+      LIMIT 1000
+    `).all(companyId);
+
+    const contracts = db.prepare(`
+      SELECT ct.id, ct.client_id, ct.contract_number, ct.service_description, ct.price, ct.duration, c.name AS client_name
+      FROM contracts ct
+      JOIN clients c ON c.id=ct.client_id AND c.company_id=ct.company_id
+      WHERE ct.company_id=?
+      ORDER BY ct.id DESC
+      LIMIT 500
+    `).all(companyId);
+
+    const recentRuns = db.prepare(`
+      SELECT r.*, a.automation_number, a.name AS automation_name, c.name AS client_name, f.factura_nr, f.total
+      FROM accounting_invoice_automation_runs r
+      JOIN accounting_invoice_automations a ON a.id=r.automation_id AND a.company_id=r.company_id
+      LEFT JOIN clients c ON c.id=a.client_id AND c.company_id=a.company_id
+      LEFT JOIN facturi f ON f.id=r.factura_id AND f.company_id=r.company_id
+      WHERE r.company_id=?
+      ORDER BY r.id DESC
+      LIMIT 80
+    `).all(companyId);
+
+    const stats = {
+      total: rows.length,
+      active: rows.filter((row) => String(row.status || "").toUpperCase() === "ACTIVE").length,
+      dueNow: rows.filter((row) => Number(row.is_due_now || 0) === 1 && String(row.status || "").toUpperCase() === "ACTIVE").length,
+      sentEfactura: recentRuns.filter((row) => String(row.status || "").toUpperCase() === "SENT_EFACTURA").length
+    };
+
+    return res.type("html").send(renderNexoraAccountingInvoiceAutomationPage({
+      companyName: req.session.user.company_name || "",
+      user: req.session.user,
+      rows,
+      clients,
+      contracts,
+      recentRuns,
+      stats,
+      fmtMoney,
+      ok: String(req.query?.ok || ""),
+      err: String(req.query?.err || ""),
+      generatedFacturaId: String(req.query?.factura_id || "")
+    }));
+  });
+
+  app.get("/accounting/invoice-automation", requireAuth, (req, res) => {
+    const query = String(req.url || "").includes("?") ? String(req.url || "").slice(String(req.url || "").indexOf("?")) : "";
+    res.redirect(`/nexora/accounting/invoice-automation${query}`);
+  });
+
+  app.post("/nexora/accounting/invoice-automation/create", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const clientId = Number(req.body?.client_id || 0);
+    const client = db.prepare("SELECT id FROM clients WHERE id=? AND company_id=? AND COALESCE(inactive,0)=0").get(clientId, companyId);
+    if (!client) return res.redirect("/nexora/accounting/invoice-automation?err=client");
+    const contractId = Number(req.body?.contract_id || 0) || null;
+    if (contractId) {
+      const contract = db.prepare("SELECT id FROM contracts WHERE id=? AND client_id=? AND company_id=?").get(contractId, clientId, companyId);
+      if (!contract) return res.redirect("/nexora/accounting/invoice-automation?err=contract");
+    }
+    const lines = normalizeAutomationLines(req.body);
+    if (!lines.length) return res.redirect("/nexora/accounting/invoice-automation?err=lines");
+
+    const name = safeText(req.body?.name) || "Factură recurentă";
+    const status = ["ACTIVE", "PAUSED", "DRAFT"].includes(safeText(req.body?.status).toUpperCase())
+      ? safeText(req.body?.status).toUpperCase()
+      : "ACTIVE";
+    const startDate = parseDateFilter(req.body?.start_date) || currentDateIso();
+    const endDate = parseDateFilter(req.body?.end_date) || null;
+
+    db.transaction(() => {
+      const inserted = db.prepare(`
+        INSERT INTO accounting_invoice_automations (
+          company_id, automation_number, client_id, contract_id, name, status, recurrence,
+          issue_day, start_date, end_date, due_days, currency, vat_rate,
+          auto_send_efactura, auto_generate_pdf, notes, created_by_email, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, 'MONTHLY', ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, datetime('now'))
+      `).run(
+        companyId,
+        nextAccountingAutomationNumber(db, companyId),
+        clientId,
+        contractId,
+        name,
+        status,
+        integerBetween(req.body?.issue_day, 1, 31, 1),
+        startDate,
+        endDate,
+        integerBetween(req.body?.due_days, 0, 365, 15),
+        safeText(req.body?.currency).toUpperCase() || "RON",
+        normalizeVatRate(req.body?.vat_rate),
+        safeText(req.body?.auto_send_efactura) === "1" ? 1 : 0,
+        safeText(req.body?.notes),
+        safeText(req.session.user.email).toLowerCase()
+      );
+      const automationId = Number(inserted.lastInsertRowid || 0);
+      const insertLine = db.prepare(`
+        INSERT INTO accounting_invoice_automation_lines (
+          company_id, automation_id, denumire, descriere, cantitate, unitate, pret_unitar, sort_order
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const line of lines) {
+        insertLine.run(companyId, automationId, line.denumire, line.descriere, line.cantitate, line.unitate, line.pret_unitar, line.sort_order);
+      }
+    })();
+
+    res.redirect("/nexora/accounting/invoice-automation?ok=created");
+  });
+
+  app.post("/nexora/accounting/invoice-automation/:id/status", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const id = Number(req.params.id || 0);
+    const status = ["ACTIVE", "PAUSED", "DRAFT", "ARCHIVED"].includes(safeText(req.body?.status).toUpperCase())
+      ? safeText(req.body?.status).toUpperCase()
+      : "PAUSED";
+    db.prepare(`
+      UPDATE accounting_invoice_automations
+      SET status=?, updated_at=datetime('now')
+      WHERE id=? AND company_id=?
+    `).run(status, id, companyId);
+    res.redirect("/nexora/accounting/invoice-automation?ok=status");
+  });
+
+  app.post("/nexora/accounting/invoice-automation/:id/run", requireAuth, async (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const id = Number(req.params.id || 0);
+    const automation = invoiceAutomationWithLines(id, companyId);
+    if (!automation) return res.redirect("/nexora/accounting/invoice-automation?err=missing");
+    const result = await generateInvoiceForAutomation(automation, {
+      nowIso: currentDateIso(),
+      force: true,
+      actorEmail: safeText(req.session.user.email).toLowerCase()
+    });
+    if (result.ok) return res.redirect(`/nexora/accounting/invoice-automation?ok=run&factura_id=${encodeURIComponent(result.facturaId)}`);
+    if (result.reason === "already_generated") return res.redirect("/nexora/accounting/invoice-automation?err=already");
+    if (result.reason === "no_lines") return res.redirect("/nexora/accounting/invoice-automation?err=lines");
+    return res.redirect("/nexora/accounting/invoice-automation?err=run");
   });
 
   app.get("/nexora/accounting/expenses", requireAuth, (req, res) => {

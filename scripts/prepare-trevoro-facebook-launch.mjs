@@ -33,7 +33,7 @@ function postTemplates(property = {}) {
 
   return [
     {
-      caption: `Trevoro porneste cu proprietati romanesti listate direct, fara comisioane ascunse. Azi punem in vitrina ${name}, ${type} in ${location}. Vezi listarea si trimite cerere de rezervare.`,
+      caption: `Trevoro porneste cu proprietati romanesti listate clar si cereri directe. Azi punem in vitrina ${name}, ${type} in ${location}. Vezi listarea si trimite cerere de rezervare.`,
       hashtags: "#Trevoro #CazareRomania #VacanteRomania #TravelRomania",
       url
     },
@@ -43,7 +43,7 @@ function postTemplates(property = {}) {
       url
     },
     {
-      caption: `Pentru proprietari: Trevoro are planuri fixe de la 99 lei/luna, preturi transparente si 0% comision pe rezervari.`,
+      caption: `Pentru proprietari: Trevoro primeste inscrieri in programul de lansare, cu suport pentru validare, listare si promovare.`,
       hashtags: "#Trevoro #HoteluriRomania #PensiuniRomania #TurismRomanesc",
       url: "https://www.trevoro.ro/proprietari"
     },
@@ -54,7 +54,7 @@ function postTemplates(property = {}) {
     },
     {
       caption: `Ne plac proprietatile romanesti cu poveste. Daca ai hotel, pensiune, cabana, glamping sau apartament in regim hotelier, Trevoro iti poate aduce cereri directe de la clienti.`,
-      hashtags: "#Trevoro #ParteneriTrevoro #CazariRomania #FaraComisioane",
+      hashtags: "#Trevoro #ParteneriTrevoro #CazariRomania #CereriDirecte",
       url: "https://www.trevoro.ro/proprietari"
     },
     {
@@ -63,7 +63,7 @@ function postTemplates(property = {}) {
       url
     },
     {
-      caption: `Construim alternativa romaneasca la platformele cu comisioane mari. Trevoro creste cu proprietari verificati, planuri clare si listari pregatite pentru cereri directe.`,
+      caption: `Construim o alternativa romaneasca pentru cazari verificate. Trevoro creste cu proprietari reali, listari clare si cereri directe.`,
       hashtags: "#Trevoro #TurismRomanesc #StartupRomanesc #CazareRomania",
       url: "https://www.trevoro.ro"
     }
@@ -79,7 +79,7 @@ function tiktokTemplates(property = {}) {
       hashtags: "#Trevoro #TikTokRomania #VacanteRomania #CazareRomania"
     },
     {
-      caption: `Script TikTok: 3 motive sa urmaresti Trevoro vara asta. 1: cazari romanesti. 2: cereri directe. 3: fara comisioane ascunse pentru clienti. Exemplu: ${name}, ${city}.`,
+      caption: `Script TikTok: 3 motive sa urmaresti Trevoro vara asta. 1: cazari romanesti. 2: cereri directe. 3: proprietati reale in programul de lansare. Exemplu: ${name}, ${city}.`,
       hashtags: "#Trevoro #TravelRomania #WeekendRomania #Vacanta"
     }
   ];

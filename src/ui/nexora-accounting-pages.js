@@ -69,6 +69,7 @@ function renderAccountingNav(activePath) {
     ["Generală", "/nexora/accounting"],
     ["Cheltuieli", "/nexora/accounting/expenses"],
     ["Declarații", "/nexora/accounting/declarations"],
+    ["Automatizare facturi", "/nexora/accounting/invoice-automation"],
     ["Plăți", "/nexora/accounting/payments"],
     ["Încasări", "/nexora/accounting/receipts"],
     ["Registre", "/nexora/accounting/registers"],
@@ -213,6 +214,213 @@ function renderNexoraAccountingExpensesPage(options = {}) {
     currentPath: "/nexora/accounting/expenses",
     eyebrow: "Financiar & Contabilitate",
     pageTitle: "Cheltuieli",
+    body
+  });
+}
+
+function automationStatusPill(value) {
+  const normalized = String(value || "ACTIVE").trim().toUpperCase();
+  if (["ACTIVE", "GENERATED", "SENT_EFACTURA"].includes(normalized)) return `<span class="nx-status-pill success">${escapeHtml(normalized.toLowerCase().replaceAll("_", " "))}</span>`;
+  if (["DRAFT", "PAUSED", "RUNNING"].includes(normalized)) return `<span class="nx-status-pill warn">${escapeHtml(normalized.toLowerCase().replaceAll("_", " "))}</span>`;
+  if (normalized.includes("ERROR")) return `<span class="nx-status-pill danger">${escapeHtml(normalized.toLowerCase().replaceAll("_", " "))}</span>`;
+  return `<span class="nx-status-pill neutral">${escapeHtml(normalized.toLowerCase().replaceAll("_", " "))}</span>`;
+}
+
+function renderNexoraAccountingInvoiceAutomationPage(options = {}) {
+  const companyName = options.companyName || "Workspace";
+  const rows = Array.isArray(options.rows) ? options.rows : [];
+  const clients = Array.isArray(options.clients) ? options.clients : [];
+  const contracts = Array.isArray(options.contracts) ? options.contracts : [];
+  const recentRuns = Array.isArray(options.recentRuns) ? options.recentRuns : [];
+  const stats = options.stats || {};
+  const fmtMoney = options.fmtMoney;
+  const ok = options.ok || "";
+  const err = options.err || "";
+  const generatedFacturaId = options.generatedFacturaId || "";
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayDay = String(Math.max(1, Number(todayIso.slice(8, 10)) || 1));
+
+  const okMessages = {
+    created: "Automatizarea a fost creată.",
+    status: "Statusul automatizării a fost actualizat.",
+    run: "Rularea manuală a fost finalizată."
+  };
+  const errMessages = {
+    client: "Selectează un client valid.",
+    contract: "Contractul ales nu aparține clientului.",
+    lines: "Adaugă cel puțin o linie de factură.",
+    missing: "Automatizarea nu mai există.",
+    already: "Există deja o factură generată pentru perioada curentă.",
+    run: "Rularea nu a putut fi finalizată."
+  };
+
+  const clientOptions = clients.map((client) => `
+    <option value="${escapeHtml(client.id)}">${escapeHtml(client.name || "Client")} ${client.cui ? `(${escapeHtml(client.cui)})` : ""}</option>
+  `).join("");
+  const contractOptions = contracts.map((contract) => `
+    <option value="${escapeHtml(contract.id)}">${escapeHtml(contract.client_name || "Client")} - ${escapeHtml(contract.contract_number || `Contract #${contract.id}`)} ${contract.price ? ` / ${escapeHtml(money(contract.price, fmtMoney))}` : ""}</option>
+  `).join("");
+
+  const rowsHtml = rows.length ? rows.map((row) => {
+    const subtotal = Number(row.subtotal_template || 0);
+    const total = subtotal + subtotal * Number(row.vat_rate || 0);
+    const active = String(row.status || "").toUpperCase() === "ACTIVE";
+    return `
+      <tr>
+        <td>
+          <b>${escapeHtml(row.name || row.automation_number || "-")}</b>
+          <div class="nx-table-sub">${escapeHtml(row.automation_number || "")}</div>
+        </td>
+        <td>
+          <b>${escapeHtml(row.client_name || "-")}</b>
+          <div class="nx-table-sub">${escapeHtml(row.client_cui || "fără CUI")}</div>
+        </td>
+        <td>
+          <span>Ziua ${escapeHtml(row.issue_day || 1)} lunar</span>
+          <div class="nx-table-sub">următoarea: ${escapeHtml(row.next_scheduled_date || "-")}</div>
+        </td>
+        <td>${automationStatusPill(row.status)}</td>
+        <td class="nx-right">${escapeHtml(money(total, fmtMoney))}<div class="nx-table-sub">${escapeHtml(row.line_count || 0)} linii</div></td>
+        <td>${Number(row.auto_send_efactura || 0) === 1 ? automationStatusPill("SENT_EFACTURA") : `<span class="nx-status-pill neutral">manual</span>`}</td>
+        <td>
+          <div class="nx-table-sub">${escapeHtml(row.last_generated_for || "fără rulare")}</div>
+          ${row.last_error ? `<div class="nx-table-sub" style="color:#b91c1c">${escapeHtml(row.last_error)}</div>` : row.last_run_details ? `<div class="nx-table-sub">${escapeHtml(row.last_run_details)}</div>` : ""}
+        </td>
+        <td class="nx-table-actions">
+          <form method="post" action="/nexora/accounting/invoice-automation/${escapeHtml(row.id)}/run"><button class="nx-btn primary" type="submit">Rulează</button></form>
+          <form method="post" action="/nexora/accounting/invoice-automation/${escapeHtml(row.id)}/status">
+            <input type="hidden" name="status" value="${active ? "PAUSED" : "ACTIVE"}">
+            <button class="nx-btn" type="submit">${active ? "Pauză" : "Activează"}</button>
+          </form>
+          <form method="post" action="/nexora/accounting/invoice-automation/${escapeHtml(row.id)}/status">
+            <input type="hidden" name="status" value="ARCHIVED">
+            <button class="nx-btn danger" type="submit">Arhivează</button>
+          </form>
+        </td>
+      </tr>
+    `;
+  }).join("") : `<tr><td colspan="8"><div class="nx-empty-state">Nu există automatizări de facturi.</div></td></tr>`;
+
+  const runRowsHtml = recentRuns.length ? recentRuns.map((run) => `
+    <tr>
+      <td>
+        <b>${escapeHtml(run.automation_name || "-")}</b>
+        <div class="nx-table-sub">${escapeHtml(run.automation_number || "")}</div>
+      </td>
+      <td>${escapeHtml(run.client_name || "-")}</td>
+      <td>${escapeHtml(run.period_label || "-")}</td>
+      <td>${escapeHtml(run.scheduled_date || "-")}</td>
+      <td>${automationStatusPill(run.status)}</td>
+      <td>${run.factura_id ? `<a class="nx-table-main-link" href="/nexora/facturi/${escapeHtml(run.factura_id)}">${escapeHtml(run.factura_nr || `Factura #${run.factura_id}`)}</a>` : `<span class="nx-table-sub">-</span>`}</td>
+      <td class="nx-right">${run.total ? escapeHtml(money(run.total, fmtMoney)) : "-"}</td>
+      <td><span class="nx-table-sub">${escapeHtml(run.details || "")}</span></td>
+    </tr>
+  `).join("") : `<tr><td colspan="8"><div class="nx-empty-state">Nu există rulări înregistrate.</div></td></tr>`;
+
+  const body = `
+    ${renderAccountingNav("/nexora/accounting/invoice-automation")}
+    ${ok ? `<div class="nx-alert success">${escapeHtml(okMessages[ok] || "Operațiunea a fost finalizată.")} ${generatedFacturaId ? `<a href="/nexora/facturi/${escapeHtml(generatedFacturaId)}">Deschide factura</a>` : ""}</div>` : ""}
+    ${err ? `<div class="nx-alert danger">${escapeHtml(errMessages[err] || "Operațiunea nu a putut fi finalizată.")}</div>` : ""}
+
+    <section class="nx-kpi-grid invoice-kpis">
+      <div class="nx-kpi-card"><div class="nx-kpi-icon blue">AUT</div><div><div class="nx-kpi-label">Automatizări</div><div class="nx-kpi-value">${escapeHtml(stats.total || 0)}</div></div></div>
+      <div class="nx-kpi-card"><div class="nx-kpi-icon green">ON</div><div><div class="nx-kpi-label">Active</div><div class="nx-kpi-value">${escapeHtml(stats.active || 0)}</div></div></div>
+      <div class="nx-kpi-card"><div class="nx-kpi-icon orange">AZI</div><div><div class="nx-kpi-label">Scadente azi</div><div class="nx-kpi-value">${escapeHtml(stats.dueNow || 0)}</div></div></div>
+      <div class="nx-kpi-card"><div class="nx-kpi-icon purple">SPV</div><div><div class="nx-kpi-label">Trimise recent</div><div class="nx-kpi-value">${escapeHtml(stats.sentEfactura || 0)}</div></div></div>
+    </section>
+
+    <div class="nx-two-column-grid">
+      <section class="nx-panel">
+        <div class="nx-panel-head"><div><h2>Regulă nouă</h2><span>factură recurentă lunară</span></div></div>
+        <form method="post" action="/nexora/accounting/invoice-automation/create" class="nx-form" id="invoiceAutomationForm">
+          <label class="nx-field"><span>Client</span><select name="client_id" required>${clientOptions || `<option value="">Nu există clienți</option>`}</select></label>
+          <label class="nx-field"><span>Contract, opțional</span><select name="contract_id"><option value="">Fără contract legat</option>${contractOptions}</select></label>
+          <label class="nx-field"><span>Nume regulă</span><input name="name" placeholder="ex: Abonament mentenanță lunar"></label>
+          <div class="nx-two-column-grid compact">
+            <label class="nx-field"><span>Prima emitere</span><input type="date" name="start_date" value="${escapeHtml(todayIso)}"></label>
+            <label class="nx-field"><span>Ultima emitere</span><input type="date" name="end_date"></label>
+          </div>
+          <div class="nx-two-column-grid compact">
+            <label class="nx-field"><span>Zi emitere</span><input type="number" min="1" max="31" name="issue_day" value="${escapeHtml(todayDay)}"></label>
+            <label class="nx-field"><span>Scadență în zile</span><input type="number" min="0" max="365" name="due_days" value="15"></label>
+          </div>
+          <div class="nx-two-column-grid compact">
+            <label class="nx-field"><span>Monedă</span><select name="currency"><option value="RON">RON</option><option value="EUR">EUR</option><option value="USD">USD</option></select></label>
+            <label class="nx-field"><span>TVA %</span><input name="vat_rate" value="0" placeholder="0 sau 19"></label>
+          </div>
+          <div class="nx-two-column-grid compact">
+            <label class="nx-field"><span>Status</span><select name="status"><option value="ACTIVE">Activă</option><option value="DRAFT">Draft</option><option value="PAUSED">Pauză</option></select></label>
+            <label class="nx-field"><span>e-Factura</span><select name="auto_send_efactura"><option value="1">Trimite automat</option><option value="0">Doar generează</option></select></label>
+          </div>
+          <label class="nx-field"><span>Observații</span><textarea name="notes" rows="3"></textarea></label>
+          <div class="nx-form-actions"><button class="nx-btn primary" type="submit">Salvează automatizarea</button></div>
+        </form>
+      </section>
+
+      <section class="nx-panel">
+        <div class="nx-panel-head"><div><h2>Linii recurente</h2><span>șablon factură</span></div><button class="nx-btn" type="button" data-add-invoice-line>Adaugă linie</button></div>
+        <div class="nx-table-wrap">
+          <table class="nx-table" data-invoice-lines-table>
+            <thead><tr><th>Denumire</th><th>Descriere</th><th>Cant.</th><th>UM</th><th>Preț</th></tr></thead>
+            <tbody>
+              ${[0, 1, 2].map((index) => `
+                <tr>
+                  <td><input form="invoiceAutomationForm" name="line_name[]" ${index === 0 ? "required" : ""} placeholder="${index === 0 ? "Abonament lunar" : ""}"></td>
+                  <td><input form="invoiceAutomationForm" name="line_description[]"></td>
+                  <td><input form="invoiceAutomationForm" name="line_qty[]" value="${index === 0 ? "1" : ""}"></td>
+                  <td><input form="invoiceAutomationForm" name="line_unit[]" value="${index === 0 ? "luna" : ""}"></td>
+                  <td><input form="invoiceAutomationForm" name="line_price[]" value="${index === 0 ? "0" : ""}"></td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <section class="nx-content-card">
+      <div class="nx-section-head"><div><h1>Automatizări facturi</h1><p>Reguli lunare pe client și contract.</p></div></div>
+      <div class="nx-table-wrap">
+        <table class="nx-table">
+          <thead><tr><th>Regulă</th><th>Client</th><th>Programare</th><th>Status</th><th class="nx-right">Valoare</th><th>e-Factura</th><th>Ultima rulare</th><th>Acțiuni</th></tr></thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="nx-content-card">
+      <div class="nx-section-head"><div><h1>Istoric rulări</h1><p>Facturi generate și status SPV.</p></div></div>
+      <div class="nx-table-wrap">
+        <table class="nx-table">
+          <thead><tr><th>Regulă</th><th>Client</th><th>Perioadă</th><th>Data</th><th>Status</th><th>Factură</th><th class="nx-right">Total</th><th>Detalii</th></tr></thead>
+          <tbody>${runRowsHtml}</tbody>
+        </table>
+      </div>
+    </section>
+
+    <script>
+      (() => {
+        const table = document.querySelector("[data-invoice-lines-table] tbody");
+        const add = document.querySelector("[data-add-invoice-line]");
+        if (!table || !add) return;
+        add.addEventListener("click", () => {
+          const row = document.createElement("tr");
+          row.innerHTML = '<td><input form="invoiceAutomationForm" name="line_name[]"></td><td><input form="invoiceAutomationForm" name="line_description[]"></td><td><input form="invoiceAutomationForm" name="line_qty[]" value="1"></td><td><input form="invoiceAutomationForm" name="line_unit[]" value="buc"></td><td><input form="invoiceAutomationForm" name="line_price[]" value="0"></td>';
+          table.appendChild(row);
+          row.querySelector("input")?.focus();
+        });
+      })();
+    </script>
+  `;
+
+  return renderNexoraShell({
+    title: "Automatizare facturi",
+    appName: "Nexora ERP",
+    companyName,
+    user: options.user,
+    currentPath: "/nexora/accounting/invoice-automation",
+    eyebrow: "Financiar & Contabilitate",
+    pageTitle: "Automatizare facturi",
     body
   });
 }
@@ -1210,6 +1418,7 @@ export {
   renderNexoraAccountingConsumptionDetailPage,
   renderNexoraAccountingConsumptionPage,
   renderNexoraAccountingFixedAssetsPage,
+  renderNexoraAccountingInvoiceAutomationPage,
   renderNexoraAccountingRegistersPage,
   renderNexoraAccountingTransactionsPage,
   renderNexoraAccountingTrialBalancePage,

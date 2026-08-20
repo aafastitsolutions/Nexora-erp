@@ -69,11 +69,11 @@ try {
   assert.match(html, /Pensiunea Outreach/);
   assert.match(html, /Control campanie email/);
   assert.match(html, /Mesaje care vor fi trimise/);
-  assert.match(html, /Publicati proprietatea pe Trevoro/);
-  assert.match(html, /fixed monthly plan/);
-  assert.match(html, /99 lei\/luna/);
-  assert.match(html, /19 EUR\/month/);
-  assert.match(html, /0% comision/);
+  assert.match(html, /programul de lansare/i);
+  assert.doesNotMatch(html, /fixed monthly plan/);
+  assert.doesNotMatch(html, /99 lei\/luna/);
+  assert.doesNotMatch(html, /19 EUR\/month/);
+  assert.doesNotMatch(html, /0% comision/);
   assert.match(html, /Start/);
   assert.match(html, /Pauză/);
   assert.match(html, /Oprire/);

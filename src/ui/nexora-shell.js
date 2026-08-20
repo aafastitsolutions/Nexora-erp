@@ -20,7 +20,9 @@ function renderNexoraShell(options = {}) {
   const actionsHtml = options.actionsHtml || "";
   const language = String(options.language || options.user?.language || "ro").toLowerCase() === "en" ? "en" : "ro";
   const isSuperAdmin = Number(options.isSuperAdmin || options.user?.is_super_admin || 0) === 1;
-  const isCompanyAdmin = Number(options.isCompanyAdmin || options.user?.is_company_admin || 0) === 1;
+  const isCompanyAdmin = Number(options.isCompanyAdmin || options.user?.is_company_admin || 0) === 1
+    || String(options.user?.role || "").trim().toLowerCase() === "admin";
+  const companyId = Number(options.companyId || options.user?.company_id || 0);
   const userModules = Array.isArray(options.user?.effective_module_permissions)
     ? options.user.effective_module_permissions
     : Array.isArray(options.user?.module_permissions)
@@ -47,6 +49,7 @@ function renderNexoraShell(options = {}) {
     companyName,
     isSuperAdmin,
     isCompanyAdmin,
+    companyId,
     ...(userModules ? { userModules } : {})
   });
 

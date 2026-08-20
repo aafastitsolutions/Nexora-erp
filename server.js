@@ -40,7 +40,7 @@ import { i18nMiddleware, normalizeLanguage } from "./lib/i18n.js";
 import { maybeGenerateBillingInvoice } from "./lib/billing-invoices.js";
 import { processDmsTemplate } from "./lib/dms-autofill.js";
 import { extractDmsOcrText, getDmsOcrRuntimeStatus, suggestDmsOcrProfileFields } from "./lib/dms-ocr.js";
-import { buildDraftInvoiceNumber, ensureOfficialInvoiceNumber, formatInvoiceDisplayNumber, nextConfiguredInvoiceNumber } from "./lib/invoice-numbering.js";
+import { buildDraftInvoiceNumber, ensureOfficialInvoiceNumber, formatInvoiceDisplayNumber, nextConfiguredInvoiceNumber, recordIssuedInvoiceNumber } from "./lib/invoice-numbering.js";
 import { escapeHtml, fmt2, fmtMoney, hasModuleAccess, normalizeCui, todayISO } from "./lib/helpers.js";
 import { renderPlanCards } from "./lib/plan-cards.js";
 import { registerAccountingRoutes } from "./routes/accounting-routes.js";
@@ -63,8 +63,10 @@ import { registerTravelRoutes, registerTrevoroLaunchRoutes } from "./routes/trav
 import { registerEmarqetRoutes } from "./routes/emarqet-routes.js";
 import { registerEmarqetPublicRoutes } from "./routes/emarqet-public-routes.js";
 import { registerMobileAppsRoutes } from "./routes/mobile-apps-routes.js";
+import { registerNextPdfRoutes } from "./routes/nextpdf-routes.js";
 import { registerProcurementRoutes } from "./routes/procurement-routes.js";
 import { registerProjectsRoutes } from "./routes/projects-routes.js";
+import { registerQrlabRoutes } from "./routes/qrlab-routes.js";
 import { registerQuotesRoutes } from "./routes/quotes-routes.js";
 import { registerReportsRoutes } from "./routes/reports-routes.js";
 import { registerScmRoutes } from "./routes/scm-routes.js";
@@ -115,6 +117,8 @@ app.post("/language", (req, res) => {
 });
 registerBillingRoutes(app, { db, requireAuth, requireRole, getSetting, refreshSessionCompanyAccess });
 registerStripeReconciliationRoutes(app, { db, requireAuth, requireSuperAdmin });
+registerNextPdfRoutes(app, { requireAuth });
+registerQrlabRoutes(app, { db, requireAuth });
 registerDashboardRoutes(app, { db, requireAuth, todayISO, escapeHtml, fmtMoney, crmShellStart, crmShellEnd });
 
 const { templateHtml, invoiceTemplateHtml, quoteTemplateHtml, uiHtml } = loadTemplates(__dirname);
@@ -164,6 +168,7 @@ registerFacturiRoutes(app, {
   normalizeCui,
   path,
   recalcFacturaTotals,
+  recordIssuedInvoiceNumber,
   renderPdfBuffer,
   requireAuth,
   ensureOfficialInvoiceNumber,
@@ -1905,6 +1910,24 @@ function getUserRoleByEmail(userEmail = "") {
   return String(row?.role || "").trim().toLowerCase();
 }
 
+function canManageNextPdfByEmail(userEmail = "") {
+  const normalizedEmail = String(userEmail || "").trim().toLowerCase();
+  if (!normalizedEmail) return false;
+  if (isSuperAdminUser(normalizedEmail)) return true;
+
+  const ownerCompanyId = Number(process.env.NEXTPDF_OWNER_COMPANY_ID || process.env.BILLING_ISSUER_COMPANY_ID || 1);
+  const user = db.prepare(`
+    SELECT role, company_id, is_company_admin
+    FROM users
+    WHERE lower(email)=?
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(normalizedEmail);
+  const isAdmin = String(user?.role || "").trim().toLowerCase() === "admin"
+    || Number(user?.is_company_admin || 0) === 1;
+  return isAdmin && Number(user?.company_id || 0) === ownerCompanyId;
+}
+
 function canAccessSpvSidebar(userEmail = "") {
   const normalizedEmail = String(userEmail || "").trim().toLowerCase();
   if (!normalizedEmail) return false;
@@ -1964,6 +1987,7 @@ function getErpWorkspaceModules(active, userModules = []) {
     "accounting-declarations",
     "accounting-consumption",
     "accounting-receivables",
+    "accounting-invoice-automation",
     "accounting-reconciliation"
   ].includes(activeKey);
   const tipizateOpen = ["tipizate", "tipizate-registru"].includes(activeKey);
@@ -2022,6 +2046,7 @@ function getErpWorkspaceModules(active, userModules = []) {
           ${workspaceNavItem({ href: "/accounting/declarations", label: "Declarații ANAF", iconKey: "accounting", isActive: activeKey === "accounting-declarations" })}
           ${workspaceNavItem({ href: "/accounting/expenses", label: "Cheltuieli", iconKey: "accounting", isActive: activeKey === "accounting-expenses" })}
           ${workspaceNavItem({ href: "/accounting/consumption", label: "Bonuri de consum", iconKey: "accounting", isActive: activeKey === "accounting-consumption" })}
+          ${hasModuleAccess(userModules, "facturi") ? workspaceNavItem({ href: "/accounting/invoice-automation", label: "Automatizare facturi", iconKey: "facturi", isActive: activeKey === "accounting-invoice-automation" }) : ""}
           ${hasModuleAccess(userModules, "facturi") ? workspaceNavItem({ href: "/accounting/receivables", label: "Facturi de urmărit", iconKey: "facturi", isActive: activeKey === "accounting-receivables" }) : ""}
           ${workspaceNavItem({ href: "/accounting#reconciliere", label: "Reconciliere plăți", iconKey: "accounting", isActive: activeKey === "accounting-reconciliation" })}
         </div>
@@ -2063,6 +2088,7 @@ function buildWorkspaceNavigation(active, userModules = [], userEmail = "") {
   const activeKey = String(active || "");
   const contractsOpen = ["contracts", "form"].includes(activeKey);
   const isSuperAdmin = isSuperAdminUser(userEmail);
+  const canManageNextPdf = canManageNextPdfByEmail(userEmail);
   const canAccessSpv = canAccessSpvSidebar(userEmail);
   const erpModules = getErpWorkspaceModules(activeKey, userModules);
   const erpModuleKeys = erpModules.map((module) => module.moduleKey);
@@ -2072,6 +2098,7 @@ function buildWorkspaceNavigation(active, userModules = [], userEmail = "") {
 
   const crmItems = [
     hasModuleAccess(userModules, "dashboard") ? workspaceNavItem({ href: "/dashboard", label: "Dashboard", iconKey: "dashboard", isActive: activeKey === "dashboard" }) : "",
+    canManageNextPdf ? workspaceNavItem({ href: "/nexora/super-admin/nextpdf", label: "NextPDF", iconKey: "documents", isActive: activeKey === "superadmin-nextpdf" }) : "",
     hasModuleAccess(userModules, "clients") ? workspaceNavItem({ href: "/clients", label: "Clienți", iconKey: "clients", isActive: activeKey === "clients" }) : "",
     hasModuleAccess(userModules, "quotes") ? workspaceNavItem({ href: "/quotes", label: "Oferte", iconKey: "quotes", isActive: activeKey === "quotes" }) : "",
     hasModuleAccess(userModules, "contracts") ? workspaceNavItem({ href: "/contracte", label: "Contracte", iconKey: "contracts", isActive: activeKey === "contracts" }) : "",
@@ -2210,6 +2237,7 @@ function classicFavoriteRow(module, favoriteSet) {
 function buildClassicNavigation(active, userModules = [], userEmail = "") {
   const activeKey = String(active || "");
   const isSuperAdmin = isSuperAdminUser(userEmail);
+  const canManageNextPdf = canManageNextPdfByEmail(userEmail);
   const canAccessSpv = canAccessSpvSidebar(userEmail);
   const erpModules = getErpWorkspaceModules(activeKey, userModules);
   const erpModuleKeys = erpModules.map((module) => module.moduleKey);
@@ -2252,6 +2280,7 @@ function buildClassicNavigation(active, userModules = [], userEmail = "") {
     classicMenuLink({ href: "/accounting/declarations", label: "Declarații ANAF", iconKey: "accounting", isActive: activeKey === "accounting-declarations" }),
     classicMenuLink({ href: "/accounting/expenses", label: "Cheltuieli", iconKey: "accounting", isActive: activeKey === "accounting-expenses" }),
     classicMenuLink({ href: "/accounting/consumption", label: "Bonuri de consum", iconKey: "accounting", isActive: activeKey === "accounting-consumption" }),
+    hasModuleAccess(userModules, "facturi") ? classicMenuLink({ href: "/accounting/invoice-automation", label: "Automatizare facturi", iconKey: "facturi", isActive: activeKey === "accounting-invoice-automation" }) : "",
     hasModuleAccess(userModules, "facturi") ? classicMenuLink({ href: "/accounting/receivables", label: "Facturi de urmărit", iconKey: "facturi", isActive: activeKey === "accounting-receivables" }) : "",
     classicMenuLink({ href: "/accounting#reconciliere", label: "Reconciliere plăți", iconKey: "accounting", isActive: activeKey === "accounting-reconciliation" })
   ].join("") : "";
@@ -2286,6 +2315,7 @@ function buildClassicNavigation(active, userModules = [], userEmail = "") {
       "accounting-declarations",
       "accounting-consumption",
       "accounting-receivables",
+      "accounting-invoice-automation",
       "accounting-reconciliation",
       "tipizate",
       "tipizate-registru",
@@ -2313,7 +2343,7 @@ function buildClassicNavigation(active, userModules = [], userEmail = "") {
   const adminMenu = classicMenuDropdown({
     label: "Setări",
     iconKey: "setari",
-    isActive: ["accounts", "setari", "superadmin", "superadmin-payments", "superadmin-stripe-reconciliation"].includes(activeKey),
+    isActive: ["accounts", "setari", "superadmin", "superadmin-payments", "superadmin-nextpdf", "superadmin-stripe-reconciliation"].includes(activeKey),
     align: "right",
     itemsHtml: [
       classicMenuSection("Administrare", [
@@ -2323,6 +2353,7 @@ function buildClassicNavigation(active, userModules = [], userEmail = "") {
       classicMenuSection("Super admin", [
         isSuperAdmin ? classicMenuLink({ href: "/nexora/super-admin/companies", label: "Companii", iconKey: "superadmin", isActive: activeKey === "superadmin" }) : "",
         isSuperAdmin ? classicMenuLink({ href: "/nexora/super-admin/payments", label: "Plăți", iconKey: "facturi", isActive: activeKey === "superadmin-payments" }) : "",
+        canManageNextPdf ? classicMenuLink({ href: "/nexora/super-admin/nextpdf", label: "NextPDF", iconKey: "documents", isActive: activeKey === "superadmin-nextpdf" }) : "",
         isSuperAdmin ? classicMenuLink({ href: "/nexora/super-admin/stripe-reconciliation", label: "Reconciliere Stripe", iconKey: "accounting", isActive: activeKey === "superadmin-stripe-reconciliation" }) : ""
       ].join(""))
     ].join("")
@@ -4225,17 +4256,20 @@ function buildFacturaXmlContent(id, companyId = null){
   `).all(id);
 
   const totals = recalcFacturaTotals(id, companyId);
+  const xmlSetting = (key, fallback = "") => hasTenantScope
+    ? getCompanySetting(Number(companyId), key, fallback)
+    : getSetting(key, fallback);
 
-  const company_name = getSetting("company_name", COMPANY.name);
-  const company_cui = getSetting("company_cui", COMPANY.cui);
-  const company_rc = getSetting("company_rc", COMPANY.rc || "");
-  const company_address = getSetting("company_address", COMPANY.address);
-  const company_iban = String(getSetting("company_iban", COMPANY.iban || "") || "").trim();
-  const company_bank = String(getSetting("company_bank", COMPANY.bank || "") || "").trim();
-  const company_rep = String(getSetting("company_rep", COMPANY.rep || COMPANY.representative || "") || "").trim();
-  const company_phone = String(getSetting("company_phone", COMPANY.phone || "") || "").trim();
-  const company_email = String(getSetting("company_email", COMPANY.email || "") || "").trim();
-  const companyVatSettingRaw = String(getSetting("company_vat", "") || "").trim();
+  const company_name = xmlSetting("company_name", COMPANY.name);
+  const company_cui = xmlSetting("company_cui", COMPANY.cui);
+  const company_rc = xmlSetting("company_rc", COMPANY.rc || "");
+  const company_address = xmlSetting("company_address", COMPANY.address);
+  const company_iban = String(xmlSetting("company_iban", COMPANY.iban || "") || "").trim();
+  const company_bank = String(xmlSetting("company_bank", COMPANY.bank || "") || "").trim();
+  const company_rep = String(xmlSetting("company_rep", COMPANY.rep || COMPANY.representative || "") || "").trim();
+  const company_phone = String(xmlSetting("company_phone", COMPANY.phone || "") || "").trim();
+  const company_email = String(xmlSetting("company_email", COMPANY.email || "") || "").trim();
+  const companyVatSettingRaw = String(xmlSetting("company_vat", "") || "").trim();
 
   const esc = (v) => escapeHtml(String(v ?? ""));
   const normalizeKey = (value) => String(value || "")
@@ -4464,10 +4498,26 @@ function buildFacturaXmlContent(id, companyId = null){
   const exemptionReasonCode = taxCategoryCode === "O" ? "VATEX-EU-O" : "";
   const exemptionReasonText = taxCategoryCode === "O"
     ? "Nu face obiectul TVA"
-    : (taxRatePercent <= 0 ? String(getSetting("company_vat_exemption_reason", "Scutit de TVA conform legislatiei aplicabile.") || "").trim() : "");
+    : (taxRatePercent <= 0 ? String(xmlSetting("company_vat_exemption_reason", "Scutit de TVA conform legislatiei aplicabile.") || "").trim() : "");
   const invoiceNote = taxCategoryCode === "O"
     ? "REGIM SPECIAL DE SCUTIRE PENTRU INTREPRINDERILE MICI"
     : "";
+  const invoiceTypeCode = ["380", "384"].includes(String(f.invoice_type_code || ""))
+    ? String(f.invoice_type_code)
+    : "380";
+  const correctedInvoice = Number(f.correction_of_factura_id || 0) > 0
+    ? db.prepare(`SELECT factura_nr, data_emitere FROM facturi WHERE id=? AND company_id=?`).get(f.correction_of_factura_id, f.company_id)
+    : null;
+  const correctionReferenceXml = correctedInvoice
+    ? `
+  <cac:BillingReference>
+    <cac:InvoiceDocumentReference>
+      <cbc:ID>${esc(correctedInvoice.factura_nr)}</cbc:ID>
+      <cbc:IssueDate>${esc(String(correctedInvoice.data_emitere || "").slice(0, 10))}</cbc:IssueDate>
+    </cac:InvoiceDocumentReference>
+  </cac:BillingReference>`
+    : "";
+  const documentNotes = [invoiceNote, String(f.cancellation_reason || "").trim()].filter(Boolean);
   const supplierPartyTaxSchemeXml = sellerVatRegistered && String(company_cui || "").trim()
     ? `
       <cac:PartyTaxScheme>
@@ -4596,9 +4646,10 @@ function buildFacturaXmlContent(id, companyId = null){
   <cbc:ID>${esc(f.factura_nr)}</cbc:ID>
   <cbc:IssueDate>${String(f.data_emitere).slice(0,10)}</cbc:IssueDate>
   <cbc:DueDate>${f.scadenta ? String(f.scadenta).slice(0,10) : String(f.data_emitere).slice(0,10)}</cbc:DueDate>
-  <cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>
-  ${invoiceNote ? `<cbc:Note>${esc(invoiceNote)}</cbc:Note>` : ""}
+  <cbc:InvoiceTypeCode>${invoiceTypeCode}</cbc:InvoiceTypeCode>
+  ${documentNotes.map((note) => `<cbc:Note>${esc(note)}</cbc:Note>`).join("\n  ")}
   <cbc:DocumentCurrencyCode>${esc(f.moneda || "RON")}</cbc:DocumentCurrencyCode>
+  ${correctionReferenceXml}
 
   <cac:AccountingSupplierParty>
     <cac:Party>
@@ -4747,7 +4798,26 @@ function handleDmsOcrUpload(req, res, next) {
   });
 }
 
-registerAccountingRoutes(app, { db, requireAuth, requireSpvAccess, canAccessSpvUser, escapeHtml, fmtMoney, crmShellStart, crmShellEnd, fs, path, __dirname, upload });
+registerAccountingRoutes(app, {
+  COMPANY,
+  anafUploadFactura,
+  db,
+  ensureFacturaXmlGenerated,
+  ensureOfficialInvoiceNumber,
+  requireAuth,
+  requireSpvAccess,
+  canAccessSpvUser,
+  escapeHtml,
+  fmtMoney,
+  crmShellStart,
+  crmShellEnd,
+  fs,
+  getCompanySetting,
+  getSetting,
+  path,
+  __dirname,
+  upload
+});
 registerInventoryRoutes(app, { db, requireAuth, escapeHtml, fmtMoney, crmShellStart, crmShellEnd, fs, path, __dirname, upload });
 registerProcurementRoutes(app, { db, requireAuth, fmtMoney, fs, path, __dirname, upload });
 registerManufacturingRoutes(app, { db, requireAuth });
@@ -4838,6 +4908,7 @@ const COMPANY_SETTING_COLUMNS = {
   company_iban: "iban",
   company_rep: "representative"
 };
+const COMPANY_PROFILE_SETTING_KEYS = Object.keys(COMPANY_SETTING_COLUMNS);
 
 function readGlobalSetting(k, def = "") {
   const r = db.prepare("SELECT value FROM app_settings WHERE key=?").get(k);
@@ -4915,6 +4986,46 @@ function getSetting(k, def=""){
 
 function setSetting(k,v){
   setCompanySetting(currentRequestCompanyId(), k, v);
+}
+
+function buildCompanyProfileSettings(companyDetails = {}, companyId = currentRequestCompanyId()) {
+  const normalizedCompanyId = Number(companyId || 0);
+  const details = companyDetails || {};
+  return {
+    company_name: getCompanySetting(normalizedCompanyId, "company_name", details.name || "QR-LAB SRL"),
+    company_cui: getCompanySetting(normalizedCompanyId, "company_cui", details.cui || ""),
+    company_rc: getCompanySetting(normalizedCompanyId, "company_rc", details.rc || ""),
+    company_address: getCompanySetting(normalizedCompanyId, "company_address", details.address || ""),
+    company_iban: getCompanySetting(normalizedCompanyId, "company_iban", details.iban || ""),
+    company_bank: getCompanySetting(normalizedCompanyId, "company_bank", details.bank || ""),
+    company_rep: getCompanySetting(normalizedCompanyId, "company_rep", details.representative || "")
+  };
+}
+
+function normalizeCompanyProfilePayload(body = {}, fallback = {}) {
+  const payload = {};
+  for (const key of COMPANY_PROFILE_SETTING_KEYS) {
+    payload[key] = Object.prototype.hasOwnProperty.call(body || {}, key)
+      ? String(body?.[key] || "").trim()
+      : String(fallback?.[key] || "").trim();
+  }
+  return payload;
+}
+
+function setGlobalSetting(k, v) {
+  const key = String(k || "").trim();
+  if (!key) return;
+  db.prepare("INSERT OR REPLACE INTO app_settings(key,value) VALUES(?,?)").run(key, String(v || ""));
+}
+
+function syncPrimaryCompanyProfileGlobals(companyId, profileValues = {}) {
+  const normalizedCompanyId = Number(companyId || 0);
+  if (!normalizedCompanyId || normalizedCompanyId !== resolvePrimaryCompanyIdForGlobalSettings()) return;
+  for (const key of COMPANY_PROFILE_SETTING_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(profileValues || {}, key)) {
+      setGlobalSetting(key, profileValues[key]);
+    }
+  }
 }
 
 const DEFAULT_ANAF_REDIRECT_URI = "https://nexora.aafastitsolutions.ro/oauth/anaf/callback";
@@ -5153,18 +5264,19 @@ function getDmsAutofillProfile(companyId) {
     FROM companies
     WHERE id=?
   `).get(normalizedCompanyId) || {};
+  const companyProfile = buildCompanyProfileSettings(company, normalizedCompanyId);
 
   return {
-    company_name: String(company.name || getCompanySetting(normalizedCompanyId, "company_name", "") || "").trim(),
-    company_cui: String(company.cui || getCompanySetting(normalizedCompanyId, "company_cui", "") || "").trim(),
-    company_rc: String(company.rc || getCompanySetting(normalizedCompanyId, "company_rc", "") || "").trim(),
-    company_address: String(company.address || getCompanySetting(normalizedCompanyId, "company_address", "") || "").trim(),
-    company_bank: String(company.bank || getCompanySetting(normalizedCompanyId, "company_bank", "") || "").trim(),
-    company_iban: String(company.iban || getCompanySetting(normalizedCompanyId, "company_iban", "") || "").trim(),
+    company_name: String(companyProfile.company_name || "").trim(),
+    company_cui: String(companyProfile.company_cui || "").trim(),
+    company_rc: String(companyProfile.company_rc || "").trim(),
+    company_address: String(companyProfile.company_address || "").trim(),
+    company_bank: String(companyProfile.company_bank || "").trim(),
+    company_iban: String(companyProfile.company_iban || "").trim(),
     company_phone: String(getCompanySetting(normalizedCompanyId, "company_phone", "") || "").trim(),
     company_email: String(getCompanySetting(normalizedCompanyId, "company_email", "") || "").trim(),
     capital_social: String(getCompanySetting(normalizedCompanyId, "capital_social", "") || "").trim(),
-    legal_representative: String(company.representative || getCompanySetting(normalizedCompanyId, "company_rep", "") || "").trim(),
+    legal_representative: String(companyProfile.company_rep || "").trim(),
     legal_representative_cnp: String(getCompanySetting(normalizedCompanyId, "company_rep_cnp", "") || "").trim(),
     legal_representative_role: String(getCompanySetting(normalizedCompanyId, "company_rep_role", "Administrator") || "").trim(),
     legal_representative_ci_series: String(getCompanySetting(normalizedCompanyId, "company_rep_ci_series", "") || "").trim(),
@@ -10845,14 +10957,9 @@ const stripeWebhookConfigured = Boolean(String(process.env.STRIPE_WEBHOOK_SECRET
 const activeUserCount = Number(activeSubscription?.seats_used ?? 1) || 1;
 const companyModuleLimit = Number(activeSubscription?.max_active_modules || 0);
 const activeOptionalModuleCount = countOptionalCompanyModules(companyContext.activeModules);
+const companyProfile = buildCompanyProfileSettings(companyDetails, companyId);
 const settings = {
-  company_name: companyDetails.name || getSetting("company_name", "QR-LAB SRL"),
-  company_cui: companyDetails.cui || getSetting("company_cui", ""),
-  company_rc: companyDetails.rc || getSetting("company_rc", ""),
-  company_address: companyDetails.address || getSetting("company_address", ""),
-  company_iban: companyDetails.iban || getSetting("company_iban", ""),
-  company_bank: companyDetails.bank || getSetting("company_bank", ""),
-  company_rep: companyDetails.representative || getSetting("company_rep", ""),
+  ...companyProfile,
   company_rep_cnp: getSetting("company_rep_cnp", ""),
   company_rep_role: getSetting("company_rep_role", "Administrator"),
   company_rep_ci_series: getSetting("company_rep_ci_series", ""),
@@ -11024,6 +11131,7 @@ const groupedModuleCards = buildCompanyModuleGroups(companyContext).map((group) 
     </div>
   `;
 }).join("");
+const companyProfile = buildCompanyProfileSettings(companyDetails, companyId);
 
 const html = `
 <!doctype html>
@@ -11214,39 +11322,39 @@ ${crmShellStart("setari", "Setări", "Configurare firmă, facturi și identitate
       <form method="post" action="/setari" class="crm-stack">
         <div>
           <label class="crm-label">Nume firmă</label>
-          <input class="crm-input" name="company_name" value="${escapeHtml(companyDetails.name || getSetting("company_name","QR-LAB SRL"))}">
+          <input class="crm-input" name="company_name" value="${escapeHtml(companyProfile.company_name)}">
         </div>
 
         <div class="crm-grid-2" style="overflow:visible">
           <div>
             <label class="crm-label">CUI</label>
-            <input class="crm-input" name="company_cui" value="${escapeHtml(companyDetails.cui || getSetting("company_cui",""))}">
+            <input class="crm-input" name="company_cui" value="${escapeHtml(companyProfile.company_cui)}">
           </div>
           <div>
             <label class="crm-label">RC</label>
-            <input class="crm-input" name="company_rc" value="${escapeHtml(companyDetails.rc || getSetting("company_rc",""))}">
+            <input class="crm-input" name="company_rc" value="${escapeHtml(companyProfile.company_rc)}">
           </div>
         </div>
 
         <div>
           <label class="crm-label">Adresă</label>
-          <input class="crm-input" name="company_address" value="${escapeHtml(companyDetails.address || getSetting("company_address",""))}">
+          <input class="crm-input" name="company_address" value="${escapeHtml(companyProfile.company_address)}">
         </div>
 
         <div class="crm-grid-2" style="overflow:visible">
           <div>
             <label class="crm-label">IBAN</label>
-            <input class="crm-input" name="company_iban" value="${escapeHtml(companyDetails.iban || getSetting("company_iban",""))}">
+            <input class="crm-input" name="company_iban" value="${escapeHtml(companyProfile.company_iban)}">
           </div>
           <div>
             <label class="crm-label">Banca</label>
-            <input class="crm-input" name="company_bank" value="${escapeHtml(companyDetails.bank || getSetting("company_bank",""))}">
+            <input class="crm-input" name="company_bank" value="${escapeHtml(companyProfile.company_bank)}">
           </div>
         </div>
 
         <div>
           <label class="crm-label">Reprezentant</label>
-          <input class="crm-input" name="company_rep" value="${escapeHtml(companyDetails.representative || getSetting("company_rep",""))}">
+          <input class="crm-input" name="company_rep" value="${escapeHtml(companyProfile.company_rep)}">
         </div>
 
 	        <div class="crm-grid-2" style="overflow:visible">
@@ -11550,35 +11658,48 @@ const requestedTab = String(req.body?.settings_tab || "company").trim().toLowerC
 const nextTab = ["company", "invoice", "spv"].includes(requestedTab) ? requestedTab : "company";
 const companyPayloadKeys = ["company_name", "company_cui", "company_rc", "company_address", "company_bank", "company_iban", "company_rep"];
 const hasCompanyPayload = companyPayloadKeys.some((key) => Object.prototype.hasOwnProperty.call(req.body || {}, key));
+const currentCompanyDetails = companyId
+  ? (db.prepare("SELECT name, cui, rc, address, bank, iban, representative FROM companies WHERE id=?").get(companyId) || {})
+  : {};
+const currentCompanyProfile = buildCompanyProfileSettings(currentCompanyDetails, companyId);
+const companyProfilePayload = normalizeCompanyProfilePayload(req.body, currentCompanyProfile);
 
-for(const k of Object.keys(req.body)){
-if(["return_to", "settings_tab"].includes(k)) continue;
-if(!canManageSpvSettings && String(k || "").startsWith("anaf_")) continue;
-setSetting(k,req.body[k]);
-}
+const saveSettings = db.transaction(() => {
+  for(const k of Object.keys(req.body)){
+  if(["return_to", "settings_tab"].includes(k)) continue;
+  if(!canManageSpvSettings && String(k || "").startsWith("anaf_")) continue;
+  setCompanySetting(companyId,k,req.body[k]);
+  }
+
+  if (companyId && hasCompanyPayload) {
+    db.prepare(`
+      UPDATE companies
+      SET name=?,
+          cui=?,
+          rc=?,
+          address=?,
+          bank=?,
+          iban=?,
+          representative=?,
+          updated_at=datetime('now')
+      WHERE id=?
+    `).run(
+      companyProfilePayload.company_name,
+      companyProfilePayload.company_cui,
+      companyProfilePayload.company_rc,
+      companyProfilePayload.company_address,
+      companyProfilePayload.company_bank,
+      companyProfilePayload.company_iban,
+      companyProfilePayload.company_rep,
+      companyId
+    );
+    syncPrimaryCompanyProfileGlobals(companyId, companyProfilePayload);
+  }
+});
+
+saveSettings();
 
 if (companyId && hasCompanyPayload) {
-  db.prepare(`
-    UPDATE companies
-    SET name=?,
-        cui=?,
-        rc=?,
-        address=?,
-        bank=?,
-        iban=?,
-        representative=?,
-        updated_at=datetime('now')
-    WHERE id=?
-  `).run(
-    String(req.body?.company_name || "").trim(),
-    String(req.body?.company_cui || "").trim(),
-    String(req.body?.company_rc || "").trim(),
-    String(req.body?.company_address || "").trim(),
-    String(req.body?.company_bank || "").trim(),
-    String(req.body?.company_iban || "").trim(),
-    String(req.body?.company_rep || "").trim(),
-    companyId
-  );
   refreshSessionCompanyAccess(req);
 }
 

@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Trevoro daily outreach batch
+
+[Timer]
+OnCalendar=*-*-* 06:30:00 UTC
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target

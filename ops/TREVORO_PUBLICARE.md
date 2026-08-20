@@ -21,6 +21,21 @@ Restart standard:
 scripts/restart-trevoro-public.sh
 ```
 
+Pentru modificari de cod in site-ul public Trevoro:
+
+```bash
+cd /home/server/Trevoro
+npm run build
+systemctl --user restart trevoro-site.service
+```
+
+Important pentru login:
+
+- Build-ul Next trebuie rulat cu aceleasi secrete ca runtime-ul. Verifica sa existe in `/home/server/Trevoro/.env` cel putin `TREVORO_AUTH_SECRET` si `TREVORO_OWNER_API_SECRET`.
+- `TREVORO_AUTH_SECRET` semneaza `login_challenge`; daca lipseste la build dar exista in systemd la runtime, pagina genereaza challenge invalid si login-ul cade in `error=1`.
+- `TREVORO_OWNER_API_SECRET` trebuie sa fie acelasi cu secretul Nexora public; daca difera, Trevoro nu gaseste conturile de proprietar si afiseaza cont negasit.
+- Nexora public ramane pe `trevoro-vps` pentru `https://nexora.aafastitsolutions.ro`; daca modifici rutele API din `/home/server/Nexora`, sincronizeaza codul pe VPS si reporneste `nexora.service`.
+
 Verificari rapide:
 
 ```bash

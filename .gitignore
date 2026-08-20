@@ -25,6 +25,8 @@ _project_archive/
 logs/
 *.log
 .DS_Store
+.sync-backups/
+utile/locks/
 
 # Local datasets and generated operational artifacts
 data/onrc/
@@ -47,3 +49,8 @@ utile/**/*.pdf
 utile/**/*.docx
 utile/**/*.xlsx
 utile/**/*.mp4
+utile/*.png
+utile/Diagramă.csv
+utile/Metadate.csv
+utile/Tabel.csv
+utile/CV_*.html

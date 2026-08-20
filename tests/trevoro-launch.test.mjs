@@ -69,12 +69,12 @@ try {
   let response = await fetch(`${baseUrl}/`);
   let html = await response.text();
   assert.equal(response.status, 200);
-  assert.match(html, /Umple sezonul fără comisioane pe rezervări\./);
+  assert.match(html, /Înscrie proprietatea pe Trevoro\./);
   assert.match(html, /Beneficii pentru proprietari/);
   assert.match(html, /Cum funcționează/);
-  assert.match(html, /Basic 99 lei\/lună/);
-  assert.match(html, /Premium 149 lei\/lună/);
-  assert.match(html, /Business 249 lei\/lună/);
+  assert.match(html, /Program de lansare/);
+  assert.doesNotMatch(html, /99 lei\/lună/);
+  assert.doesNotMatch(html, /0% comision/);
   assert.match(html, /Formular/);
   assert.doesNotMatch(html, /Pagina publică/);
   assert.doesNotMatch(html, /marketplace/i);
@@ -110,28 +110,28 @@ try {
     redirect: "manual"
 	  });
 	  assert.equal(response.status, 302);
-	  assert.match(response.headers.get("location") || "", /\/\?ok=1#formular/);
+	  assert.match(response.headers.get("location") || "", /\/\?ok=founding#formular/);
 
 	  const lead = db.prepare("SELECT * FROM travel_leads WHERE company_id=? AND email='launch@example.test'").get(companyId);
 	  assert.ok(lead);
 	  assert.equal(lead.source, "trevoro_landing");
-	  assert.equal(lead.status, "nou");
+	  assert.equal(lead.status, "activ");
 	  assert.equal(lead.notes, "Lead din homepage launch.");
 	  const property = db.prepare("SELECT * FROM travel_properties WHERE company_id=? AND lead_id=?").get(companyId, lead.id);
 	  assert.ok(property);
 	  assert.equal(property.name, "Pensiunea Launch");
-	  assert.equal(property.status, "plata_necesara");
-	  assert.equal(property.partner_plan, "basic_monthly");
-	  assert.equal(property.subscription_status, "payment_required");
-	  assert.equal(property.monthly_price_ron, 99);
-	  assert.equal(property.monthly_price_amount, 99);
+	  assert.equal(property.status, "activ");
+	  assert.equal(property.partner_plan, "founding_partner");
+	  assert.equal(property.subscription_status, "free_12_months");
+	  assert.equal(property.monthly_price_ron, 0);
+	  assert.equal(property.monthly_price_amount, 0);
 	  assert.equal(property.monthly_price_currency, "RON");
 	  assert.equal(property.activation_source, "trevoro_landing");
 	  assert.equal(property.account_email, "launch@example.test");
 	  assert.equal(property.account_status, "active");
 	  assert.ok(property.password_salt);
 	  assert.ok(property.password_hash);
-	  assert.equal(property.free_until, null);
+	  assert.ok(property.free_until);
 	  assert.equal(
 	    db.prepare("SELECT COUNT(*) AS n FROM travel_lead_activities WHERE company_id=? AND lead_id=? AND activity_type='converted_to_property'").get(companyId, lead.id).n,
 	    1
@@ -150,14 +150,25 @@ try {
 	  );
 	  assert.equal(sentEmails.length, 1);
 	  assert.equal(sentEmails[0].to, "launch@example.test");
-	  assert.match(sentEmails[0].subject, /contul pentru Pensiunea Launch este pregătit/);
+	  assert.match(sentEmails[0].subject, /Pensiunea Launch este în programul de lansare/);
 	  assert.match(sentEmails[0].text, /Pensiunea Launch/);
 	  assert.doesNotMatch(sentEmails[0].text, /0 lei\/lună timp de 30 de zile/);
-	  assert.match(sentEmails[0].text, /99 lei\/lună/);
-	  assert.match(sentEmails[0].text, /0% comision pe rezervări/);
+	  assert.doesNotMatch(sentEmails[0].text, /99 lei\/lună/);
+	  assert.doesNotMatch(sentEmails[0].text, /Basic 99|Premium 149|Business 249/);
+	  assert.doesNotMatch(sentEmails[0].text, /abonament/i);
+	  assert.doesNotMatch(sentEmails[0].text, /plăți|plati/i);
+	  assert.doesNotMatch(sentEmails[0].text, /Confirmă codul de verificare primit pe email/);
+	  assert.doesNotMatch(sentEmails[0].text, /0% comision pe rezervări/);
+	  assert.doesNotMatch(sentEmails[0].html, /99 lei\/lună/);
+	  assert.doesNotMatch(sentEmails[0].html, /Basic 99|Premium 149|Business 249/);
+	  assert.doesNotMatch(sentEmails[0].html, /abonament/i);
+	  assert.doesNotMatch(sentEmails[0].html, /plăți|plati/i);
+	  assert.doesNotMatch(sentEmails[0].html, /Confirmă codul de verificare primit pe email/);
+	  assert.doesNotMatch(sentEmails[0].html, /0% comision pe rezervări/);
+	  assert.match(sentEmails[0].text, /programul de lansare Trevoro/);
 	  assert.match(sentEmails[0].text, /parola creată la înscriere/);
 	  assert.match(sentEmails[0].text, /\/login\?next=%2Fdashboard%2Fpartner/);
-	  assert.doesNotMatch(sentEmails[0].text, new RegExp(`/properties/${property.id}-`));
+	  assert.match(sentEmails[0].text, new RegExp(`/properties/${property.id}-`));
 	  assert.equal(
 	    db.prepare("SELECT COUNT(*) AS n FROM travel_lead_activities WHERE company_id=? AND lead_id=? AND activity_type='welcome_email_sent'").get(companyId, lead.id).n,
 	    1
@@ -174,7 +185,7 @@ try {
 	    redirect: "manual"
 		  });
 		  assert.equal(response.status, 302);
-		  assert.match(response.headers.get("location") || "", /\/\?ok=1#formular/);
+		  assert.match(response.headers.get("location") || "", /\/\?ok=founding#formular/);
 		  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM travel_leads WHERE company_id=? AND email='launch@example.test'").get(companyId).n, 1);
 		  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM travel_properties WHERE company_id=? AND lead_id=?").get(companyId, lead.id).n, 1);
 
@@ -200,19 +211,20 @@ try {
 	    redirect: "manual"
 	  });
 	  assert.equal(response.status, 302);
-	  assert.match(response.headers.get("location") || "", /\/\?ok=1#formular/);
+	  assert.match(response.headers.get("location") || "", /\/\?ok=founding#formular/);
 	  const afterLimitLead = db.prepare("SELECT * FROM travel_leads WHERE company_id=? AND email='after-limit@example.test'").get(companyId);
 	  assert.ok(afterLimitLead);
-	  assert.equal(afterLimitLead.status, "nou");
+	  assert.equal(afterLimitLead.status, "activ");
 	  const afterLimitProperty = db.prepare("SELECT * FROM travel_properties WHERE company_id=? AND lead_id=?").get(companyId, afterLimitLead.id);
 	  assert.ok(afterLimitProperty);
-	  assert.equal(afterLimitProperty.status, "plata_necesara");
-	  assert.equal(afterLimitProperty.partner_plan, "basic_monthly");
-	  assert.equal(afterLimitProperty.subscription_status, "payment_required");
-	  assert.equal(afterLimitProperty.monthly_price_ron, 99);
+	  assert.equal(afterLimitProperty.status, "activ");
+	  assert.equal(afterLimitProperty.partner_plan, "founding_partner");
+	  assert.equal(afterLimitProperty.subscription_status, "free_12_months");
+	  assert.equal(afterLimitProperty.monthly_price_ron, 0);
+	  assert.ok(afterLimitProperty.free_until);
 		  assert.equal(sentEmails.length, 3);
 		  assert.equal(sentEmails[2].to, "after-limit@example.test");
-		  assert.match(sentEmails[2].subject, /contul pentru Pensiunea După Limită este pregătit/);
+		  assert.match(sentEmails[2].subject, /Pensiunea După Limită este în programul de lansare/);
 
 	  response = await fetch(`${baseUrl}/api/trevoro/auth/account`, {
 	    method: "POST",

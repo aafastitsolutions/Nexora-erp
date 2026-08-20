@@ -1452,6 +1452,9 @@ export function migrate() {
 	      price_per_night INTEGER NOT NULL DEFAULT 0,
 	      price_currency TEXT NOT NULL DEFAULT 'RON',
 	      status TEXT NOT NULL DEFAULT 'activ',
+	      public_status TEXT NOT NULL DEFAULT 'published'
+	        CHECK (public_status IN ('draft', 'published', 'hidden')),
+	      published_at TEXT,
 	      partner_plan TEXT NOT NULL DEFAULT 'standard_monthly',
 	      subscription_status TEXT NOT NULL DEFAULT 'active',
 	      monthly_price_ron INTEGER NOT NULL DEFAULT 0,
@@ -2898,6 +2901,65 @@ export function migrate() {
       UNIQUE(company_id, automation_number)
     );
 
+    CREATE TABLE IF NOT EXISTS accounting_invoice_automations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      automation_number TEXT NOT NULL,
+      client_id INTEGER NOT NULL,
+      contract_id INTEGER,
+      name TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'ACTIVE',
+      recurrence TEXT NOT NULL DEFAULT 'MONTHLY',
+      issue_day INTEGER NOT NULL DEFAULT 1,
+      start_date TEXT NOT NULL DEFAULT (date('now')),
+      end_date TEXT,
+      due_days INTEGER NOT NULL DEFAULT 15,
+      currency TEXT NOT NULL DEFAULT 'RON',
+      vat_rate REAL NOT NULL DEFAULT 0,
+      auto_send_efactura INTEGER NOT NULL DEFAULT 0,
+      auto_generate_pdf INTEGER NOT NULL DEFAULT 0,
+      notes TEXT,
+      last_generated_for TEXT,
+      last_run_at TEXT,
+      last_error TEXT,
+      created_by_email TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+      FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE SET NULL,
+      UNIQUE(company_id, automation_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS accounting_invoice_automation_lines (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      automation_id INTEGER NOT NULL,
+      denumire TEXT NOT NULL,
+      descriere TEXT,
+      cantitate REAL NOT NULL DEFAULT 1,
+      unitate TEXT,
+      pret_unitar REAL NOT NULL DEFAULT 0,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (automation_id) REFERENCES accounting_invoice_automations(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS accounting_invoice_automation_runs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      automation_id INTEGER NOT NULL,
+      factura_id INTEGER,
+      period_label TEXT NOT NULL,
+      scheduled_date TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'RUNNING',
+      details TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (automation_id) REFERENCES accounting_invoice_automations(id) ON DELETE CASCADE,
+      FOREIGN KEY (factura_id) REFERENCES facturi(id) ON DELETE SET NULL,
+      UNIQUE(company_id, automation_id, period_label)
+    );
+
     CREATE TABLE IF NOT EXISTS workflow_runs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       company_id INTEGER NOT NULL,
@@ -3836,6 +3898,9 @@ export function migrate() {
     CREATE INDEX IF NOT EXISTS idx_workflow_automations_status ON workflow_automations(company_id, status);
     CREATE INDEX IF NOT EXISTS idx_workflow_rules_status ON workflow_rules(company_id, applies_to, status);
     CREATE INDEX IF NOT EXISTS idx_workflow_invoice_automations_status ON workflow_invoice_automations(company_id, status);
+    CREATE INDEX IF NOT EXISTS idx_accounting_invoice_automations_due ON accounting_invoice_automations(company_id, status, issue_day);
+    CREATE INDEX IF NOT EXISTS idx_accounting_invoice_automation_lines_rule ON accounting_invoice_automation_lines(company_id, automation_id, sort_order);
+    CREATE INDEX IF NOT EXISTS idx_accounting_invoice_automation_runs_rule ON accounting_invoice_automation_runs(company_id, automation_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_workflow_runs_created ON workflow_runs(company_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_workflow_run_steps_run ON workflow_run_steps(company_id, run_id, step_order);
     CREATE INDEX IF NOT EXISTS idx_workflow_approvals_status ON workflow_approvals(company_id, status, due_date);
@@ -4827,9 +4892,23 @@ export function migrate() {
 		  ensureColumn("travel_properties", "deleted_by_email", "TEXT");
 		  db.exec("CREATE INDEX IF NOT EXISTS idx_travel_properties_company_deletion ON travel_properties(company_id, deletion_scheduled_at, status)");
 		  ensureColumn("travel_leads", "country", "TEXT NOT NULL DEFAULT 'Romania'");
-	  ensureColumn("travel_properties", "country", "TEXT NOT NULL DEFAULT 'Romania'");
-	  ensureColumn("travel_properties", "tourist_zone", "TEXT");
-	  ensureColumn("travel_leads", "google_place_id", "TEXT");
+		  ensureColumn("travel_properties", "country", "TEXT NOT NULL DEFAULT 'Romania'");
+		  ensureColumn("travel_properties", "tourist_zone", "TEXT");
+		  ensureColumn("travel_properties", "public_status", "TEXT NOT NULL DEFAULT 'published'");
+		  ensureColumn("travel_properties", "published_at", "TEXT");
+		  db.exec(`
+		    UPDATE travel_properties
+		    SET published_at=COALESCE(NULLIF(published_at, ''), COALESCE(updated_at, created_at, datetime('now')))
+		    WHERE status='activ'
+		      AND COALESCE(public_status, 'published')='published'
+		  `);
+		  db.exec(`
+		    UPDATE travel_properties
+		    SET public_status='hidden'
+		    WHERE status IN ('sters', 'respins')
+		  `);
+		  db.exec("CREATE INDEX IF NOT EXISTS idx_travel_properties_public_status ON travel_properties(company_id, status, public_status, updated_at, id)");
+		  ensureColumn("travel_leads", "google_place_id", "TEXT");
 	  ensureColumn("travel_properties", "google_place_id", "TEXT");
 	  ensureColumn("travel_agency_leads", "country", "TEXT NOT NULL DEFAULT 'Romania'");
 	  ensureColumn("travel_agency_leads", "slug", "TEXT");
@@ -5016,6 +5095,9 @@ export function migrate() {
   ensureColumn("facturi", "efactura_download_id", "TEXT");
   ensureColumn("facturi", "efactura_response_zip_path", "TEXT");
   ensureColumn("facturi", "efactura_last_checked_at", "TEXT");
+  ensureColumn("facturi", "invoice_type_code", "TEXT NOT NULL DEFAULT '380'");
+  ensureColumn("facturi", "correction_of_factura_id", "INTEGER");
+  ensureColumn("facturi", "cancellation_reason", "TEXT");
   repairLegacyClientForeignKeys();
   ensureColumn("anaf_connections", "scope", "TEXT");
   ensureColumn("anaf_connections", "expires_at", "TEXT");

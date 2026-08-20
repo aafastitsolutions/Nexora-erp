@@ -96,13 +96,13 @@ Text:
 
 > Ai hotel, pensiune, cabana, vila sau apartament in regim hotelier?
 >
-> Trevoro cauta proprietari care vor cost predictibil. In perioada de lansare, proprietarii activi primesc planuri fixe de la 99 lei/lunae pentru listare si promovare social media.
+> Trevoro cauta proprietari care vor vizibilitate si cereri directe. In perioada de lansare, proprietatile active pot fi incluse in listari si promovare social media.
 >
-> Fara comision pe rezervari. Modelul este simplu: promovare si vizibilitate pentru proprietate, iar dupa perioada gratuita abonamentul este separat de relatia turist-proprietar.
+> Modelul este simplu in etapa curenta: promovare, vizibilitate si cereri directe pentru proprietate.
 >
 > Inscriere: https://www.trevoro.ro/proprietari
 
-Vizual: card "Cost predictibil - planuri fixe de la 99 lei/luna".
+Vizual: card "Program de lansare - vizibilitate pentru proprietari".
 
 ### Ziua 3 - Litoral
 
@@ -196,7 +196,7 @@ Text:
 > - cabane;
 > - Delta Dunarii;
 > - Turcia;
-> - proprietari care vor listare fara comision.
+> - proprietari care vor listare clara si cereri directe.
 >
 > Le gasesti aici:
 >
@@ -286,7 +286,7 @@ Text:
 
 > Cunoasteti proprietari de pensiuni, cabane, vile sau apartamente in regim hotelier?
 >
-> Ii puteti directiona catre Trevoro. In perioada de lansare, proprietarii Trevoro au planuri fixe de la 99 lei/luna si promovare social media.
+> Ii puteti directiona catre Trevoro. In perioada de lansare, proprietarii Trevoro pot primi vizibilitate si promovare social media.
 >
 > Site: https://www.trevoro.ro/
 > Proprietari: https://www.trevoro.ro/proprietari
@@ -355,13 +355,13 @@ Text pe ecran:
 
 1. Ai pensiune, cabana, hotel sau apartament?
 2. Trevoro cauta proprietari care vor cost predictibil.
-3. planuri fixe de la 99 lei/luna in perioada de lansare.
-4. Fara comision pe rezervari.
+3. program de lansare pentru proprietari.
+4. cereri directe de la turisti.
 5. Inscrie proprietatea pe trevoro.ro/proprietari
 
 Descriere:
 
-> Trevoro ofera planuri fixe de la 99 lei/luna si 0% comision pe rezervari. #ProprietariCazare #TurismRomania #Trevoro
+> Trevoro a deschis programul de lansare pentru proprietari care vor vizibilitate si cereri directe. #ProprietariCazare #TurismRomania #Trevoro
 
 ### Video 3 - Destinatii
 
@@ -395,7 +395,7 @@ Postare pentru proprietari:
 
 > Exista aici proprietari de pensiuni, cabane, vile sau apartamente in regim hotelier?
 >
-> Trevoro cauta proprietari care vor cost predictibil pentru perioada de lansare. Planurile sunt fixe, de la 99 lei/luna, cu 0% comision pe rezervari. Daca regulile grupului permit, las aici pagina pentru inscriere:
+> Trevoro cauta proprietari care vor vizibilitate in perioada de lansare. Daca regulile grupului permit, las aici pagina pentru inscriere:
 >
 > https://www.trevoro.ro/proprietari
 
@@ -415,7 +415,7 @@ Postare pentru proprietari:
 - Buget test: 20-30 lei/zi timp de 7 zile.
 - Target: Romania, antreprenori, hoteluri, pensiuni, turism, administratori pagini business.
 - Link: https://www.trevoro.ro/proprietari
-- Mesaj: "Inscrie proprietatea pe Trevoro. Planuri fixe de la 99 lei/luna si 0% comision pe rezervari."
+- Mesaj: "Inscrie proprietatea pe Trevoro. Program de lansare pentru proprietari si cereri directe."
 
 ## Ce urmarim dupa 7 zile
 

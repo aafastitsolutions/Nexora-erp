@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 1080px; background: #061733; font-family: Inter, Arial, Helvetica, sans-serif; }
+    .story {
+      position: relative;
+      width: 1080px;
+      height: 1920px;
+      overflow: hidden;
+      color: #fff;
+      background-position: center;
+      background-repeat: no-repeat;
+      background-size: cover;
+    }
+    .story::before { content: ""; position: absolute; inset: 0; }
+    .s1 { background-image: url("emarqet-story-bg-01.png"); color: #0f2e51; }
+    .s1::before { background: linear-gradient(180deg, rgba(255,255,255,.96) 0%, rgba(255,255,255,.88) 42%, rgba(255,255,255,.06) 73%); }
+    .s2 { background-image: url("emarqet-story-bg-02.png"); }
+    .s2::before { background: linear-gradient(180deg, rgba(3,22,66,.30) 0%, rgba(3,18,55,.50) 56%, rgba(3,16,43,.16) 100%); }
+    .s3 { background-image: url("emarqet-story-bg-03.png"); }
+    .s3::before { background: radial-gradient(circle at 50% 38%, rgba(6,32,100,.20), rgba(4,21,72,.62) 75%); }
+    .s4 { background-image: url("emarqet-story-bg-04.png"); }
+    .s4::before { background: linear-gradient(180deg, rgba(2,16,48,.90) 0%, rgba(2,37,93,.68) 48%, rgba(2,20,52,.28) 100%); }
+    .inner { position: relative; z-index: 1; height: 100%; padding: 72px 70px 82px; display: flex; flex-direction: column; }
+    .progress { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 28px; }
+    .progress span { height: 7px; border-radius: 99px; background: rgba(255,255,255,.45); }
+    .s1 .progress span { background: rgba(2,132,199,.22); }
+    .progress span.on { background: #fff; }
+    .s1 .progress span.on { background: #0284c7; }
+    .top { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+    .logo { width: 290px; height: 87px; padding: 4px 10px; border-radius: 17px; object-fit: contain; background: #fff; box-shadow: 0 14px 35px rgba(0,0,0,.15); }
+    .story-no { min-width: 72px; height: 52px; padding: 0 18px; border: 2px solid currentColor; border-radius: 99px; display: grid; place-items: center; font-size: 23px; font-weight: 900; }
+    .copy { margin-top: 92px; }
+    .eyebrow { margin: 0 0 22px; font-size: 27px; font-weight: 900; letter-spacing: 2.8px; text-transform: uppercase; }
+    h1 { margin: 0; max-width: 920px; font-size: 96px; line-height: .96; letter-spacing: -4px; font-weight: 950; }
+    h1 .free { color: #f59e0b; text-shadow: 0 5px 0 rgba(110,57,0,.10); }
+    .s2 h1 .free, .s3 h1 .free, .s4 h1 .free { color: #fde047; text-shadow: 0 5px 18px rgba(0,0,0,.25); }
+    .lead { margin: 34px 0 0; max-width: 830px; font-size: 38px; line-height: 1.28; font-weight: 650; }
+    .big-offer { align-self: flex-start; margin-top: 42px; padding: 24px 32px; border-radius: 22px; color: #fff; background: #0284c7; box-shadow: 0 18px 45px rgba(2,132,199,.3); font-size: 31px; font-weight: 900; }
+    .big-offer b { font-size: 45px; }
+    .hint { margin-top: auto; width: fit-content; padding: 15px 23px; border-radius: 99px; background: rgba(255,255,255,.90); color: #075985; font-size: 25px; font-weight: 900; }
+    .categories { margin-top: 48px; display: flex; flex-wrap: wrap; gap: 18px; max-width: 920px; }
+    .category { padding: 18px 24px; border: 2px solid rgba(255,255,255,.72); border-radius: 18px; background: rgba(7,35,91,.63); backdrop-filter: blur(8px); font-size: 29px; font-weight: 850; box-shadow: 0 10px 24px rgba(0,0,0,.14); }
+    .s2 .copy { margin-top: 72px; }
+    .s2 h1 { font-size: 83px; max-width: 850px; }
+    .category-note { margin-top: 30px; font-size: 29px; font-weight: 750; color: #e0f2fe; }
+    .three { margin: 74px auto 0; width: 390px; height: 390px; border: 10px solid rgba(255,255,255,.92); border-radius: 50%; background: linear-gradient(145deg,#0284c7,#22c55e); box-shadow: 0 28px 80px rgba(0,0,0,.27); display: grid; place-items: center; font-size: 250px; line-height: 1; font-weight: 950; }
+    .s3 .copy { margin-top: 32px; text-align: center; }
+    .s3 h1 { font-size: 82px; line-height: 1; letter-spacing: -3px; }
+    .s3 .lead { margin-left: auto; margin-right: auto; max-width: 760px; font-size: 35px; }
+    .zero { margin: 36px auto 0; padding: 18px 30px; border-radius: 18px; color: #075985; background: #fff; font-size: 36px; font-weight: 950; box-shadow: 0 16px 35px rgba(0,0,0,.18); }
+    .steps { margin-top: 46px; display: grid; gap: 16px; width: 700px; }
+    .step { display: flex; align-items: center; gap: 16px; padding: 15px 20px; border-radius: 15px; background: rgba(4,30,82,.65); backdrop-filter: blur(8px); font-size: 28px; font-weight: 780; }
+    .step b { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 50%; color: #075985; background: #fde047; }
+    .cta { margin-top: 48px; display: inline-flex; width: fit-content; padding: 22px 34px; border-radius: 18px; color: #075985; background: #fff; box-shadow: 0 16px 35px rgba(0,0,0,.22); font-size: 34px; font-weight: 950; }
+    .url { margin-top: 22px; font-size: 27px; font-weight: 900; color: #dbeafe; }
+    .s4 .copy { margin-top: 72px; }
+    .s4 h1 { max-width: 760px; font-size: 88px; }
+    .s4 .lead { max-width: 690px; }
+    .free-reminder { margin-top: auto; padding: 19px 27px; width: fit-content; border: 2px solid #fde047; border-radius: 17px; background: rgba(3,27,76,.78); font-size: 29px; font-weight: 900; }
+    .free-reminder b { color: #fde047; font-size: 38px; }
+  </style>
+</head>
+<body>
+  <section class="story s1" id="story-1">
+    <div class="inner">
+      <div class="progress"><span class="on"></span><span></span><span></span><span></span></div>
+      <div class="top"><img class="logo" src="emarqet-logo-raster.png" alt="e-Marqet"><span class="story-no">1/4</span></div>
+      <div class="copy">
+        <p class="eyebrow">Marketplace pentru anunțurile tale</p>
+        <h1>Publică <span class="free">GRATUIT</span> pe e‑Marqet</h1>
+        <p class="lead">Ai <strong>3 anunțuri gratuite</strong> pentru lucrurile, serviciile sau ofertele tale.</p>
+        <div class="big-offer"><b>3</b> ANUNȚURI GRATUITE · 0 LEI</div>
+      </div>
+      <div class="hint">Vezi ce poți publica →</div>
+    </div>
+  </section>
+
+  <section class="story s2" id="story-2">
+    <div class="inner">
+      <div class="progress"><span></span><span class="on"></span><span></span><span></span></div>
+      <div class="top"><img class="logo" src="emarqet-logo-raster.png" alt="e-Marqet"><span class="story-no">2/4</span></div>
+      <div class="copy">
+        <p class="eyebrow">Pentru persoane și afaceri</p>
+        <h1>Ce poți publica <span class="free">GRATUIT?</span></h1>
+        <div class="categories">
+          <span class="category">🚗 Auto</span>
+          <span class="category">🏠 Imobiliare</span>
+          <span class="category">📱 Electronice</span>
+          <span class="category">📦 Produse</span>
+          <span class="category">🛠 Servicii</span>
+          <span class="category">💼 Joburi</span>
+          <span class="category">🏖 Turism</span>
+          <span class="category">🧸 Jucării</span>
+        </div>
+        <p class="category-note">Și alte categorii importante pentru comunitatea ta.</p>
+      </div>
+      <div class="hint">Primele 3 anunțuri sunt GRATUITE →</div>
+    </div>
+  </section>
+
+  <section class="story s3" id="story-3">
+    <div class="inner">
+      <div class="progress"><span></span><span></span><span class="on"></span><span></span></div>
+      <div class="top"><img class="logo" src="emarqet-logo-raster.png" alt="e-Marqet"><span class="story-no">3/4</span></div>
+      <div class="three">3</div>
+      <div class="copy">
+        <h1>ANUNȚURI <span class="free">GRATUITE</span></h1>
+        <p class="lead">pentru fiecare utilizator e‑Marqet</p>
+        <div class="zero">0 LEI LA START</div>
+      </div>
+      <div class="hint">Publică simplu. Distribuie imediat.</div>
+    </div>
+  </section>
+
+  <section class="story s4" id="story-4">
+    <div class="inner">
+      <div class="progress"><span></span><span></span><span></span><span class="on"></span></div>
+      <div class="top"><img class="logo" src="emarqet-logo-raster.png" alt="e-Marqet"><span class="story-no">4/4</span></div>
+      <div class="copy">
+        <p class="eyebrow">Durează doar câteva minute</p>
+        <h1>Începe <span class="free">GRATUIT</span> chiar acum</h1>
+        <div class="steps">
+          <div class="step"><b>1</b> Adaugă pozele</div>
+          <div class="step"><b>2</b> Scrie descrierea și prețul</div>
+          <div class="step"><b>3</b> Publică și distribuie linkul</div>
+        </div>
+        <div class="cta">Publică anunț GRATUIT</div>
+        <div class="url">e-marqet.com/publica</div>
+      </div>
+      <div class="free-reminder">Ai <b>3 anunțuri GRATUITE</b> pe e‑Marqet</div>
+    </div>
+  </section>
+</body>
+</html>

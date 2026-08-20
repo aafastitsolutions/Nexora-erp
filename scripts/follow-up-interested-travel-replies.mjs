@@ -147,7 +147,7 @@ function buildMessage(row, targetEmail) {
   const isRomania = safeText(row.country || "Romania").toLowerCase() === "romania";
   if (!isRomania) {
     const claimUrl = INTERNATIONAL_CLAIM_URL;
-    const subject = `Trevoro - details for ${safeText(row.name) || "your property"}`;
+    const subject = `Trevoro - 12 months free for ${safeText(row.name) || "your property"}`;
     const text = [
       "Hello,",
       "",
@@ -155,10 +155,12 @@ function buildMessage(row, targetEmail) {
       "",
       "We are contacting you from Trevoro, a new Romanian booking platform for hotels, guesthouses, villas, cabins and serviced apartments.",
       "",
-      "Trevoro owner plans include:",
-      "- fixed plans from 19 EUR/month: Basic 19 EUR, Premium 29 EUR, Business 59 EUR",
-      "- no extra commission",
-      "- the same price regardless of how many bookings your property receives",
+      "Trevoro registrations are now open. During launch, the owner account and property listing preparation are free.",
+      "",
+      "The launch offer includes:",
+      "- free owner registration during launch",
+      "- direct guest requests",
+      "- support for preparing the property listing on Trevoro",
       "",
       `We also offer support for any issue related to publishing your property. You can contact us directly at ${supportEmail}.`,
       supportHoursEn,
@@ -177,8 +179,8 @@ function buildMessage(row, targetEmail) {
         <p>We received a reply for <strong>${escapeHtml(row.name || "your property")}</strong>, ${escapeHtml(row.property_type || "property")} in ${escapeHtml(row.city || "your area")}, where this address was indicated for more details.</p>
         <p>We are contacting you from <strong>Trevoro</strong>, a new Romanian booking platform for hotels, guesthouses, villas, cabins and serviced apartments.</p>
         <div style="padding:14px 16px;background:#ecfdf5;border:1px solid #bbf7d0;border-radius:8px;margin:16px 0">
-          <strong>Paid owner plans</strong><br>
-          Fixed plans from <strong>19 EUR/month</strong>: Basic 19 EUR, Premium 29 EUR and Business 59 EUR. No extra commission, regardless of how many bookings your property receives.
+          <strong>Launch offer</strong><br>
+          Owner registration and property listing preparation are <strong>free during launch</strong>. The Trevoro team helps with publishing support and direct guest requests.
         </div>
         <p>We also offer support for any issue related to publishing your property.</p>
         <p><strong>Support hours:</strong> 09:00-18:00, Monday-Friday, Romania time.</p>
@@ -191,7 +193,7 @@ function buildMessage(row, targetEmail) {
     `;
     return { subject, text, html };
   }
-  const subject = `Trevoro - clarificare pentru ${name}`;
+  const subject = `Trevoro - inscriere gratuita in programul de lansare pentru ${name}`;
   const text = [
     "Bună ziua,",
     "",
@@ -199,12 +201,12 @@ function buildMessage(row, targetEmail) {
     "",
     "Vă scriem din partea Trevoro, platforma românească pentru listarea proprietăților turistice.",
     "",
-    "Planurile Trevoro pentru proprietari sunt:",
-    "- Basic: 99 lei/lună",
-    "- Premium: 149 lei/lună",
-    "- Business: 249 lei/lună",
-    "- 0% comision pe rezervări, indiferent de câte cereri primește proprietatea",
-    "- suport pentru orice problemă legată de publicarea proprietății pe Trevoro",
+    "S-au deschis inscrierile pe Trevoro, iar in perioada de lansare oferim pregatirea listarii gratuit.",
+    "",
+    "Oferta de lansare include:",
+    "- inscriere gratuita in programul de lansare",
+    "- cereri directe de la turisti",
+    "- suport pentru publicarea proprietatii pe Trevoro",
     "",
     `Pentru suport legat de publicarea proprietății, ne puteți scrie direct la ${supportEmail}.`,
     supportHoursRo,
@@ -223,9 +225,9 @@ function buildMessage(row, targetEmail) {
       <p>Am primit un răspuns pentru <strong>${escapeHtml(name)}</strong>, ${escapeHtml(propertyType)} din ${escapeHtml(city)}, în care a fost indicată această adresă pentru detalii.</p>
       <p>Vă scriem din partea <strong>Trevoro</strong>, platforma românească pentru listarea proprietăților turistice.</p>
       <div style="padding:14px 16px;background:#ecfdf5;border:1px solid #bbf7d0;border-radius:8px;margin:16px 0">
-        <strong>Planuri proprietari Trevoro</strong><br>
-        Basic: <strong>99 lei/lună</strong>, Premium: <strong>149 lei/lună</strong>, Business: <strong>249 lei/lună</strong>.<br><br>
-        Toate planurile au 0% comision pe rezervări, indiferent de câte cereri primește proprietatea.
+        <strong>Oferta de lansare Trevoro</strong><br>
+        Inscrierea in programul de lansare si pregatirea listarii sunt <strong>gratuite</strong>.<br><br>
+        Echipa Trevoro ajuta la publicarea proprietatii si la pregatirea cererilor directe de la turisti.
       </div>
       <p>Oferim suport pentru orice problemă legată de publicarea proprietății pe Trevoro. Ne puteți scrie direct la <a href="mailto:${supportEmail}">${supportEmail}</a>.</p>
       <p><strong>Program suport:</strong> 09:00-18:00, luni-vineri.</p>

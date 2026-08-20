@@ -1,4 +1,11 @@
 import { renderNexoraShell } from "./nexora-shell.js";
+import {
+  AUTO_BRAND_MODELS,
+  EMARQET_CATEGORY_DEFINITIONS,
+  EMARQET_CATEGORY_SUGGESTION_RULES,
+  EMARQET_DEPENDENT_OPTIONS,
+  publishFieldsFor
+} from "../../lib/emarqet-categories.js";
 
 function escapeHtml(value = "") {
   return String(value ?? "")
@@ -516,6 +523,40 @@ function emarqetStyles() {
         gap: 10px;
       }
 
+      .emq-admin-category-fields {
+        display: none;
+        grid-column: 1 / -1;
+        grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+        gap: 10px;
+        padding: 12px;
+        border: 1px solid #d6eefc;
+        border-radius: 8px;
+        background: #f8fdff;
+      }
+
+      .emq-admin-category-fields.active {
+        display: grid;
+      }
+
+      .emq-admin-category-suggestion {
+        display: flex;
+        grid-column: 1 / -1;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 9px 11px;
+        border: 1px solid #7dd3fc;
+        border-radius: 8px;
+        background: #f0f9ff;
+        color: #075985;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .emq-admin-category-suggestion[hidden] {
+        display: none;
+      }
+
       @media (max-width: 980px) {
         .emq-hero,
         .emq-hero-main {
@@ -577,6 +618,7 @@ function alertHtml(ok = "", err = "") {
     created: "Înregistrarea a fost creată.",
     saved: "Modificarea a fost salvată.",
     status: "Statusul a fost actualizat.",
+    promotion: "Promovarea anunțului a fost actualizată.",
     social_account: "Contul social a fost salvat.",
     social_target: "Targetul social a fost salvat.",
     social_generated: "Pachetul de postări a fost generat.",
@@ -618,6 +660,88 @@ function emarqetScripts() {
   return `
     <script>
       (() => {
+        const dependentOptions = ${JSON.stringify({ ...EMARQET_DEPENDENT_OPTIONS, auto_model: { source: "brand", options: AUTO_BRAND_MODELS } })};
+        const categoryRules = ${JSON.stringify(EMARQET_CATEGORY_SUGGESTION_RULES)};
+        const categoryLabels = ${JSON.stringify(Object.fromEntries(EMARQET_CATEGORY_DEFINITIONS.map((category) => [category.code, category.name])))};
+        const normalizeText = (value) => String(value || "")
+          .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+          .replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+        const suggestCategory = (value) => {
+          const normalized = normalizeText(value);
+          if (normalized.length < 4) return null;
+          const text = " " + normalized + " ";
+          const scored = categoryRules.map((rule) => {
+            const matches = rule.keywords.map(normalizeText).filter((keyword) => keyword && text.includes(" " + keyword + " "));
+            const score = matches.reduce((total, keyword) => total + (keyword.includes(" ") ? 4 : keyword.length >= 6 ? 2 : 1), 0);
+            return { code: rule.code, score, matches };
+          }).filter((item) => item.score > 0).sort((a, b) => b.score - a.score || b.matches.join("").length - a.matches.join("").length);
+          return scored[0]?.score >= 2 ? scored[0] : null;
+        };
+        const syncCategoryForm = (form) => {
+          if (!form) return;
+          const verticalSelect = form.querySelector("[data-emq-admin-vertical]");
+          const selectedOption = verticalSelect?.selectedOptions?.[0];
+          const categoryCode = selectedOption?.dataset?.categoryCode || "";
+          form.querySelectorAll("[data-emq-admin-category-fields]").forEach((block) => {
+            const active = block.dataset.emqAdminCategoryFields === categoryCode;
+            block.classList.toggle("active", active);
+            block.querySelectorAll("input, select, textarea").forEach((control) => { control.disabled = !active; });
+          });
+          form.querySelectorAll("[data-emq-admin-dependent]").forEach((control) => {
+            if (control.disabled) return;
+            const config = dependentOptions[control.dataset.emqAdminDependent];
+            const block = control.closest("[data-emq-admin-category-fields]");
+            const source = block?.querySelector('[name="' + config?.source + '"]');
+            const values = source?.value ? config?.options?.[source.value] || [] : [];
+            const previous = control.value;
+            if (control.tagName === "SELECT") {
+              control.replaceChildren(new Option("", ""), ...values.map((value) => new Option(value, value)));
+              control.value = values.includes(previous) ? previous : "";
+            } else {
+              const list = document.getElementById(control.getAttribute("list") || "");
+              if (list) list.replaceChildren(...values.map((value) => {
+                const option = document.createElement("option");
+                option.value = value;
+                return option;
+              }));
+            }
+          });
+          const suggestionBox = form.querySelector("[data-emq-admin-category-suggestion]");
+          const title = form.querySelector('[name="title"]')?.value || "";
+          const notes = form.querySelector('[name="notes"]')?.value || "";
+          const suggestion = suggestCategory(title + " " + notes);
+          const suggestedOption = suggestion ? [...(verticalSelect?.options || [])].find((option) => option.dataset.categoryCode === suggestion.code) : null;
+          if (!suggestionBox || !suggestedOption) {
+            if (suggestionBox) suggestionBox.hidden = true;
+            return;
+          }
+          suggestionBox.hidden = false;
+          suggestionBox.dataset.verticalId = suggestedOption.value;
+          suggestionBox.querySelector("span").textContent = categoryCode === suggestion.code
+            ? "Categoria selectată pare potrivită: " + categoryLabels[suggestion.code] + "."
+            : "Categorie sugerată: " + categoryLabels[suggestion.code] + ".";
+          const applyButton = suggestionBox.querySelector("button");
+          if (applyButton) applyButton.hidden = categoryCode === suggestion.code;
+        };
+        document.querySelectorAll("[data-emq-admin-listing-form]").forEach(syncCategoryForm);
+        document.addEventListener("change", (event) => {
+          const form = event.target.closest("[data-emq-admin-listing-form]");
+          if (form && (event.target.matches("[data-emq-admin-vertical]") || event.target.closest("[data-emq-admin-category-fields]"))) syncCategoryForm(form);
+        });
+        document.addEventListener("input", (event) => {
+          if (!event.target.matches('[name="title"], [name="notes"]')) return;
+          syncCategoryForm(event.target.closest("[data-emq-admin-listing-form]"));
+        });
+        document.addEventListener("click", (event) => {
+          const button = event.target.closest("[data-emq-admin-apply-category]");
+          if (!button) return;
+          const form = button.closest("[data-emq-admin-listing-form]");
+          const box = button.closest("[data-emq-admin-category-suggestion]");
+          const select = form?.querySelector("[data-emq-admin-vertical]");
+          if (!select || !box?.dataset.verticalId) return;
+          select.value = box.dataset.verticalId;
+          syncCategoryForm(form);
+        });
         const showToast = (message) => {
           const previous = document.querySelector("[data-emq-copy-toast]");
           if (previous) previous.remove();
@@ -719,8 +843,29 @@ function shortText(value = "", max = 140) {
 
 function verticalOptions(verticals = [], selectedId = "") {
   return verticals.map((vertical) => `
-    <option value="${escapeHtml(vertical.id)}" ${String(selectedId) === String(vertical.id) ? "selected" : ""}>${escapeHtml(vertical.name || "-")}</option>
+    <option value="${escapeHtml(vertical.id)}" data-category-code="${escapeHtml(vertical.code || "")}" ${String(selectedId) === String(vertical.id) ? "selected" : ""}>${escapeHtml(vertical.name || "-")}</option>
   `).join("");
+}
+
+function adminCategoryFieldControl(field = {}, categoryCode = "") {
+  const options = Array.isArray(field.options) ? field.options : [];
+  const dependentKey = field.autoRole === "model" ? "auto_model" : field.dependentKey || "";
+  if (field.type === "select") {
+    return `<label class="nx-field"><span>${escapeHtml(field.label || field.name)}</span><select name="${escapeHtml(field.name)}"${dependentKey ? ` data-emq-admin-dependent="${escapeHtml(dependentKey)}"` : ""}><option value=""></option>${options.map((option) => `<option value="${escapeHtml(option)}">${escapeHtml(option)}</option>`).join("")}</select></label>`;
+  }
+  if (field.type === "datalist") {
+    const listId = `emq-admin-${categoryCode}-${field.name}`.replace(/[^a-zA-Z0-9_-]/g, "-");
+    return `<label class="nx-field"><span>${escapeHtml(field.label || field.name)}</span><input name="${escapeHtml(field.name)}" list="${escapeHtml(listId)}"${dependentKey ? ` data-emq-admin-dependent="${escapeHtml(dependentKey)}"` : ""}><datalist id="${escapeHtml(listId)}"></datalist></label>`;
+  }
+  return `<label class="nx-field"><span>${escapeHtml(field.label || field.name)}</span><input name="${escapeHtml(field.name)}" type="${field.type === "number" ? "number" : "text"}"></label>`;
+}
+
+function adminCategoryFieldBlocks(verticals = []) {
+  return verticals.map((vertical) => {
+    const fields = publishFieldsFor(vertical.code);
+    if (!fields.length) return "";
+    return `<div class="emq-admin-category-fields" data-emq-admin-category-fields="${escapeHtml(vertical.code || "")}">${fields.map((field) => adminCategoryFieldControl(field, vertical.code)).join("")}</div>`;
+  }).join("");
 }
 
 function listingOptions(listings = [], selectedId = "") {
@@ -795,6 +940,26 @@ function addonRows(rows = []) {
       <td>${escapeHtml(row.description || "-")}</td>
     </tr>
   `, "Nu există servicii suplimentare în catalog.");
+}
+
+function promotionOrderRows(rows = []) {
+  return rowsOrEmpty(rows, 8, (row) => {
+    const listingUrl = row.listing_slug || row.listing_code
+      ? `https://e-marqet.com/anunt/${encodeURIComponent(row.listing_slug || row.listing_code)}`
+      : "";
+    return `
+      <tr>
+        <td><b>${escapeHtml(row.addon_name || row.addon_code || "-")}</b><div class="nx-table-sub">${escapeHtml(row.addon_category || "")} · ${escapeHtml(row.billing_unit || "")}</div></td>
+        <td>${listingUrl ? `<a href="${escapeHtml(listingUrl)}" target="_blank" rel="noopener">${escapeHtml(row.listing_title || row.listing_code || "-")}</a>` : escapeHtml(row.listing_title || "-")}<div class="nx-table-sub">${escapeHtml(row.listing_code || "")}</div></td>
+        <td>${escapeHtml(row.requester_name || "-")}<div class="nx-table-sub">${escapeHtml(row.requester_email || "")}</div></td>
+        <td><b>${fmtAmount(row.amount, row.currency)}</b></td>
+        <td>${statusBadge(row.status)}</td>
+        <td>${statusBadge(row.fulfillment_status || "-")}<div class="nx-table-sub">${row.promotion_until ? `până la ${escapeHtml(dateValue(row.promotion_until))}` : escapeHtml(row.promotion_level || "manual")}</div></td>
+        <td>${escapeHtml(row.stripe_checkout_session_id || "-")}</td>
+        <td>${escapeHtml(dateValue(row.paid_at || row.created_at) || "-")}</td>
+      </tr>
+    `;
+  }, "Nu există comenzi de promovare.");
 }
 
 function servicePriceLabel(row = {}) {
@@ -1190,6 +1355,40 @@ function paymentBadge(row = {}) {
   return statusBadge(status || "PENDING");
 }
 
+function promotionActive(row = {}) {
+  const level = String(row.promotion_level || "").trim();
+  if (!level) return false;
+  const until = dateValue(row.promotion_until);
+  if (!until) return true;
+  return until >= new Date().toISOString().slice(0, 10);
+}
+
+function promotionControl(row = {}) {
+  const active = promotionActive(row);
+  return `
+    <div>
+      ${active ? statusBadge("ACTIV") : statusBadge("PAUZAT")}
+      <div class="nx-table-sub">${escapeHtml(row.promotion_level || "-")}${row.promotion_until ? ` · până la ${escapeHtml(dateValue(row.promotion_until))}` : ""}</div>
+    </div>
+    <form method="post" action="/nexora/e-marqet/listings/${escapeHtml(row.id)}/promotion" class="nx-table-action-form">
+      <input type="hidden" name="action" value="feature">
+      <select name="days">
+        <option value="7">7 zile</option>
+        <option value="30" selected>30 zile</option>
+        <option value="90">90 zile</option>
+        <option value="0">Nelimitat</option>
+      </select>
+      <button class="nx-btn primary" type="submit">Expune primele</button>
+    </form>
+    ${active ? `
+      <form method="post" action="/nexora/e-marqet/listings/${escapeHtml(row.id)}/promotion" class="nx-table-action-form">
+        <input type="hidden" name="action" value="clear">
+        <button class="nx-btn" type="submit">Scoate</button>
+      </form>
+    ` : ""}
+  `;
+}
+
 function partnerTypeLabel(value = "") {
   const normalized = String(value || "").trim();
   if (normalized === "auto_dealer") return "Dealer auto";
@@ -1198,7 +1397,7 @@ function partnerTypeLabel(value = "") {
 }
 
 function listingRows(rows = []) {
-  return rowsOrEmpty(rows, 9, (row) => `
+  return rowsOrEmpty(rows, 10, (row) => `
     <tr>
       <td><b>${escapeHtml(row.listing_code || "-")}</b><div class="nx-table-sub">${escapeHtml(row.vertical_name || "-")}</div></td>
       <td>${escapeHtml(row.title || "-")}<div class="nx-table-sub">${escapeHtml(row.location || "")}</div></td>
@@ -1206,6 +1405,7 @@ function listingRows(rows = []) {
       <td>${fmtAmount(row.price_amount, row.price_currency)}</td>
       <td>${statusBadge(row.status)}</td>
       <td>${paymentBadge(row)}<div class="nx-table-sub">${escapeHtml(row.selected_plan_code || "free")}</div></td>
+      <td>${promotionControl(row)}</td>
       <td>${statusBadge(row.ai_status || "NEGENERAT")}</td>
       <td>${escapeHtml(dateValue(row.published_at) || "-")}</td>
       <td>
@@ -1516,9 +1716,10 @@ function renderEmarqetListingsPage(options = {}) {
     ${alertHtml(options.ok, options.err)}
     <section class="nx-content-card">
       <div class="nx-section-head"><div><h1>Listare nouă</h1><p>Înregistrare publicabilă pe unul dintre verticalele e-Marqet.</p></div></div>
-      <form method="post" action="/nexora/e-marqet/listings/create" class="nx-inline-form nx-register-form">
-        <label class="nx-field"><span>Vertical</span><select name="vertical_id" required>${verticalOptions(verticals)}</select></label>
+      <form method="post" action="/nexora/e-marqet/listings/create" class="nx-inline-form nx-register-form" data-emq-admin-listing-form>
+        <label class="nx-field"><span>Vertical</span><select name="vertical_id" required data-emq-admin-vertical>${verticalOptions(verticals)}</select></label>
         <label class="nx-field"><span>Titlu</span><input name="title" required placeholder="Apartament central / Pensiune / Serviciu"></label>
+        <div class="emq-admin-category-suggestion" data-emq-admin-category-suggestion hidden><span></span><button class="nx-btn" type="button" data-emq-admin-apply-category>Folosește categoria</button></div>
         <label class="nx-field"><span>Client</span><input name="owner_name" placeholder="Nume client"></label>
         <label class="nx-field"><span>Email client</span><input type="email" name="owner_email" placeholder="client@email.ro"></label>
         <label class="nx-field"><span>Locație</span><input name="location" placeholder="Oraș, județ"></label>
@@ -1527,6 +1728,7 @@ function renderEmarqetListingsPage(options = {}) {
         <label class="nx-field"><span>Status</span><select name="status">${optionList(LISTING_STATUS_OPTIONS, "DRAFT")}</select></label>
         <label class="nx-field"><span>Scor calitate</span><input type="number" name="quality_score" min="0" max="100" value="0"></label>
         <label class="nx-field"><span>Status AI</span><select name="ai_status"><option value="NEGENERAT">Negenerat</option><option value="GENERAT">Generat</option><option value="DE_REVIZUIT">De revizuit</option></select></label>
+        ${adminCategoryFieldBlocks(verticals)}
         <label class="nx-field nx-field-wide"><span>Note</span><input name="notes"></label>
         <div class="nx-form-actions"><button class="nx-btn primary" type="submit">Creează listare</button></div>
       </form>
@@ -1534,7 +1736,7 @@ function renderEmarqetListingsPage(options = {}) {
 
     <section class="nx-content-card">
       <div class="nx-section-head"><div><h1>Listări e-Marqet</h1><p>Catalog intern pentru publicare, revizie și monetizare.</p></div></div>
-      <div class="nx-table-wrap"><table class="nx-table"><thead><tr><th>Cod</th><th>Titlu</th><th>Client</th><th>Preț</th><th>Status</th><th>Plată</th><th>AI</th><th>Publicat</th><th></th></tr></thead><tbody>${listingRows(rows)}</tbody></table></div>
+      <div class="nx-table-wrap"><table class="nx-table"><thead><tr><th>Cod</th><th>Titlu</th><th>Client</th><th>Preț</th><th>Status</th><th>Plată</th><th>Promovare</th><th>AI</th><th>Publicat</th><th></th></tr></thead><tbody>${listingRows(rows)}</tbody></table></div>
     </section>
   `;
   return shell({ title: "Listări e-Marqet", activePath: "/nexora/e-marqet/listings", companyName, user: options.user, body });
@@ -1616,6 +1818,7 @@ function renderEmarqetSubscriptionsPage(options = {}) {
   const rows = Array.isArray(options.rows) ? options.rows : [];
   const pricingPlans = Array.isArray(options.pricingPlans) ? options.pricingPlans : [];
   const addons = Array.isArray(options.addons) ? options.addons : [];
+  const promotionOrders = Array.isArray(options.promotionOrders) ? options.promotionOrders : [];
   const today = new Date().toISOString().slice(0, 10);
   const body = `
     ${alertHtml(options.ok, options.err)}
@@ -1644,6 +1847,11 @@ function renderEmarqetSubscriptionsPage(options = {}) {
     <section class="nx-content-card">
       <div class="nx-section-head"><div><h1>Servicii suplimentare</h1><p>Promovări, distribuiri sociale și servicii AI vândute pe anunț sau campanie.</p></div></div>
       <div class="nx-table-wrap"><table class="nx-table"><thead><tr><th>Serviciu</th><th>Categorie</th><th>Preț</th><th>Inclus în</th><th>Descriere</th></tr></thead><tbody>${addonRows(addons)}</tbody></table></div>
+    </section>
+
+    <section class="nx-content-card">
+      <div class="nx-section-head"><div><h1>Comenzi promovare</h1><p>Pachetele alese de parteneri din cont și plata Stripe asociată.</p></div></div>
+      <div class="nx-table-wrap"><table class="nx-table"><thead><tr><th>Pachet</th><th>Anunț</th><th>Client</th><th>Valoare</th><th>Plată</th><th>Execuție</th><th>Stripe</th><th>Dată</th></tr></thead><tbody>${promotionOrderRows(promotionOrders)}</tbody></table></div>
     </section>
 
     <section class="nx-content-card">

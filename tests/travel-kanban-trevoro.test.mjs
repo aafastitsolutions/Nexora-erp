@@ -92,19 +92,19 @@ try {
     redirect: "manual"
 	  });
 	  assert.equal(response.status, 302);
-	  assert.match(response.headers.get("location") || "", /\/trevoro\/parteneri\?ok=1#formular/);
+		  assert.match(response.headers.get("location") || "", /\/trevoro\/parteneri\?ok=founding#formular/);
 
 	  const lead = db.prepare("SELECT * FROM travel_leads WHERE company_id=? AND email='cabana@example.test'").get(companyId);
 	  assert.ok(lead);
 	  assert.equal(lead.source, "trevoro_landing");
-	  assert.equal(lead.status, "nou");
+		  assert.equal(lead.status, "activ");
 	  assert.equal(lead.notes, "Vrea lansare early partner.");
 	  assert.equal(Number(lead.score), 65);
 	  const property = db.prepare("SELECT * FROM travel_properties WHERE company_id=? AND lead_id=?").get(companyId, lead.id);
 		  assert.ok(property);
-		  assert.equal(property.status, "plata_necesara");
-		  assert.equal(property.partner_plan, "basic_monthly");
-		  assert.equal(property.subscription_status, "payment_required");
+			  assert.equal(property.status, "activ");
+			  assert.equal(property.partner_plan, "founding_partner");
+			  assert.equal(property.subscription_status, "free_12_months");
 		  assert.equal(property.account_email, "cabana@example.test");
 		  assert.equal(property.account_status, "active");
 		  assert.ok(property.password_hash);
@@ -123,7 +123,7 @@ try {
 	    redirect: "manual"
 			  });
 	  assert.equal(response.status, 302);
-	  assert.match(response.headers.get("location") || "", /\/trevoro\/parteneri\?ok=1#formular/);
+	  assert.match(response.headers.get("location") || "", /\/trevoro\/parteneri\?ok=founding#formular/);
 	  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM travel_leads WHERE company_id=?").get(companyId).n, 1);
 	  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM travel_properties WHERE company_id=?").get(companyId).n, 1);
 

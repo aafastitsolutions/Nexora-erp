@@ -78,7 +78,7 @@ function captionFor(property = {}) {
     "",
     `Rezerva acum / Book now: ${url}`,
     "",
-    "Trevoro are 0% comision pe rezervari. Plata si conditiile se stabilesc direct cu proprietarul.",
+    "Trevoro trimite cereri directe catre proprietar, iar conditiile sejurului se confirma direct cu acesta.",
     "",
     "#Trevoro #CazareRomania #VacanteRomania #TurismRomanesc #BookNow"
   ].join("\n");

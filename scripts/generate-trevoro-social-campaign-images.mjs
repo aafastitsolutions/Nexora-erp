@@ -26,7 +26,7 @@ const cards = [
     day: "Ziua 2",
     category: "Pentru proprietari",
     title: "Cost predictibil",
-    subtitle: "Planuri fixe de la 99 lei/luna si 0% comision pe rezervari.",
+    subtitle: "Program de lansare pentru proprietari si cereri directe.",
     cta: "trevoro.ro/proprietari",
     palette: ["#0b3d4a", "#ff735c", "#ffffff"],
     motif: "owner",

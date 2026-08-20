@@ -6,7 +6,7 @@ Data pregatire: 2026-06-18
 ## Subject
 
 ```text
-List your property on Trevoro - no booking commission
+List your property on Trevoro - launch program
 ```
 
 ## Email
@@ -18,19 +18,13 @@ Trevoro helps accommodation owners promote their properties and receive direct b
 
 We found your accommodation and would like to invite your team to list the property on Trevoro.
 
-Creating an owner account on Trevoro is free. After the property is added and reviewed, publication is available through a simple monthly listing plan, depending on the property type:
+Creating an owner account on Trevoro is free during the launch program. After the property is added and reviewed, the Trevoro team helps prepare the listing and confirm the publication steps.
 
-- Apartment / Studio / Room: 19 EUR / month
-- Villa / Holiday Home / Cabin / Bungalow: 29 EUR / month
-- Guesthouse / B&B / Hostel / Small Pension: 39 EUR / month
-- Hotel / Aparthotel / Resort: 59 EUR / month
-- Multiple properties / Property manager: 119 EUR / month
-
-Trevoro does not charge commission on bookings and does not handle guest payments. Payments remain between the guest and the property, according to the property's own rules.
+Trevoro focuses on direct guest requests and property visibility. Commercial details for partners will be communicated separately after the launch strategy is finalized.
 
 Inside the owner account, you will find step-by-step instructions for completing your listing, adding photos, setting prices, updating availability and synchronizing external calendars such as Booking.com, Airbnb, Google Calendar or other iCal calendars.
 
-The final listing plan is confirmed by Trevoro after reviewing the property type, number of rooms or units, photos and listing details. If the selected category does not match the property, Trevoro may assign the correct publication plan before the listing goes live.
+The final commercial model will be communicated separately after Trevoro finalizes the launch strategy.
 
 You can create your owner account here:
 https://www.trevoro.ro/en/owners#form

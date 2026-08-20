@@ -202,17 +202,16 @@ function buildMessage(target = {}) {
       return "<li>" + escapeHtml(propertyLabel(property) + extra) + "</li>";
     })
     .join("");
-  const commercialExceptionText = (target.properties || []).some((property) => property.partnerPlan === "founding_partner")
-    ? [
-      "Important: sunteti membru fondator Trevoro. Nu aveti nimic de platit catre Trevoro pentru publicarea listarii in perioada gratuita aprobata.",
-      "Va rugam doar sa completati pozele si tarifele de cazare, ca sa putem promova proprietatea corect pe site si pe social media.",
-      "Prin pret/tarif ne referim la pretul de cazare afisat turistilor, nu la o plata catre Trevoro.",
-      "Trevoro pastreaza 0% comision pe rezervari."
-    ]
-    : [];
-  const htmlCommercialException = commercialExceptionText.length
-    ? "<div style=\"background:#ecfdf5;border:1px solid #a7f3d0;border-radius:10px;padding:12px;margin:14px 0\"><strong>Important:</strong> sunteti membru fondator Trevoro. Nu aveti nimic de platit catre Trevoro pentru publicarea listarii in perioada gratuita aprobata.<br>Va rugam doar sa completati pozele si tarifele de cazare, ca sa putem promova proprietatea corect pe site si pe social media.<br>Prin pret/tarif ne referim la pretul de cazare afisat turistilor, nu la o plata catre Trevoro.<br>Trevoro pastreaza <strong>0% comision pe rezervari</strong>.</div>"
-    : "";
+	  const commercialExceptionText = (target.properties || []).some((property) => property.partnerPlan === "founding_partner")
+	    ? [
+	      "Important: sunteti in programul de lansare Trevoro.",
+	      "Va rugam doar sa completati pozele si tarifele de cazare, ca sa putem promova proprietatea corect pe site si pe social media.",
+	      "Prin pret/tarif ne referim la tariful de cazare afisat turistilor."
+	    ]
+	    : [];
+	  const htmlCommercialException = commercialExceptionText.length
+	    ? "<div style=\"background:#ecfdf5;border:1px solid #a7f3d0;border-radius:10px;padding:12px;margin:14px 0\"><strong>Important:</strong> sunteti in programul de lansare Trevoro.<br>Va rugam doar sa completati pozele si tarifele de cazare, ca sa putem promova proprietatea corect pe site si pe social media.<br>Prin pret/tarif ne referim la tariful de cazare afisat turistilor.</div>"
+	    : "";
   const text = [
     "Buna ziua,",
     "",

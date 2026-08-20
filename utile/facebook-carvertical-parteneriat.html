@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 1080px; height: 1080px; overflow: hidden; }
+    body { font-family: Inter, Arial, Helvetica, sans-serif; }
+    .canvas {
+      position: relative;
+      width: 1080px;
+      height: 1080px;
+      overflow: hidden;
+      color: #fff;
+      background: #061733 url("carvertical-facebook-background.png") center/cover no-repeat;
+    }
+    .canvas::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(90deg, rgba(2, 14, 38, .97) 0%, rgba(4, 26, 64, .93) 38%, rgba(4, 33, 78, .52) 65%, rgba(3, 18, 41, .12) 100%),
+        linear-gradient(0deg, rgba(2, 11, 29, .86) 0%, transparent 35%);
+    }
+    .content {
+      position: relative;
+      z-index: 1;
+      height: 100%;
+      padding: 62px 66px 54px;
+      display: flex;
+      flex-direction: column;
+    }
+    .brands {
+      display: flex;
+      align-items: center;
+      gap: 22px;
+    }
+    .emarqet {
+      width: 250px;
+      height: 75px;
+      border-radius: 14px;
+      object-fit: contain;
+      background: #fff;
+      box-shadow: 0 10px 26px rgba(0, 0, 0, .2);
+    }
+    .divider {
+      width: 2px;
+      height: 55px;
+      background: rgba(255, 255, 255, .5);
+    }
+    .carvertical {
+      width: 290px;
+      height: auto;
+      object-fit: contain;
+    }
+    .partner {
+      margin-top: 30px;
+      color: #7dd3fc;
+      font-size: 22px;
+      font-weight: 900;
+      letter-spacing: 2.4px;
+      text-transform: uppercase;
+    }
+    h1 {
+      max-width: 650px;
+      margin: 18px 0 24px;
+      font-size: 67px;
+      line-height: .98;
+      letter-spacing: -2.4px;
+      font-weight: 950;
+      text-shadow: 0 5px 25px rgba(0, 0, 0, .28);
+    }
+    .subtitle {
+      width: 570px;
+      margin: 0;
+      color: #dbeafe;
+      font-size: 27px;
+      line-height: 1.35;
+      font-weight: 600;
+    }
+    .offer {
+      align-self: flex-start;
+      margin-top: 36px;
+      padding: 18px 24px;
+      border: 2px solid #7dd3fc;
+      border-radius: 16px;
+      background: rgba(2, 132, 199, .92);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, .25);
+      display: flex;
+      align-items: center;
+      gap: 18px;
+    }
+    .offer strong {
+      font-size: 37px;
+      line-height: 1;
+    }
+    .offer span {
+      padding-left: 18px;
+      border-left: 2px solid rgba(255, 255, 255, .55);
+      font-size: 25px;
+      font-weight: 800;
+    }
+    .offer b {
+      display: block;
+      margin-top: 4px;
+      font-size: 29px;
+      letter-spacing: 1.5px;
+    }
+    .footer {
+      margin-top: auto;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 28px;
+    }
+    .url {
+      font-size: 27px;
+      font-weight: 900;
+      color: #fff;
+    }
+    .disclosure {
+      max-width: 420px;
+      color: #bfdbfe;
+      font-size: 17px;
+      line-height: 1.3;
+      text-align: right;
+    }
+  </style>
+</head>
+<body>
+  <main class="canvas">
+    <div class="content">
+      <div class="brands">
+        <img class="emarqet" src="../public/brand/emarqet-logo.svg" alt="e-Marqet">
+        <span class="divider"></span>
+        <img class="carvertical" src="Logo%20in%20white.png" alt="carVertical">
+      </div>
+
+      <div class="partner">Parteneriat e-Marqet × carVertical</div>
+      <h1>Verifică istoricul mașinii înainte să o cumperi</h1>
+      <p class="subtitle">Află informațiile disponibile despre kilometraj, daune, accidente și alte evenimente din istoricul auto.</p>
+
+      <div class="offer">
+        <strong>−20%</strong>
+        <span>CU CODUL <b>EMARQET20</b></span>
+      </div>
+
+      <div class="footer">
+        <div class="url">e-marqet.com/verificare-istoric-auto-carvertical</div>
+        <div class="disclosure">Parteneriat afiliat. Raportul este furnizat de carVertical, în funcție de datele disponibile.</div>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

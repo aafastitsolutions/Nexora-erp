@@ -95,11 +95,11 @@ function normalizeFoundingPartnerIfNeeded(lead = {}, property = {}) {
   db.prepare(`
     INSERT INTO travel_lead_activities (company_id, lead_id, activity_type, subject, details, created_at)
     VALUES (?, ?, 'commercial_exception_normalized', 'Proprietate normalizată cu excepție comercială', ?, datetime('now'))
-  `).run(
-    Number(lead.company_id || property.company_id || 0),
-    lead.id,
-    `Excepție comercială: 0 lei/lună până la ${updated.free_until || "-"}. După perioada aprobată: planuri de la 99 lei/lună, fără comision pe rezervări.`
-  );
+	  `).run(
+	    Number(lead.company_id || property.company_id || 0),
+	    lead.id,
+	    `Program lansare Trevoro activ până la ${updated.free_until || "-"}. Detaliile comerciale vor fi comunicate separat după finalizarea strategiei.`
+	  );
   return { changed: true, property: updated };
 }
 

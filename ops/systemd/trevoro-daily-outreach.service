@@ -1,0 +1,12 @@
+[Unit]
+Description=Trevoro daily outreach batch
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=!/home/server/Nexora/utile/flags/trevoro-email-sending-paused
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/server/Nexora
+ExecStartPre=/usr/bin/mkdir -p /home/server/Nexora/utile/locks
+ExecStart=/usr/bin/flock -n /home/server/Nexora/utile/locks/trevoro-outreach.lock /usr/bin/node /home/server/Nexora/scripts/run-trevoro-outreach.mjs --romania-limit 400 --international-limit 400 --source all --min-score 0 --daily-quota 800 --delay-ms 45000 --resend-contacted --campaign-key trevoro-free-12m-launch-2026-07
+TimeoutStartSec=12h

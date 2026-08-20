@@ -99,12 +99,12 @@ function buildNoticeMessage(property = {}, scheduledAt = "") {
   const propertyName = safeText(property.name || "proprietatea ta");
   const scheduledDate = displayDate(scheduledAt) || `in ${GRACE_DAYS} zile`;
   const loginUrl = `${publicBaseUrl()}/login?next=%2Fdashboard%2Fpartner`;
-  const subject = `Trevoro: proprietatea ${propertyName} va fi dezactivata`;
+  const subject = `Trevoro: proprietatea ${propertyName} are nevoie de verificare`;
   const text = [
     "Buna ziua,",
     "",
-    `Proprietatea ${propertyName} este marcata cu plata necesara in Trevoro.`,
-    `Daca abonamentul nu este achitat, proprietatea va fi scoasa din public la data ${scheduledDate}.`,
+    `Proprietatea ${propertyName} are nevoie de verificare in Trevoro.`,
+    `Daca datele nu sunt completate, proprietatea poate fi scoasa temporar din public la data ${scheduledDate}.`,
     "",
     "Ce inseamna asta:",
     "- pagina publica nu va mai fi vizibila in Trevoro;",
@@ -113,19 +113,19 @@ function buildNoticeMessage(property = {}, scheduledAt = "") {
     "",
     `Link proprietate: ${propertyUrl(property)}`,
     `Cont proprietar: ${loginUrl}`,
-    `Pentru verificare plata sau reactivare, raspunde la acest email sau scrie la ${SUPPORT_EMAIL}.`,
+    `Pentru verificare sau reactivare, raspunde la acest email sau scrie la ${SUPPORT_EMAIL}.`,
     "",
     "Echipa Trevoro"
   ].join("\n");
   const html = [
     "<div style=\"font-family:Arial,sans-serif;line-height:1.55;color:#0f172a;max-width:680px\">",
-    "<h1 style=\"font-size:22px;margin:0 0 12px;color:#92400e\">Plata necesara pentru listarea Trevoro</h1>",
-    "<p>Proprietatea <strong>" + escapeHtml(propertyName) + "</strong> este marcata cu plata necesara in Trevoro.</p>",
-    "<p style=\"padding:14px 16px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px\">Daca abonamentul nu este achitat, proprietatea va fi scoasa din public la data <strong>" + escapeHtml(scheduledDate) + "</strong>.</p>",
+    "<h1 style=\"font-size:22px;margin:0 0 12px;color:#92400e\">Verificare necesara pentru listarea Trevoro</h1>",
+    "<p>Proprietatea <strong>" + escapeHtml(propertyName) + "</strong> are nevoie de verificare in Trevoro.</p>",
+    "<p style=\"padding:14px 16px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px\">Daca datele nu sunt completate, proprietatea poate fi scoasa temporar din public la data <strong>" + escapeHtml(scheduledDate) + "</strong>.</p>",
     "<p><strong>Ce inseamna asta:</strong></p>",
     "<ul><li>pagina publica nu va mai fi vizibila in Trevoro;</li><li>contul de proprietar va fi suspendat pana la reactivare;</li><li>istoricul ramane pastrat pentru verificare.</li></ul>",
     "<p><a href=\"" + escapeHtml(loginUrl) + "\" style=\"display:inline-block;background:#0f766e;color:#ffffff;text-decoration:none;font-weight:700;padding:11px 16px;border-radius:8px\">Intra in contul de proprietar</a></p>",
-    "<p>Daca plata a fost deja facuta sau ai nevoie de ajutor, raspunde la acest email sau scrie la <a href=\"mailto:" + SUPPORT_EMAIL + "\">" + SUPPORT_EMAIL + "</a>.</p>",
+    "<p>Daca ai nevoie de ajutor pentru verificare, raspunde la acest email sau scrie la <a href=\"mailto:" + SUPPORT_EMAIL + "\">" + SUPPORT_EMAIL + "</a>.</p>",
     "<p style=\"margin-top:24px\">Echipa Trevoro</p>",
     "</div>"
   ].join("\n");
@@ -135,12 +135,12 @@ function buildNoticeMessage(property = {}, scheduledAt = "") {
 function buildDeletedMessage(property = {}) {
   const propertyName = safeText(property.name || "proprietatea ta");
   const loginUrl = `${publicBaseUrl()}/login?next=%2Fdashboard%2Fpartner`;
-  const subject = `Trevoro: proprietatea ${propertyName} a fost dezactivata`;
+  const subject = `Trevoro: proprietatea ${propertyName} a fost oprita temporar`;
   const text = [
     "Buna ziua,",
     "",
-    `Proprietatea ${propertyName} a fost scoasa din public in Trevoro din cauza statusului de plata.`,
-    "Contul de proprietar este suspendat pana la reactivare.",
+    `Proprietatea ${propertyName} a fost scoasa temporar din public in Trevoro pentru verificare.`,
+    "Contul de proprietar ramane disponibil pentru actualizarea datelor.",
     "",
     `Cont proprietar: ${loginUrl}`,
     `Suport: ${SUPPORT_EMAIL}`,
@@ -149,11 +149,11 @@ function buildDeletedMessage(property = {}) {
   ].join("\n");
   const html = [
     "<div style=\"font-family:Arial,sans-serif;line-height:1.55;color:#0f172a;max-width:680px\">",
-    "<h1 style=\"font-size:22px;margin:0 0 12px;color:#991b1b\">Listare dezactivata</h1>",
-    "<p>Proprietatea <strong>" + escapeHtml(propertyName) + "</strong> a fost scoasa din public in Trevoro din cauza statusului de plata.</p>",
-    "<p>Contul de proprietar este suspendat pana la reactivare.</p>",
+    "<h1 style=\"font-size:22px;margin:0 0 12px;color:#991b1b\">Listare oprita temporar</h1>",
+    "<p>Proprietatea <strong>" + escapeHtml(propertyName) + "</strong> a fost scoasa temporar din public in Trevoro pentru verificare.</p>",
+    "<p>Contul de proprietar ramane disponibil pentru actualizarea datelor.</p>",
     "<p><a href=\"" + escapeHtml(loginUrl) + "\" style=\"display:inline-block;background:#0f766e;color:#ffffff;text-decoration:none;font-weight:700;padding:11px 16px;border-radius:8px\">Intra in contul de proprietar</a></p>",
-    "<p>Pentru reactivare sau verificarea platii, scrie la <a href=\"mailto:" + SUPPORT_EMAIL + "\">" + SUPPORT_EMAIL + "</a>.</p>",
+    "<p>Pentru reactivare sau verificare, scrie la <a href=\"mailto:" + SUPPORT_EMAIL + "\">" + SUPPORT_EMAIL + "</a>.</p>",
     "<p style=\"margin-top:24px\">Echipa Trevoro</p>",
     "</div>"
   ].join("\n");

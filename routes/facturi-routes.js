@@ -29,6 +29,7 @@ export function registerFacturiRoutes(app, deps) {
     normalizeCui,
     path,
     recalcFacturaTotals,
+    recordIssuedInvoiceNumber,
     renderPdfBuffer,
     requireAuth,
     transporter
@@ -238,6 +239,18 @@ export function registerFacturiRoutes(app, deps) {
     return normalizeFacturaStatus(status) === "ANULATA";
   }
 
+  function wasFacturaSubmittedToSpv(factura = {}) {
+    const efacturaStatus = String(factura.efactura_status || "").trim().toUpperCase();
+    const facturaStatus = normalizeFacturaStatus(factura.status);
+    return Boolean(
+      String(factura.efactura_upload_index || "").trim() ||
+      String(factura.efactura_message_id || "").trim() ||
+      String(factura.efactura_download_id || "").trim() ||
+      ["TRIMIS", "IN_PROCESARE", "RASPUNS_DISPONIBIL", "RECEPTIONATA_SPV", "RESPINS_VALIDARE", "RESPINSA_SPV"].includes(efacturaStatus) ||
+      ["TRIMIS_EFACTURA", "RECEPTIONATA_SPV", "RESPINSA_SPV"].includes(facturaStatus)
+    );
+  }
+
   app.get("/efactura_responses/:fileName", requireAuth, (req, res) => {
     const companyId = Number(req.session.user.company_id || 0);
     const fileName = path.basename(String(req.params.fileName || "").trim());
@@ -365,6 +378,7 @@ export function registerFacturiRoutes(app, deps) {
 
     const invoices = db.prepare(`
       SELECT f.id, f.factura_nr, f.an, f.seq, f.data_emitere, f.total, f.status,
+             f.efactura_status, f.efactura_message_id, f.efactura_upload_index, f.efactura_download_id,
              c.name AS client_name, c.cui AS client_cui
       FROM facturi f
       JOIN clients c ON c.id = f.client_id AND c.company_id = f.company_id
@@ -374,7 +388,8 @@ export function registerFacturiRoutes(app, deps) {
       LIMIT 300
     `).all(companyId).map((invoice) => ({
       ...invoice,
-      display_number: facturaDisplayNumber(invoice)
+      display_number: facturaDisplayNumber(invoice),
+      can_delete: !wasFacturaSubmittedToSpv(invoice)
     }));
 
     res.send(renderNexoraInvoicesPage({
@@ -1121,14 +1136,15 @@ ${crmShellEnd()}
     if (!Number.isFinite(factura_id)) return res.status(400).send("Bad id");
 
     const factura = db.prepare(`
-      SELECT id, status, pdf_path, efactura_xml_path, efactura_response_zip_path
+      SELECT id, factura_nr, an, seq, status, pdf_path, efactura_xml_path, efactura_response_zip_path,
+             efactura_status, efactura_message_id, efactura_upload_index, efactura_download_id
       FROM facturi
       WHERE id=? AND company_id=?
     `).get(factura_id, companyId);
 
     if (!factura) return res.status(404).send("Factura nu exista");
-    if (!isDraftFacturaStatus(factura.status)) {
-      return res.redirect(req.body?.return_to === "nexora" ? "/nexora/facturi/" + factura_id + "?err=stergere_permisa_doar_ciorna" : "/factura/" + factura_id + "?err=stergere_permisa_doar_ciorna");
+    if (wasFacturaSubmittedToSpv(factura)) {
+      return res.redirect(req.body?.return_to === "nexora" ? "/nexora/facturi/" + factura_id + "?err=stergere_blocata_spv" : "/factura/" + factura_id + "?err=stergere_blocata_spv");
     }
 
     for (const storedFile of [factura.pdf_path, factura.efactura_xml_path, factura.efactura_response_zip_path]) {
@@ -1144,13 +1160,92 @@ ${crmShellEnd()}
     }
 
     db.transaction(() => {
+      const previousIssuedInvoice = Number(factura.seq || 0) > 0
+        ? db.prepare(`
+            SELECT factura_nr
+            FROM facturi
+            WHERE company_id=? AND an=? AND id<>? AND seq>0 AND seq<?
+            ORDER BY seq DESC, id DESC
+            LIMIT 1
+          `).get(companyId, factura.an, factura_id, factura.seq)
+        : null;
       db.prepare("UPDATE billing_payments SET generated_factura_id=NULL WHERE generated_factura_id=? AND company_id=?").run(factura_id, companyId);
       db.prepare("DELETE FROM anaf_messages WHERE factura_id=? AND company_id=?").run(factura_id, companyId);
       db.prepare("DELETE FROM facturi_linii WHERE factura_id=? AND company_id=?").run(factura_id, companyId);
       db.prepare("DELETE FROM facturi WHERE id=? AND company_id=?").run(factura_id, companyId);
+
+      const lastIssuedKey = `company:${companyId}:invoice_last_issued_number`;
+      const recordedLastNumber = String(db.prepare("SELECT value FROM app_settings WHERE key=?").get(lastIssuedKey)?.value || "").trim();
+      if (recordedLastNumber === String(factura.factura_nr || "").trim()) {
+        if (previousIssuedInvoice?.factura_nr) {
+          recordIssuedInvoiceNumber(db, previousIssuedInvoice.factura_nr, companyId);
+        } else {
+          db.prepare("DELETE FROM app_settings WHERE key=?").run(lastIssuedKey);
+        }
+      }
     })();
 
     return res.redirect(req.body?.return_to === "nexora" ? "/nexora/facturi?ok=stearsa" : "/facturi?ok=stearsa");
+  });
+
+  app.post("/factura/:id/anuleaza-prin-storno", requireAuth, (req, res) => {
+    const companyId = Number(req.session.user.company_id || 0);
+    const facturaId = Number(req.params.id);
+    if (!Number.isFinite(facturaId)) return res.status(400).send("Bad id");
+
+    const original = db.prepare(`SELECT * FROM facturi WHERE id=? AND company_id=?`).get(facturaId, companyId);
+    if (!original) return res.status(404).send("Factura nu exista");
+    if (!wasFacturaSubmittedToSpv(original)) {
+      return res.redirect(`/nexora/facturi/${facturaId}?err=storno_doar_dupa_spv`);
+    }
+    if (isCancelledFacturaStatus(original.status)) {
+      return res.redirect(`/nexora/facturi/${facturaId}?err=factura_deja_anulata`);
+    }
+
+    const existingCorrection = db.prepare(`
+      SELECT id FROM facturi
+      WHERE company_id=? AND correction_of_factura_id=?
+      ORDER BY id DESC LIMIT 1
+    `).get(companyId, facturaId);
+    if (existingCorrection?.id) {
+      return res.redirect(`/nexora/facturi/${existingCorrection.id}?ok=storno_deja_pregatit`);
+    }
+
+    const reason = String(req.body?.reason || "Anulare integrală la solicitarea clientului").trim().slice(0, 500);
+    const correctionId = db.transaction(() => {
+      const inserted = db.prepare(`
+        INSERT INTO facturi (
+          factura_nr, an, seq, client_id, contract_id, quote_id, status, moneda,
+          subtotal, tva_procent, tva_valoare, total, data_emitere, scadenta,
+          observatii, employee_id, company_id, invoice_type_code,
+          correction_of_factura_id, cancellation_reason
+        ) VALUES (?, ?, 0, ?, ?, ?, 'CIORNA', ?, 0, ?, 0, 0, date('now'), date('now'), ?, ?, ?, '384', ?, ?)
+      `).run(
+        `PENDING-STORNO-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+        new Date().getFullYear(), original.client_id, original.contract_id, original.quote_id,
+        original.moneda || "RON", original.tva_procent, `Storno integral pentru ${original.factura_nr}. ${reason}`,
+        original.employee_id, companyId, facturaId, reason
+      );
+      const id = Number(inserted.lastInsertRowid);
+      db.prepare("UPDATE facturi SET factura_nr=? WHERE id=? AND company_id=?").run(buildDraftInvoiceNumber(id), id, companyId);
+      const lines = db.prepare(`
+        SELECT denumire, descriere, cantitate, unitate, pret_unitar, sort_order
+        FROM facturi_linii WHERE factura_id=? AND company_id=? ORDER BY sort_order, id
+      `).all(facturaId, companyId);
+      const insertLine = db.prepare(`
+        INSERT INTO facturi_linii (factura_id, denumire, descriere, cantitate, unitate, pret_unitar, total_linie, sort_order, company_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const line of lines) {
+        const quantity = -Math.abs(Number(line.cantitate || 0));
+        const price = Math.abs(Number(line.pret_unitar || 0));
+        insertLine.run(id, line.denumire, line.descriere, quantity, line.unitate, price, quantity * price, line.sort_order, companyId);
+      }
+      recalcFacturaTotals(id, companyId);
+      return id;
+    })();
+
+    return res.redirect(`/nexora/facturi/${correctionId}?ok=storno_pregatit`);
   });
 
   app.get("/nexora/facturi/:id", requireAuth, (req, res) => {
@@ -1194,6 +1289,8 @@ ${crmShellEnd()}
       totals,
       displayNumber,
       clientEmail,
+      canDeleteInvoice: !wasFacturaSubmittedToSpv(f),
+      canCreateStorno: wasFacturaSubmittedToSpv(f) && !isCancelledFacturaStatus(f.status) && !Number(f.correction_of_factura_id || 0),
       ok,
       err
     }));
@@ -2076,6 +2173,7 @@ table{width:100%;border-collapse:collapse}
         `).run("DEMO_LOCAL", demoUploadIndex, demoUploadIndex, id, companyId);
 
         db.prepare("UPDATE facturi SET status=? WHERE id=? AND company_id=?").run("TRIMIS_EFACTURA", id, companyId);
+        db.prepare(`UPDATE facturi SET status='ANULATA' WHERE id=(SELECT correction_of_factura_id FROM facturi WHERE id=? AND company_id=?) AND company_id=?`).run(id, companyId, companyId);
         return res.redirect(req.body?.return_to === "nexora" ? "/nexora/facturi/" + id + "?ok=trimis_demo" : "/factura/" + id + "?ok=trimis_demo");
       }
 
@@ -2127,6 +2225,7 @@ table{width:100%;border-collapse:collapse}
       `).run("TRIMIS", uploaded.uploadIndex, uploaded.uploadIndex, id, companyId);
 
       db.prepare("UPDATE facturi SET status=? WHERE id=? AND company_id=?").run("TRIMIS_EFACTURA", id, companyId);
+      db.prepare(`UPDATE facturi SET status='ANULATA' WHERE id=(SELECT correction_of_factura_id FROM facturi WHERE id=? AND company_id=?) AND company_id=?`).run(id, companyId, companyId);
       return res.redirect(req.body?.return_to === "nexora" ? "/nexora/facturi/" + id + "?ok=trimis_anaf" : "/factura/" + id + "?ok=trimis_anaf");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Nu exista conexiune ANAF activa.";

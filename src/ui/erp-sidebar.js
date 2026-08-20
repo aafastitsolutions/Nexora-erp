@@ -20,6 +20,7 @@ const ICONS = {
   restaurant: "▦",
   map: "✈",
   marketplace: "◇",
+  qr: "▣",
   smartphone: "▤",
   sliders: "⚙",
   shield: "▰"
@@ -66,11 +67,16 @@ function renderErpSidebar(options = {}) {
   const companyName = options.companyName || "Workspace";
   const isSuperAdmin = Number(options.isSuperAdmin || 0) === 1;
   const isCompanyAdmin = Number(options.isCompanyAdmin || 0) === 1;
+  const companyId = Number(options.companyId || 0);
   const hasExplicitModules = Object.prototype.hasOwnProperty.call(options, "userModules");
   const userModules = normalizeModuleList(options.userModules || []);
 
   const visibleModules = ERP_MODULES.filter((module) => {
     if (module.superAdminOnly) return isSuperAdmin;
+    if (Array.isArray(module.companyAdminCompanyIds)) {
+      return isSuperAdmin || (isCompanyAdmin && module.companyAdminCompanyIds.map(Number).includes(companyId));
+    }
+    if (module.adminOnly) return isSuperAdmin || isCompanyAdmin;
     if (isSuperAdmin) return true;
     return canSeeModule(module, userModules, hasExplicitModules);
   });

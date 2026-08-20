@@ -24,6 +24,18 @@ dotenv.config();
 const DEFAULT_LIMIT = 10;
 const EMAIL_PAUSE_FILE = process.env.EMARQET_EMAIL_PAUSE_FILE
   || path.join(process.cwd(), "utile", "flags", "emarqet-email-sending-paused");
+const REAL_ESTATE_NOISE_TERMS = [
+  "ancpi",
+  "biroul de cadastru",
+  "camera notarilor",
+  "cadastru si publicitate imobiliara",
+  "consiliul judetean",
+  "judecatoria",
+  "notar public",
+  "ocpi",
+  "primaria",
+  "tribunal"
+];
 
 function argValue(name, fallback = "") {
   const inline = process.argv.find((item) => item.startsWith(`${name}=`));
@@ -68,6 +80,12 @@ function requireEmailConfig() {
 
 function paused() {
   return fs.existsSync(EMAIL_PAUSE_FILE);
+}
+
+function isOutreachNoise(row = {}) {
+  if (row.segment_key !== "real_estate_agencies") return false;
+  const haystack = normalizeKey(`${row.company_name || ""} ${row.email || ""} ${row.website || ""}`);
+  return REAL_ESTATE_NOISE_TERMS.some((term) => haystack.includes(normalizeKey(term)));
 }
 
 function loadEligibleLeads(companyId, filters = {}) {
@@ -194,6 +212,16 @@ function markFailed(companyId, row, message, error, from, replyTo, cc) {
   `).run(companyId, row.id, row.email, message.subject, message.templateKey, from, replyTo, cc, from, errorText);
 }
 
+function markSuppressed(companyId, row, reason = "outreach_noise") {
+  db.prepare(`
+    UPDATE emarqet_outbound_leads
+    SET outreach_status='NOT_READY',
+        notes=trim(COALESCE(notes, '') || char(10) || ?),
+        updated_at=datetime('now')
+    WHERE company_id=? AND id=?
+  `).run(`Outbound e-Marqet sarit automat: ${reason}.`, companyId, row.id);
+}
+
 async function main() {
   const limit = Math.max(1, Number(argValue("--limit", DEFAULT_LIMIT)) || DEFAULT_LIMIT);
   const rawSegment = safeText(argValue("--segment"));
@@ -222,6 +250,11 @@ async function main() {
   for (let index = 0; index < rows.length; index += 1) {
     const row = rows[index];
     const message = buildEmarqetOutboundMessage(row);
+    if (isOutreachNoise(row)) {
+      if (!dryRun) markSuppressed(companyId, row, "real_estate_noise");
+      report.push({ ok: true, skipped: true, reason: "real_estate_noise", id: row.id, company: row.company_name, email: maskEmail(row.email), segment: row.segment_key });
+      continue;
+    }
     if (!allowNonGeneric && !isGenericBusinessEmail(row.email)) {
       report.push({ ok: true, skipped: true, reason: "non_generic_or_free_email", id: row.id, company: row.company_name, email: maskEmail(row.email), segment: row.segment_key });
       continue;

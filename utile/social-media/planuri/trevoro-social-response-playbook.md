@@ -6,7 +6,7 @@ Data creare: 2026-06-18
 
 - Raspundem in maximum 24h.
 - Nu promitem disponibilitate fara verificare pe pagina proprietatii sau direct cu proprietarul.
-- Nu spunem ca Trevoro incaseaza plata turist-proprietar.
+- Nu discutam momentan mecanisme comerciale sau monetizare Trevoro in mesajele publice.
 - Redirectionam turistii catre pagina de cazari/proprietate.
 - Redirectionam proprietarii catre pagina de inscriere si suport.
 
@@ -22,15 +22,15 @@ Daca zona nu apare inca, scrie-ne localitatea si o prioritizam in urmatoarele ca
 
 ### "Cum rezerv?"
 
-Pe Trevoro alegi proprietatea si trimiti cerere direct catre proprietar. Proprietarul confirma disponibilitatea, pretul si conditiile de plata.
+Pe Trevoro alegi proprietatea si trimiti cerere direct catre proprietar. Proprietarul confirma disponibilitatea, pretul si conditiile sejurului.
 
 Pornesti de aici:
 
 https://www.trevoro.ro/cazare
 
-### "Plata se face la voi?"
+### "Cum se confirma sejurul?"
 
-Nu. Trevoro nu incaseaza plata dintre turist si proprietar. Plata, avansul sau garantia se stabilesc direct conform politicii proprietatii.
+Trimiti cererea in Trevoro, iar proprietarul confirma disponibilitatea si pasii urmatori conform politicii proprietatii.
 
 ### "Aveti cazare la mare?"
 
@@ -60,11 +60,11 @@ Buna! Inscrierea se face online aici:
 
 https://www.trevoro.ro/proprietari
 
-Trevoro are planuri fixe de la 99 lei/luna si 0% comision pe rezervari.
+Trevoro are program de lansare pentru proprietarii care vor vizibilitate si cereri directe.
 
 ### "Cat costa?"
 
-Modelul este abonament lunar fix pentru proprietar, cu pret afisat inainte de publicare si 0% comision pe rezervari.
+Modelul comercial va fi comunicat separat dupa ce finalizam strategia de monetizare.
 
 Inscriere:
 
@@ -93,7 +93,7 @@ Buna! Multumim pentru mesaj. Poti cauta destinatii si proprietati active aici:
 
 https://www.trevoro.ro/cazare
 
-Dupa ce alegi proprietatea, trimiti cerere direct catre proprietar. Trevoro nu proceseaza plata dintre turist si proprietar.
+Dupa ce alegi proprietatea, trimiti cerere direct catre proprietar. Proprietarul confirma pasii urmatori si conditiile sejurului.
 
 ### DM proprietar
 
@@ -101,7 +101,7 @@ Buna! Multumim pentru interes. Daca ai hotel, pensiune, cabana, vila sau apartam
 
 https://www.trevoro.ro/proprietari
 
-In perioada de lansare, Trevoro are planuri fixe de la 99 lei/luna si 0% comision pe rezervari, fara comision pe rezervari.
+In perioada de lansare, Trevoro pune accent pe vizibilitate, listari complete si cereri directe catre proprietari.
 
 Pentru ajutor:
 

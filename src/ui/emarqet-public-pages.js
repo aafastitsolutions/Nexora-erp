@@ -1,7 +1,11 @@
 import {
+  AUTO_BRAND_MODELS,
   EMARQET_CATEGORY_DEFINITIONS,
+  EMARQET_CATEGORY_SUGGESTION_RULES,
+  EMARQET_DEPENDENT_OPTIONS,
   categoryByCode,
   categoryByVerticalRow,
+  listingMetadata,
   metadataSummary,
   publishFieldsFor,
   searchFieldsFor
@@ -45,12 +49,135 @@ function fmtCatalogPrice(value, currency = "RON", suffix = "") {
   return `${amount.toLocaleString("ro-RO", { minimumFractionDigits: 0, maximumFractionDigits: 2 })} ${escapeHtml(currencyLabel(currency))}${escapeHtml(suffix)}`;
 }
 
+function cleanText(value = "") {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function phoneHref(value = "") {
+  const firstPhone = cleanText(value).split(/[;,/|]/)[0] || "";
+  let digits = firstPhone.replace(/\D+/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("0040")) digits = `40${digits.slice(4)}`;
+  if (digits.startsWith("0") && digits.length >= 10) digits = `40${digits.slice(1)}`;
+  return `tel:+${digits}`;
+}
+
+function parseJsonArray(value = "") {
+  try {
+    const parsed = JSON.parse(String(value || "[]"));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function listingImageUrls(listing = {}) {
+  return [
+    listing.primary_image_url,
+    ...parseJsonArray(listing.image_urls_json)
+  ]
+    .map((url) => cleanText(url))
+    .filter((url, index, all) => url && (/^https?:\/\//i.test(url) || url.startsWith("/")) && all.indexOf(url) === index)
+    .slice(0, 12);
+}
+
+function publicDescriptionLines(listing = {}) {
+  const technicalLabels = new Set(["an", "km", "combustibil", "cutie"]);
+  return String(listing.notes || "")
+    .split(/\r?\n+/)
+    .map(cleanText)
+    .map((line) => line
+      .replace(/\s*Afla rapid daca poti cumpara aceasta masina in rate.*$/i, "")
+      .replace(/\s*\*Nume\s*\/\s*Prenume.*$/i, "")
+      .replace(/\s*Trade in form.*$/i, "")
+      .replace(/\s*Make an offer price.*$/i, "")
+      .trim())
+    .filter(Boolean)
+    .filter((line) => !/^import automat din site partener aprobat:/i.test(line))
+    .filter((line) => {
+      const label = cleanText(line.split(":")[0] || "").toLowerCase();
+      return !technicalLabels.has(label);
+    });
+}
+
+function publicDescriptionText(listing = {}) {
+  const lines = publicDescriptionLines(listing);
+  if (lines.length) return lines.join("\n\n");
+  const owner = cleanText(listing.partner_display_name || listing.owner_name || "partenerul e-Marqet");
+  const category = categoryByCode(listing.vertical_code || "");
+  if (category?.code === "auto") {
+    return `Autoturism listat de ${owner}. Datele tehnice sunt afișate mai jos, iar disponibilitatea se confirmă direct cu vânzătorul.`;
+  }
+  return `Anunț publicat de ${owner}. Detaliile principale sunt afișate mai jos, iar disponibilitatea se confirmă direct cu vânzătorul.`;
+}
+
+function formatSpecValue(key = "", value = "") {
+  const raw = cleanText(value);
+  if (!raw) return "";
+  if (key === "mileage") {
+    const amount = Number(String(raw).replace(/[^\d.]/g, ""));
+    return Number.isFinite(amount) && amount > 0 ? `${amount.toLocaleString("ro-RO")} km` : raw;
+  }
+  if (key === "engine_capacity" && /^\d+$/.test(raw)) return `${raw} cmc`;
+  return raw;
+}
+
+function listingTechnicalRows(listing = {}) {
+  const metadata = listingMetadata(listing);
+  const fields = [
+    ["brand", "Marcă"],
+    ["model", "Model"],
+    ["year", "An fabricație"],
+    ["mileage", "Kilometri"],
+    ["fuel", "Combustibil"],
+    ["transmission", "Cutie"],
+    ["body_type", "Caroserie"],
+    ["power", "Putere"],
+    ["engine_capacity", "Capacitate cilindrică"],
+    ["color", "Culoare"],
+    ["euro_norm", "Normă Euro"],
+    ["origin_country", "Țară origine"],
+    ["seats", "Locuri"],
+    ["vin", "VIN"],
+    ["stock_code", "Cod stoc"]
+  ];
+  return fields
+    .map(([key, label]) => ({ key, label, value: formatSpecValue(key, metadata[key]) }))
+    .filter((item) => item.value);
+}
+
+function listingDescriptionHtml(listing = {}) {
+  const description = publicDescriptionText(listing);
+  const specs = listingTechnicalRows(listing);
+  return `
+    <section class="emq-listing-section">
+      <h2>Descriere</h2>
+      <div class="emq-description">${description.split(/\n{2,}/).map((line) => `<p>${escapeHtml(line)}</p>`).join("")}</div>
+    </section>
+    ${specs.length ? `
+      <section class="emq-listing-section">
+        <h2>Date tehnice</h2>
+        <div class="emq-spec-grid">
+          ${specs.map((item) => `
+            <div class="emq-spec">
+              <span>${escapeHtml(item.label)}</span>
+              <b>${escapeHtml(item.value)}</b>
+            </div>
+          `).join("")}
+        </div>
+      </section>
+    ` : ""}
+  `;
+}
+
 function publicPath(pathname = "/") {
   return String(pathname || "/").startsWith("/") ? pathname : "/";
 }
 
 function absolutePublicPath(pathname = "/") {
-  return `${EMARQET_PUBLIC_BASE_URL}${publicPath(pathname)}`;
+  const value = String(pathname || "/");
+  if (/^https?:\/\//i.test(value)) return value;
+  return `${EMARQET_PUBLIC_BASE_URL}${publicPath(value)}`;
 }
 
 function slugify(value = "") {
@@ -64,16 +191,21 @@ function slugify(value = "") {
 
 function alertHtml(ok = "", err = "") {
   const okMessages = {
-    sent: "Cererea a ajuns în Nexora pentru verificare.",
-    lead: "Mesajul a fost trimis. Echipa va reveni cu detalii.",
-    service: "Solicitarea de serviciu a ajuns în Nexora.",
+    sent: "Anunțul s-a publicat cu succes.",
+    lead: "Mesajul a fost trimis.",
+    service: "Solicitarea de serviciu a ajuns la echipa e-Marqet.",
     paid: "Plata a fost confirmată.",
     paid_pending: "Plata a fost confirmată. Anunțul este în revizie.",
     business_saved: "Profilul business a fost trimis pentru verificare.",
-    dealer_request: "Cererea a intrat în Nexora CRM. Revenim pentru configurarea importului.",
+    dealer_request: "Cererea a fost înregistrată. Revenim pentru configurarea importului.",
     billing_saved: "Datele de facturare au fost salvate.",
     imported: "Importul a fost procesat.",
-    shared: "Distribuirea a fost înregistrată. Când linkul strânge 3 clickuri unice, anunțul primește promovare gratuită 7 zile."
+    shared: "Distribuirea a fost înregistrată. Când linkul strânge 3 clickuri unice, anunțul primește promovare gratuită 7 zile.",
+    listing_updated: "Anunțul a fost actualizat.",
+    listing_paused: "Anunțul a fost dezactivat.",
+    listing_published: "Anunțul a fost reactivat.",
+    listing_deleted: "Anunțul a fost șters.",
+    promotion_paid: "Promovarea a fost achitată. Cererea a intrat în Nexora."
   };
   const errMessages = {
     required: "Completează câmpurile obligatorii.",
@@ -87,8 +219,8 @@ function alertHtml(ok = "", err = "") {
     phone_required: "Completează numărul de telefon.",
     password: "Parola trebuie să aibă minim 6 caractere.",
     upload: "Pozele nu au putut fi încărcate.",
-    file_too_large: "O poză depășește limita permisă.",
-    too_many_files: "Ai selectat prea multe poze.",
+    file_too_large: "O poză depășește limita permisă. Încarcă poze de maximum 20 MB fiecare.",
+    too_many_files: "Ai selectat prea multe poze. Poți încărca maximum 10 poze.",
     invalid_image: "Pozele trebuie să fie JPG, PNG sau WebP.",
     simulate_disabled: "Simularea plății nu este activă.",
     stripe_disabled: "Stripe nu este activ pentru acest checkout.",
@@ -96,6 +228,7 @@ function alertHtml(ok = "", err = "") {
     cancelled: "Plata a fost anulată.",
     unpaid: "Plata nu este confirmată.",
     stripe: "Sesiunea Stripe nu a putut fi verificată.",
+    no_promotions: "Nu există pachete de promovare active.",
     business_required: "Completează datele partenerului: CUI/CNP, localitate, județ și adresă.",
     business_cui_exists: "Există deja un profil business cu acest CUI.",
     business_profile_missing: "Alege un profil business valid.",
@@ -106,7 +239,9 @@ function alertHtml(ok = "", err = "") {
     consent_required: "Bifează acordul pentru contact.",
     import_file_too_large: "Fișierul CSV este prea mare.",
     import_upload: "Fișierul CSV nu a putut fi încărcat.",
-    import_failed: "Importul nu a putut fi procesat."
+    import_failed: "Importul nu a putut fi procesat.",
+    partner_email: "Mesajul a fost salvat, dar emailul către partener nu a putut fi trimis. Folosește telefonul afișat sau încearcă din nou.",
+    listing_action: "Acțiunea pe anunț nu a putut fi finalizată."
   };
   return [
     ok ? `<div class="emq-public-alert success">${escapeHtml(okMessages[ok] || "Operațiunea a fost finalizată.")}</div>` : "",
@@ -114,11 +249,20 @@ function alertHtml(ok = "", err = "") {
   ].join("");
 }
 
-function layout({ title, description, canonicalPath = "/", body, user = null }) {
+function layout({ title, description, canonicalPath = "/", body, user = null, robots = "", structuredData = [], headHtml = "", socialImage = "" }) {
   const safeTitle = title || "e-Marqet";
-  const safeDescription = description || "Marketplace de marketplace-uri conectat la Nexora.";
+  const safeDescription = description || "Marketplace pentru anunțuri, servicii și parteneri verificați.";
   const safeCanonicalUrl = absolutePublicPath(canonicalPath);
-  const socialImageUrl = absolutePublicPath("/brand/emarqet-facebook-profile.png");
+  const socialImageUrl = socialImage ? absolutePublicPath(socialImage) : absolutePublicPath("/brand/emarqet-facebook-profile.png");
+  const canonicalRoute = String(canonicalPath || "/");
+  const autoRobots = /^(\/cont|\/checkout)(\/|$)/.test(canonicalRoute) || canonicalRoute === "/publica"
+    ? "noindex,follow"
+    : "";
+  const safeRobots = String(robots || autoRobots || "").trim();
+  const jsonLd = (Array.isArray(structuredData) ? structuredData : [structuredData])
+    .filter(Boolean)
+    .map((item) => `<script type="application/ld+json">${JSON.stringify(item).replaceAll("<", "\\u003c")}</script>`)
+    .join("\n  ");
   return `<!doctype html>
 <html lang="ro">
 <head>
@@ -126,6 +270,7 @@ function layout({ title, description, canonicalPath = "/", body, user = null }) 
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(safeTitle)}</title>
   <meta name="description" content="${escapeHtml(safeDescription)}">
+  ${safeRobots ? `<meta name="robots" content="${escapeHtml(safeRobots)}">` : ""}
   <link rel="canonical" href="${escapeHtml(safeCanonicalUrl)}">
   <link rel="icon" href="/brand/emarqet-facebook-profile.png" type="image/png">
   <link rel="apple-touch-icon" href="/brand/emarqet-facebook-profile.png">
@@ -139,6 +284,8 @@ function layout({ title, description, canonicalPath = "/", body, user = null }) 
   <meta name="twitter:title" content="${escapeHtml(safeTitle)}">
   <meta name="twitter:description" content="${escapeHtml(safeDescription)}">
   <meta name="twitter:image" content="${escapeHtml(socialImageUrl)}">
+  ${jsonLd}
+  ${headHtml}
   <style>
     :root {
       --emq-bg: #f6fbff;
@@ -355,6 +502,38 @@ function layout({ title, description, canonicalPath = "/", body, user = null }) 
       display: grid;
     }
 
+    .emq-category-suggestion {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border: 1px solid #7dd3fc;
+      border-radius: 8px;
+      background: #f0f9ff;
+      color: #0c4a6e;
+      padding: 11px 13px;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .emq-category-suggestion[hidden] {
+      display: none;
+    }
+
+    .emq-category-suggestion button {
+      min-height: 34px;
+      flex: 0 0 auto;
+      border: 1px solid #0284c7;
+      border-radius: 8px;
+      background: #0284c7;
+      color: #ffffff;
+      padding: 0 12px;
+      font: inherit;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
     .emq-field {
       display: grid;
       gap: 5px;
@@ -422,6 +601,36 @@ function layout({ title, description, canonicalPath = "/", body, user = null }) 
       overflow: hidden;
     }
 
+    .emq-free-hero-main {
+      display: grid;
+      align-content: start;
+      gap: 14px;
+    }
+
+    .emq-hero-search {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      max-width: 720px;
+    }
+
+    .emq-hero-search input {
+      min-height: 46px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.44);
+      background: rgba(255, 255, 255, 0.94);
+      color: #0f172a;
+      padding: 0 14px;
+      font: inherit;
+      font-weight: 800;
+      outline: none;
+    }
+
+    .emq-hero-search input:focus {
+      border-color: #fbbf24;
+      box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.2);
+    }
+
     .emq-promo-eyebrow {
       display: inline-flex;
       min-height: 30px;
@@ -478,6 +687,10 @@ function layout({ title, description, canonicalPath = "/", body, user = null }) 
       gap: 10px;
     }
 
+    .emq-free-kpis.client {
+      align-content: start;
+    }
+
     .emq-free-kpi {
       min-height: 92px;
       display: grid;
@@ -500,6 +713,12 @@ function layout({ title, description, canonicalPath = "/", body, user = null }) 
       font-size: 13px;
       font-weight: 800;
       line-height: 1.25;
+    }
+
+    .emq-free-kpi small {
+      color: #a7f3d0;
+      font-size: 12px;
+      line-height: 1.3;
     }
 
     .emq-promo-card-grid {
@@ -631,6 +850,66 @@ function layout({ title, description, canonicalPath = "/", body, user = null }) 
       align-items: center;
     }
 
+    .emq-featured-rail.compact {
+      padding: 12px;
+    }
+
+    .emq-featured-rail.compact .emq-featured-head {
+      margin-bottom: 10px;
+    }
+
+    .emq-featured-rail.compact .emq-featured-head h1,
+    .emq-featured-rail.compact .emq-featured-head h2 {
+      font-size: clamp(22px, 3vw, 28px);
+    }
+
+    .emq-featured-rail.compact .emq-featured-track {
+      grid-auto-flow: row;
+      grid-auto-columns: unset;
+      grid-template-columns: repeat(auto-fill, minmax(210px, 260px));
+      align-items: start;
+      overflow: visible;
+      scroll-snap-type: none;
+      padding: 2px;
+    }
+
+    .emq-featured-rail.compact .emq-featured-card {
+      min-height: 0;
+      grid-template-rows: 130px auto;
+      box-shadow: none;
+    }
+
+    .emq-featured-rail.compact .emq-featured-media {
+      min-height: 130px;
+      font-size: 30px;
+    }
+
+    .emq-featured-rail.compact .emq-featured-body {
+      padding: 10px;
+      gap: 6px;
+    }
+
+    .emq-featured-rail.compact .emq-featured-body h3 {
+      font-size: 16px;
+      line-height: 1.2;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .emq-featured-rail.compact .emq-featured-meta {
+      align-items: flex-start;
+    }
+
+    .emq-featured-rail.compact .emq-price {
+      font-size: 18px;
+    }
+
+    .emq-featured-rail.compact .emq-chip-row {
+      display: none;
+    }
+
     .emq-stat {
       min-height: 82px;
       border: 1px solid var(--emq-border);
@@ -662,7 +941,7 @@ function layout({ title, description, canonicalPath = "/", body, user = null }) 
     }
 
     .emq-category-tile {
-      min-height: 128px;
+      min-height: 96px;
       border: 1px solid transparent;
       border-radius: 8px;
       background: transparent;
@@ -691,14 +970,14 @@ function layout({ title, description, canonicalPath = "/", body, user = null }) 
     }
 
     .emq-category-icon {
-      width: 74px;
-      height: 74px;
+      width: 54px;
+      height: 54px;
       border-radius: 50%;
       display: grid;
       place-items: center;
       background: var(--cat-bg, var(--emq-blue-soft));
       color: #0f172a;
-      font-size: 36px;
+      font-size: 28px;
       font-weight: 950;
       box-shadow: 0 16px 34px rgba(2, 132, 199, 0.13);
       transition: transform .2s ease, box-shadow .2s ease;
@@ -716,6 +995,10 @@ function layout({ title, description, canonicalPath = "/", body, user = null }) 
       box-shadow: var(--emq-shadow);
       padding: 12px;
       margin: 8px 0 16px;
+    }
+
+    .emq-search-band.collapsed {
+      display: none;
     }
 
     .emq-home-categories {
@@ -869,16 +1152,33 @@ function layout({ title, description, canonicalPath = "/", body, user = null }) 
       position: absolute;
       top: 10px;
       left: 10px;
-      min-height: 28px;
+      width: 92px;
+      min-height: 44px;
       display: inline-flex;
       align-items: center;
-      border-radius: 999px;
-      background: #0284c7;
-      color: #ffffff;
-      padding: 0 10px;
+      justify-content: center;
+      border-radius: 8px;
+      background: linear-gradient(180deg, #fde68a 0%, #fbbf24 56%, #d97706 100%);
+      color: #3b2500;
+      padding: 12px 10px 7px;
       font-size: 12px;
       font-weight: 950;
-      box-shadow: 0 8px 20px rgba(2, 132, 199, 0.25);
+      line-height: 1;
+      text-transform: uppercase;
+      letter-spacing: 0;
+      border: 1px solid rgba(146, 64, 14, 0.34);
+      box-shadow: 0 10px 22px rgba(146, 64, 14, 0.28);
+      clip-path: polygon(0 28%, 16% 28%, 22% 0, 38% 28%, 50% 0, 62% 28%, 78% 0, 84% 28%, 100% 28%, 100% 100%, 0 100%);
+      text-shadow: 0 1px 0 rgba(255, 255, 255, 0.45);
+      z-index: 2;
+    }
+
+    .emq-promo-badge::before {
+      content: "";
+      position: absolute;
+      inset: 5px 8px auto;
+      height: 1px;
+      background: rgba(255, 255, 255, 0.6);
     }
 
     .emq-chip-row {
@@ -1006,21 +1306,38 @@ function layout({ title, description, canonicalPath = "/", body, user = null }) 
 
     .emq-service-banner-grid {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 10px;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 8px;
     }
 
     .emq-service-banner {
-      min-height: 128px;
+      min-height: 104px;
       border: 1px solid var(--emq-border);
       border-radius: 8px;
       background: #ffffff;
-      padding: 13px;
+      padding: 10px;
       box-shadow: var(--emq-shadow);
       display: flex;
       flex-direction: column;
       justify-content: space-between;
       text-decoration: none;
+    }
+
+    .emq-service-visual {
+      font-size: 24px;
+      line-height: 1;
+      margin-bottom: 7px;
+      transition: transform .18s ease;
+    }
+
+    .emq-service-banner:hover .emq-service-visual {
+      transform: translateY(-2px) rotate(-4deg);
+    }
+
+    .emq-service-banner h3 {
+      margin: 7px 0 0;
+      font-size: 15px;
+      line-height: 1.16;
     }
 
     .emq-service-card {
@@ -1041,6 +1358,179 @@ function layout({ title, description, canonicalPath = "/", body, user = null }) 
       font-size: 18px;
       line-height: 1.2;
       letter-spacing: 0;
+    }
+
+    .emq-service-card.carvertical {
+      border-color: #9ec5ff;
+      background: linear-gradient(145deg, #ffffff 0%, #f1f7ff 100%);
+    }
+
+    .emq-coupon-box {
+      border: 1px dashed #1682e8;
+      border-radius: 8px;
+      background: #ffffff;
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .emq-coupon-code {
+      font-weight: 950;
+      letter-spacing: 0.6px;
+      color: #0f355d;
+    }
+
+    .emq-affiliate-note {
+      color: #64748b;
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    .emq-carvertical-logo {
+      display: block;
+      width: min(190px, 70%);
+      height: auto;
+    }
+
+    .emq-carvertical-partner-banner {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid #0875e1;
+      border-radius: 12px;
+      background: linear-gradient(120deg, #005fbd 0%, #0875e1 52%, #1494ed 100%);
+      color: #ffffff;
+      padding: 24px 28px;
+      box-shadow: 0 18px 42px rgba(8, 117, 225, 0.2);
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 26px;
+    }
+
+    .emq-carvertical-partner-banner::after {
+      content: "";
+      position: absolute;
+      width: 250px;
+      height: 250px;
+      right: -90px;
+      top: -120px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.1);
+      pointer-events: none;
+    }
+
+    .emq-carvertical-partner-banner h2 {
+      color: #ffffff;
+      margin: 12px 0 7px;
+      font-size: clamp(23px, 3vw, 34px);
+      line-height: 1.08;
+      max-width: 760px;
+    }
+
+    .emq-carvertical-partner-banner p {
+      margin: 0;
+      color: #eaf5ff;
+      max-width: 780px;
+      line-height: 1.5;
+    }
+
+    .emq-carvertical-partner-kicker {
+      display: inline-flex;
+      margin-bottom: 10px;
+      color: #dceeff;
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+    }
+
+    .emq-carvertical-partner-action {
+      position: relative;
+      z-index: 1;
+      min-width: 220px;
+      display: grid;
+      gap: 9px;
+    }
+
+    .emq-carvertical-partner-action .emq-btn {
+      background: #ffffff;
+      border-color: #ffffff;
+      color: #075fae;
+      text-align: center;
+    }
+
+    .emq-carvertical-partner-action .emq-coupon-box {
+      color: #0f355d;
+    }
+
+    .emq-carvertical-partner-banner .emq-affiliate-note {
+      color: #dceeff;
+      text-align: center;
+    }
+
+    .emq-carvertical-contact-integration {
+      margin-top: 22px;
+      padding-top: 20px;
+      border-top: 1px solid var(--emq-border);
+    }
+
+    .emq-carvertical-contact-integration h3 {
+      margin: 0 0 6px;
+      font-size: 18px;
+      line-height: 1.25;
+    }
+
+    .emq-carvertical-contact-integration > p {
+      margin: 0 0 14px;
+      color: var(--emq-muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .emq-carvertical-widget-frame {
+      width: min(100%, 300px);
+      margin: 0 auto;
+    }
+
+    .emq-carvertical-button-frame {
+      width: min(100%, 250px);
+      min-height: 72px;
+    }
+
+    .emq-carvertical-widget-frame [data-cvaff] {
+      max-width: 100%;
+    }
+
+    .emq-carvertical-official-banner {
+      margin-top: 18px;
+      border: 1px solid var(--emq-border);
+      border-radius: 8px;
+      background: #ffffff;
+      padding: 16px;
+      box-shadow: var(--emq-shadow);
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 300px;
+      align-items: center;
+      gap: 18px;
+    }
+
+    .emq-carvertical-official-banner h2 {
+      margin: 0 0 7px;
+      font-size: 22px;
+    }
+
+    .emq-carvertical-official-banner p {
+      margin: 0;
+      color: var(--emq-muted);
+      line-height: 1.5;
+    }
+
+    .emq-carvertical-contact-integration .emq-affiliate-note {
+      display: block;
+      margin: 10px auto 0;
+      width: min(100%, 300px);
     }
 
     .emq-service-form {
@@ -1106,12 +1596,13 @@ function layout({ title, description, canonicalPath = "/", body, user = null }) 
 
     .emq-detail {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(320px, 0.4fr);
+      grid-template-columns: minmax(0, 1fr) minmax(340px, 0.4fr);
       gap: 16px;
       align-items: start;
     }
 
     .emq-detail-media {
+      position: relative;
       margin: -16px -16px 16px;
       aspect-ratio: 16 / 9;
       background: linear-gradient(135deg, #e0f2fe, #ffffff);
@@ -1131,6 +1622,29 @@ function layout({ title, description, canonicalPath = "/", body, user = null }) 
       display: block;
     }
 
+    .emq-detail-gallery {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 8px;
+      margin: -4px 0 16px;
+    }
+
+    .emq-detail-gallery a {
+      aspect-ratio: 4 / 3;
+      border: 1px solid var(--emq-border);
+      border-radius: 8px;
+      overflow: hidden;
+      background: #ffffff;
+      display: block;
+    }
+
+    .emq-detail-gallery img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
     .emq-detail h1 {
       margin: 0 0 10px;
       font-size: clamp(30px, 4vw, 46px);
@@ -1143,6 +1657,64 @@ function layout({ title, description, canonicalPath = "/", body, user = null }) 
       flex-wrap: wrap;
       gap: 8px;
       margin: 14px 0;
+    }
+
+    .emq-listing-section {
+      display: grid;
+      gap: 10px;
+      margin-top: 18px;
+      padding-top: 16px;
+      border-top: 1px solid var(--emq-border);
+    }
+
+    .emq-listing-section h2 {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    .emq-description {
+      display: grid;
+      gap: 10px;
+      color: #334155;
+      font-size: 15px;
+      line-height: 1.65;
+    }
+
+    .emq-description p {
+      margin: 0;
+    }
+
+    .emq-spec-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .emq-spec {
+      display: grid;
+      gap: 3px;
+      border: 1px solid var(--emq-border);
+      border-radius: 8px;
+      background: #f8fcff;
+      padding: 10px 12px;
+      min-width: 0;
+    }
+
+    .emq-spec span {
+      color: var(--emq-muted);
+      font-size: 11px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0;
+    }
+
+    .emq-spec b {
+      color: #0f172a;
+      font-size: 14px;
+      line-height: 1.3;
+      overflow-wrap: anywhere;
     }
 
     .emq-form-grid {
@@ -1216,14 +1788,15 @@ function layout({ title, description, canonicalPath = "/", body, user = null }) 
 
     .emq-account-row {
       display: grid;
-      grid-template-columns: 160px minmax(0, 1fr) auto;
+      grid-template-columns: 220px minmax(0, 1fr) 182px;
       gap: 16px;
-      align-items: stretch;
+      align-items: start;
       background: #ffffff;
       border: 1px solid var(--emq-border);
       border-radius: 8px;
       padding: 12px;
       box-shadow: var(--emq-shadow);
+      overflow: hidden;
     }
 
     .emq-account-row h3 {
@@ -1232,7 +1805,22 @@ function layout({ title, description, canonicalPath = "/", body, user = null }) 
       line-height: 1.2;
     }
 
+    .emq-account-details {
+      min-width: 0;
+      position: relative;
+      z-index: 1;
+      background: #ffffff;
+      padding: 4px 0;
+    }
+
+    .emq-account-details .emq-chip-row {
+      align-items: flex-start;
+      max-width: 100%;
+    }
+
     .emq-account-thumb {
+      width: 220px;
+      max-width: 100%;
       aspect-ratio: 4 / 3;
       border-radius: 8px;
       background: var(--cat-bg, #e0f2fe);
@@ -1253,7 +1841,8 @@ function layout({ title, description, canonicalPath = "/", body, user = null }) 
       display: grid;
       gap: 8px;
       align-content: center;
-      min-width: 180px;
+      min-width: 0;
+      width: 182px;
     }
 
     .emq-account-actions form {
@@ -1267,6 +1856,31 @@ function layout({ title, description, canonicalPath = "/", body, user = null }) 
       line-height: 1.15;
       text-align: center;
       white-space: normal;
+    }
+
+    .emq-btn-danger {
+      background: #fff1f2;
+      color: #be123c;
+      border-color: #fecdd3;
+    }
+
+    .emq-btn-danger:hover {
+      background: #ffe4e6;
+      color: #9f1239;
+    }
+
+    @media (max-width: 1180px) {
+      .emq-account-row {
+        grid-template-columns: 180px minmax(0, 1fr) 170px;
+      }
+
+      .emq-account-thumb {
+        width: 180px;
+      }
+
+      .emq-account-actions {
+        width: 170px;
+      }
     }
 
     .emq-copy-box {
@@ -1315,6 +1929,21 @@ function layout({ title, description, canonicalPath = "/", body, user = null }) 
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
+    }
+
+    .emq-business-contact {
+      display: grid;
+      gap: 4px;
+      color: var(--emq-muted);
+      font-size: 14px;
+      line-height: 1.35;
+    }
+
+    .emq-business-contact a {
+      color: #075985;
+      font-weight: 900;
+      text-decoration: none;
+      overflow-wrap: anywhere;
     }
 
     .emq-table-wrap {
@@ -1476,6 +2105,22 @@ function layout({ title, description, canonicalPath = "/", body, user = null }) 
       overflow: hidden;
     }
 
+    .emq-current-gallery {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .emq-current-gallery img {
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      object-fit: cover;
+      border-radius: 8px;
+      border: 1px solid var(--emq-border);
+      background: #f8fafc;
+    }
+
     .emq-publish-fields {
       display: none;
       grid-column: 1 / -1;
@@ -1520,6 +2165,10 @@ function layout({ title, description, canonicalPath = "/", body, user = null }) 
       font-weight: 850;
       border: 1px solid var(--emq-border);
       background: #ffffff;
+    }
+
+    .emq-public-alert[hidden] {
+      display: none;
     }
 
     .emq-public-alert.success {
@@ -1637,8 +2286,19 @@ function layout({ title, description, canonicalPath = "/", body, user = null }) 
       .emq-account-toolbar,
       .emq-account-row,
       .emq-account-head,
-      .emq-publish-head {
+      .emq-publish-head,
+      .emq-carvertical-partner-banner,
+      .emq-carvertical-official-banner {
         grid-template-columns: 1fr;
+      }
+
+      .emq-carvertical-partner-banner {
+        padding: 21px;
+      }
+
+      .emq-carvertical-partner-action {
+        width: 100%;
+        min-width: 0;
       }
 
       .emq-category-strip {
@@ -1654,6 +2314,15 @@ function layout({ title, description, canonicalPath = "/", body, user = null }) 
         grid-auto-columns: minmax(260px, 88%);
       }
 
+      .emq-service-banner-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .emq-detail-gallery,
+      .emq-spec-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
       .emq-free-hero {
         padding: 18px;
       }
@@ -1664,6 +2333,7 @@ function layout({ title, description, canonicalPath = "/", body, user = null }) 
 
       .emq-search,
       .emq-search.expanded,
+      .emq-hero-search,
       .emq-category-fields,
       .emq-category-fields.active,
       .emq-form-grid,
@@ -1675,9 +2345,21 @@ function layout({ title, description, canonicalPath = "/", body, user = null }) 
         grid-template-columns: 1fr;
       }
 
+      .emq-current-gallery {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
       .emq-search.expanded .wide,
       .emq-search.expanded .submit {
         grid-column: auto;
+      }
+
+      .emq-account-thumb {
+        width: min(100%, 360px);
+      }
+
+      .emq-account-actions {
+        width: 100%;
       }
 
       .emq-stats {
@@ -1694,6 +2376,19 @@ function layout({ title, description, canonicalPath = "/", body, user = null }) 
       .emq-footer-inner {
         align-items: flex-start;
         padding: 12px 0;
+      }
+
+      .emq-header-inner {
+        display: grid;
+        grid-template-columns: 1fr;
+      }
+
+      .emq-brand {
+        width: 100%;
+      }
+
+      .emq-nav {
+        width: 100%;
       }
 
       .emq-footer-support {
@@ -1714,12 +2409,13 @@ function layout({ title, description, canonicalPath = "/", body, user = null }) 
         <img class="emq-brand-mark" src="/brand/emarqet-facebook-profile.png" alt="" aria-hidden="true">
         <span class="emq-brand-copy">
           <span class="emq-brand-name">e-Marqet</span>
-          <span class="emq-brand-tagline">marketplace-uri conectate la Nexora</span>
+          <span class="emq-brand-tagline">marketplace pentru anunțuri și parteneri verificați</span>
         </span>
       </a>
       <nav class="emq-nav" aria-label="Navigare e-Marqet">
         <a href="/anunturi">Anunțuri</a>
         <a href="/auto">Auto</a>
+        <a href="/verificare-istoric-auto-carvertical">Istoric auto</a>
         <a href="/imobiliare">Imobiliare</a>
         <a href="/parteneri">Parteneri</a>
         <a href="/preturi">Prețuri</a>
@@ -1733,12 +2429,13 @@ function layout({ title, description, canonicalPath = "/", body, user = null }) 
   </main>
   <footer class="emq-footer">
     <div class="emq-footer-inner">
-      <div>
+      <div class="emq-account-details">
         <b>e-Marqet</b>
-        <span>Marketplace conectat la Nexora pentru anunțuri, abonamente și servicii integrate.</span>
+        <span>Marketplace pentru anunțuri, abonamente, servicii și parteneri verificați.</span>
       </div>
       <nav class="emq-footer-links" aria-label="Linkuri e-Marqet">
         <a href="/anunturi">Anunțuri</a>
+        <a href="/verificare-istoric-auto-carvertical">Verificare istoric auto</a>
         <a href="/parteneri">Parteneri</a>
         <a href="/preturi">Prețuri</a>
         <a href="/publica">Publică anunț</a>
@@ -1758,6 +2455,104 @@ function layout({ title, description, canonicalPath = "/", body, user = null }) 
     </div>
   </footer>
   <script>
+    const EMQ_AUTO_BRAND_MODELS = ${JSON.stringify(AUTO_BRAND_MODELS)};
+    const EMQ_DEPENDENT_SELECT_OPTIONS = ${JSON.stringify(EMARQET_DEPENDENT_OPTIONS)};
+    const EMQ_CATEGORY_SUGGESTION_RULES = ${JSON.stringify(EMARQET_CATEGORY_SUGGESTION_RULES)};
+    const EMQ_CATEGORY_LABELS = ${JSON.stringify(Object.fromEntries(EMARQET_CATEGORY_DEFINITIONS.map((category) => [category.code, category.name])))};
+    const EMQ_UPLOAD_MAX_FILES = 10;
+    const EMQ_UPLOAD_MAX_FILE_BYTES = 20 * 1024 * 1024;
+    const EMQ_UPLOAD_MAX_TOTAL_BYTES = 45 * 1024 * 1024;
+
+    function emqAutoModelOptions(brand) {
+      if (brand && EMQ_AUTO_BRAND_MODELS[brand]) return EMQ_AUTO_BRAND_MODELS[brand];
+      return [...new Set(Object.values(EMQ_AUTO_BRAND_MODELS).flat())].sort((a, b) => a.localeCompare(b, "ro", { numeric: true }));
+    }
+
+    function syncEmarqetAutoModels(root) {
+      const scope = root || document;
+      scope.querySelectorAll("[data-emq-category-form]").forEach((form) => {
+        const brandSelect = form.querySelector("[data-emq-auto-brand-select]");
+        const modelSelect = form.querySelector("[data-emq-auto-model-select]");
+        if (!brandSelect || !modelSelect) return;
+        const previous = modelSelect.value || modelSelect.dataset.selected || "";
+        modelSelect.replaceChildren(new Option("", ""));
+        emqAutoModelOptions(brandSelect.value).forEach((model) => modelSelect.add(new Option(model, model)));
+        modelSelect.value = emqAutoModelOptions(brandSelect.value).includes(previous) ? previous : "";
+        modelSelect.dataset.selected = modelSelect.value;
+      });
+    }
+
+    function syncEmarqetDependentFields(root) {
+      const scope = root || document;
+      scope.querySelectorAll("[data-emq-dependent-key]").forEach((control) => {
+        const config = EMQ_DEPENDENT_SELECT_OPTIONS[control.dataset.emqDependentKey];
+        const block = control.closest("[data-emq-category-fields]") || control.closest("form");
+        if (!config || !block) return;
+        const source = block.querySelector('[name="' + config.source + '"]');
+        const options = source?.value ? config.options?.[source.value] || [] : [];
+        const listId = control.getAttribute("list");
+        const datalist = listId ? document.getElementById(listId) : null;
+        if (datalist) {
+          datalist.replaceChildren(...options.map((value) => {
+            const option = document.createElement("option");
+            option.value = value;
+            return option;
+          }));
+        }
+      });
+    }
+
+    function normalizeEmarqetSuggestionText(value) {
+      return String(value || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    function suggestedEmarqetCategory(value) {
+      const text = " " + normalizeEmarqetSuggestionText(value) + " ";
+      if (text.trim().length < 4) return null;
+      const scored = EMQ_CATEGORY_SUGGESTION_RULES.map((rule) => {
+        const matches = rule.keywords
+          .map(normalizeEmarqetSuggestionText)
+          .filter((keyword) => keyword && text.includes(" " + keyword + " "));
+        const score = matches.reduce((total, keyword) => {
+          if (keyword.includes(" ")) return total + 4;
+          return total + (keyword.length >= 6 ? 2 : 1);
+        }, 0);
+        return { code: rule.code, score, matches };
+      }).filter((item) => item.score > 0).sort((a, b) => b.score - a.score || b.matches.join("").length - a.matches.join("").length);
+      if (!scored.length || scored[0].score < 2) return null;
+      return scored[0];
+    }
+
+    function syncEmarqetCategorySuggestion(form) {
+      if (!form) return;
+      const box = form.querySelector("[data-emq-category-suggestion]");
+      const select = form.querySelector("[data-emq-category-select]");
+      if (!box || !select) return;
+      const title = form.querySelector('[name="title"]')?.value || "";
+      const notes = form.querySelector('[name="notes"]')?.value || "";
+      const suggestion = suggestedEmarqetCategory(title + " " + notes);
+      if (!suggestion || ![...select.options].some((option) => option.value === suggestion.code)) {
+        box.hidden = true;
+        box.dataset.suggestedCode = "";
+        return;
+      }
+      const label = EMQ_CATEGORY_LABELS[suggestion.code] || suggestion.code;
+      const text = box.querySelector("[data-emq-category-suggestion-text]");
+      const button = box.querySelector("button");
+      box.hidden = false;
+      box.dataset.suggestedCode = suggestion.code;
+      if (text) text.textContent = select.value === suggestion.code
+        ? "Categoria selectată pare potrivită: " + label + "."
+        : "Categorie sugerată după titlu și descriere: " + label + ".";
+      if (button) button.hidden = select.value === suggestion.code;
+    }
+
     function syncEmarqetCategoryFields(root) {
       const scope = root || document;
       scope.querySelectorAll("[data-emq-category-form]").forEach((form) => {
@@ -1771,18 +2566,62 @@ function layout({ title, description, canonicalPath = "/", body, user = null }) 
           });
         });
       });
+      syncEmarqetAutoModels(scope);
+      syncEmarqetDependentFields(scope);
+      scope.querySelectorAll("form[data-emq-category-form]").forEach(syncEmarqetCategorySuggestion);
+    }
+    function showEmarqetFormError(form, message) {
+      if (!form) return;
+      const box = form.querySelector("[data-emq-form-error]");
+      if (!box) return;
+      box.textContent = message || "Completează câmpurile obligatorii evidențiate.";
+      box.hidden = false;
+      box.scrollIntoView({ behavior: "smooth", block: "center" });
     }
     document.addEventListener("DOMContentLoaded", () => syncEmarqetCategoryFields(document));
+    document.addEventListener("invalid", (event) => {
+      const form = event.target.closest("form[data-emq-category-form]");
+      if (!form) return;
+      const label = event.target.closest("label")?.querySelector("span")?.textContent || event.target.name || "câmp";
+      showEmarqetFormError(form, "Completează câmpul: " + label + ".");
+    }, true);
     document.addEventListener("change", (event) => {
       if (event.target.closest("[data-emq-category-select]")) {
         syncEmarqetCategoryFields(document);
       }
+      if (event.target.closest("[data-emq-auto-brand-select]")) {
+        syncEmarqetAutoModels(document);
+      }
+      if (event.target.closest("[data-emq-auto-model-select]")) {
+        event.target.dataset.selected = event.target.value || "";
+      }
+      if (event.target.closest("[data-emq-category-fields] select")) {
+        syncEmarqetDependentFields(event.target.closest("[data-emq-category-fields]"));
+      }
       const photoInput = event.target.closest("[data-emq-photo-input]");
       if (photoInput) {
         const preview = document.querySelector(photoInput.dataset.emqPhotoInput || "");
+        const files = [...photoInput.files];
+        const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
+        const oversized = files.find((file) => file.size > EMQ_UPLOAD_MAX_FILE_BYTES);
+        const invalidType = files.find((file) => !["image/jpeg", "image/png", "image/webp"].includes(file.type));
+        const form = photoInput.closest("form[data-emq-category-form]");
+        if (files.length > EMQ_UPLOAD_MAX_FILES || totalBytes > EMQ_UPLOAD_MAX_TOTAL_BYTES || oversized || invalidType) {
+          photoInput.value = "";
+          const reason = invalidType
+            ? "Încarcă doar poze JPG, PNG sau WebP."
+            : oversized
+              ? "O poză este prea mare. Limita este 20 MB per poză."
+              : files.length > EMQ_UPLOAD_MAX_FILES
+                ? "Ai selectat prea multe poze. Limita este 10 poze."
+                : "Pozele selectate sunt prea mari împreună. Alege mai puține poze sau poze mai mici.";
+          showEmarqetFormError(form, reason);
+          if (preview) preview.innerHTML = "<span>+</span><span>+</span><span>+</span><span>+</span><span>+</span><span>+</span>";
+          return;
+        }
         if (preview) {
           preview.innerHTML = "";
-          [...photoInput.files].slice(0, 12).forEach((file) => {
+          files.slice(0, EMQ_UPLOAD_MAX_FILES).forEach((file) => {
             const image = document.createElement("img");
             image.alt = file.name;
             image.src = URL.createObjectURL(file);
@@ -1794,6 +2633,36 @@ function layout({ title, description, canonicalPath = "/", body, user = null }) 
           }
         }
       }
+    });
+    document.addEventListener("input", (event) => {
+      if (!event.target.matches('[name="title"], [name="notes"]')) return;
+      syncEmarqetCategorySuggestion(event.target.closest("form[data-emq-category-form]"));
+    });
+    document.addEventListener("click", (event) => {
+      const categoryTile = event.target.closest("[data-emq-home-category]");
+      if (categoryTile) {
+        event.preventDefault();
+        const code = categoryTile.dataset.emqHomeCategory || "";
+        const band = document.querySelector("[data-emq-home-search-band]");
+        const form = document.querySelector("[data-emq-advanced-search]");
+        const select = form?.querySelector("[data-emq-category-select]");
+        if (band) band.classList.remove("collapsed");
+        if (select) {
+          select.value = code;
+          select.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        (band || form || categoryTile).scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      const button = event.target.closest("[data-emq-apply-category-suggestion]");
+      if (!button) return;
+      const box = button.closest("[data-emq-category-suggestion]");
+      const form = button.closest("form[data-emq-category-form]");
+      const select = form?.querySelector("[data-emq-category-select]");
+      if (!box?.dataset.suggestedCode || !select) return;
+      select.value = box.dataset.suggestedCode;
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      syncEmarqetCategorySuggestion(form);
     });
     document.querySelectorAll("[data-emq-featured-carousel]").forEach((track) => {
       let paused = false;
@@ -1906,7 +2775,15 @@ const CATEGORY_VISUALS = {
   electronice_electrocasnice: { icon: "📱", bg: "#99f6e4" },
   pc_laptopuri_it: { icon: "💻", bg: "#bfdbfe" },
   telefoane_accesorii: { icon: "☎️", bg: "#fecdd3" },
-  audio_video: { icon: "🎧", bg: "#ddd6fe" }
+  audio_video: { icon: "🎧", bg: "#ddd6fe" },
+  moda_frumusete: { icon: "👗", bg: "#fbcfe8" },
+  casa_gradina: { icon: "🪴", bg: "#bbf7d0" },
+  mama_copilul: { icon: "👶", bg: "#fef3c7" },
+  sport_timp_liber_arta: { icon: "🚲", bg: "#bae6fd" },
+  animale_companie: { icon: "🐾", bg: "#fed7aa" },
+  agro_industrie: { icon: "🚜", bg: "#d9f99d" },
+  echipamente_profesionale: { icon: "🏗️", bg: "#cbd5e1" },
+  inchirieri: { icon: "🔑", bg: "#c4b5fd" }
 };
 
 function categoryVisual(category = {}) {
@@ -1934,26 +2811,58 @@ function trustBadges(badges = []) {
 }
 
 function optionHtml(options = [], selected = "") {
+  const selectedValue = String(selected || "");
+  const normalizedOptions = options.map((option) => String(option));
+  const fullOptions = selectedValue && !normalizedOptions.includes(selectedValue)
+    ? [selectedValue, ...options]
+    : options;
   return [
     `<option value=""></option>`,
-    ...options.map((option) => `<option value="${escapeHtml(option)}" ${String(selected) === String(option) ? "selected" : ""}>${escapeHtml(option)}</option>`)
+    ...fullOptions.map((option) => `<option value="${escapeHtml(option)}" ${selectedValue === String(option) ? "selected" : ""}>${escapeHtml(option)}</option>`)
   ].join("");
 }
 
-function fieldControl(field = {}, value = "", extraClass = "") {
+function fieldControl(field = {}, value = "", extraClass = "", context = {}) {
   const type = field.type === "number" ? "number" : "text";
+  const disabledAttr = context._disabled ? " disabled" : "";
+  const dependent = field.dependentKey ? EMARQET_DEPENDENT_OPTIONS[field.dependentKey] : null;
+  const dependentSourceValue = dependent ? context[dependent.source] : "";
+  const dependentOptions = dependentSourceValue ? dependent?.options?.[dependentSourceValue] || [] : [];
+  const contextualOptions = dependent ? dependentOptions : field.options || [];
   if (field.type === "select") {
+    const options = field.autoRole === "model" && context.brand && AUTO_BRAND_MODELS[context.brand]
+      ? AUTO_BRAND_MODELS[context.brand]
+      : contextualOptions;
+    const autoAttr = field.autoRole === "brand"
+      ? " data-emq-auto-brand-select"
+      : field.autoRole === "model"
+        ? ` data-emq-auto-model-select data-selected="${escapeHtml(value || "")}"`
+        : "";
     return `
       <label class="emq-field ${escapeHtml(extraClass)}">
         <span>${escapeHtml(field.label || field.name)}</span>
-        <select class="emq-select" name="${escapeHtml(field.name)}">${optionHtml(field.options || [], value)}</select>
+        <select class="emq-select" name="${escapeHtml(field.name)}"${autoAttr}${disabledAttr}>${optionHtml(options, value)}</select>
+      </label>
+    `;
+  }
+  if (field.type === "datalist") {
+    const listId = `emq-list-${String(context._categoryCode || "category")}-${String(context._block || "fields")}-${String(field.name || "value")}`
+      .replace(/[^a-zA-Z0-9_-]/g, "-");
+    const dependentAttr = field.dependentKey
+      ? ` data-emq-dependent-key="${escapeHtml(field.dependentKey)}"`
+      : "";
+    return `
+      <label class="emq-field ${escapeHtml(extraClass)}">
+        <span>${escapeHtml(field.label || field.name)}</span>
+        <input class="emq-input" type="text" name="${escapeHtml(field.name)}" value="${escapeHtml(value || "")}" list="${escapeHtml(listId)}"${dependentAttr}${disabledAttr}>
+        <datalist id="${escapeHtml(listId)}">${contextualOptions.map((option) => `<option value="${escapeHtml(option)}"></option>`).join("")}</datalist>
       </label>
     `;
   }
   return `
     <label class="emq-field ${escapeHtml(extraClass)}">
       <span>${escapeHtml(field.label || field.name)}</span>
-      <input class="emq-input" type="${escapeHtml(type)}" name="${escapeHtml(field.name)}" value="${escapeHtml(value || "")}">
+      <input class="emq-input" type="${escapeHtml(type)}" name="${escapeHtml(field.name)}" value="${escapeHtml(value || "")}"${disabledAttr}>
     </label>
   `;
 }
@@ -1965,7 +2874,7 @@ function categoryFilterBlocks({ verticals = [], filters = {} } = {}) {
     if (!fields.length) return "";
     return `
       <div class="emq-category-fields ${activeCode === category.code ? "active" : ""}" data-emq-category-fields="${escapeHtml(category.code)}">
-        ${fields.map((field) => fieldControl(field, filters[field.name] || "")).join("")}
+        ${fields.map((field) => fieldControl(field, filters[field.name] || "", "", { ...filters, _categoryCode: category.code, _block: "filters", _disabled: activeCode !== category.code })).join("")}
       </div>
     `;
   }).join("");
@@ -1978,7 +2887,7 @@ function publishFieldBlocks({ verticals = [], form = {} } = {}) {
     if (!fields.length) return "";
     return `
       <div class="emq-publish-fields ${activeCode === category.code ? "active" : ""}" data-emq-category-fields="${escapeHtml(category.code)}">
-        ${fields.map((field) => fieldControl(field, form[field.name] || "")).join("")}
+        ${fields.map((field) => fieldControl(field, form[field.name] || "", "", { ...form, _categoryCode: category.code, _block: "publish", _disabled: activeCode !== category.code })).join("")}
       </div>
     `;
   }).join("");
@@ -2009,7 +2918,7 @@ function requestServiceCard(service = {}, listing = {}) {
       <div>
         <div class="emq-card-top">
           <span class="emq-pill">${escapeHtml(servicePriceLabel(service))}</span>
-          ${service.requires_partner ? `<span class="emq-muted">partener</span>` : `<span class="emq-muted">Nexora</span>`}
+          ${service.requires_partner ? `<span class="emq-muted">partener</span>` : `<span class="emq-muted">e-Marqet</span>`}
         </div>
         <h3>${escapeHtml(service.name || "Serviciu")}</h3>
         <span>${escapeHtml(service.description || "")}</span>
@@ -2028,10 +2937,140 @@ function requestServiceCard(service = {}, listing = {}) {
   `;
 }
 
+function carVerticalAffiliateSdkHead() {
+  return `<script>
+    (function(w,d,u,h,s){
+      h=d.getElementsByTagName('head')[0];
+      s=d.createElement('script');
+      s.async=1;
+      s.src=u+'/sdk.js';
+      h.appendChild(s);
+    })(window,document,'https://aff.carvertical.com');
+  </script>`;
+}
+
+function carVerticalWidgetVin(listing = {}) {
+  const metadata = listingMetadata(listing);
+  const vin = [listing.vin, metadata.vin, metadata.vin_optional]
+    .map((value) => cleanText(value).toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, ""))
+    .find((value) => /^[A-HJ-NPR-Z0-9]{17}$/.test(value));
+  return vin || "";
+}
+
+function carVerticalContactButton(listing = {}) {
+  const vin = carVerticalWidgetVin(listing);
+  return `
+    <section class="emq-carvertical-contact-integration" aria-label="Verificare istoric auto carVertical">
+      <h3>Verifică istoricul înainte să contactezi vânzătorul</h3>
+      <p>${vin ? "VIN-ul anunțului este transmis automat către carVertical." : "Deschide verificarea carVertical și introdu seria VIN a mașinii."}</p>
+      <div class="emq-carvertical-widget-frame emq-carvertical-button-frame">
+        <div
+          data-cvaff
+          data-platform="everflow"
+          data-locale="ro"
+          data-partner-id="2NGMLPR"
+          data-offer-id="66RQ8Q"
+          data-uid="01"
+          data-chan="website"
+          data-voucher="emarqet20"
+          ${vin ? `data-vin="${escapeHtml(vin)}"` : ""}
+          data-animated="true"
+          data-variant="variant-2"
+          data-integration-type="button"
+          style="width:250px;height:72px">
+        </div>
+      </div>
+      <span class="emq-affiliate-note">Folosește codul EMARQET20 pentru 20% reducere. Link afiliat, fără cost suplimentar.</span>
+    </section>
+  `;
+}
+
+function carVerticalOfficialBanner() {
+  return `
+    <section class="emq-carvertical-official-banner" aria-label="Banner oficial carVertical">
+      <div>
+        <span class="emq-pill">Partener oficial</span>
+        <h2>Verifică istoricul mașinii înainte de cumpărare</h2>
+        <p>Introdu VIN-ul în bannerul carVertical și folosește codul <strong>EMARQET20</strong> pentru 20% reducere.</p>
+        <span class="emq-affiliate-note">e-Marqet poate primi un comision din achizițiile eligibile, fără cost suplimentar pentru tine.</span>
+      </div>
+      <div class="emq-carvertical-widget-frame">
+        <div
+          data-cvaff
+          data-platform="everflow"
+          data-locale="ro"
+          data-partner-id="2NGMLPR"
+          data-offer-id="66RQ8Q"
+          data-uid="01"
+          data-chan="website"
+          data-voucher="emarqet20"
+          data-integration-type="banner"
+          data-variant="drowned"
+          data-background="lightblue"
+          style="width:300px;height:250px">
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function carVerticalTrackingHref(listing = {}, placement = "listing_services") {
+  const params = new URLSearchParams();
+  if (listing.id) params.set("listing_id", String(listing.id));
+  params.set("placement", placement);
+  return `/partener/carvertical?${params.toString()}`;
+}
+
+function carVerticalServiceCard(service = {}, listing = {}) {
+  return `
+    <article class="emq-service-card carvertical">
+      <div>
+        <div class="emq-card-top">
+          <img class="emq-carvertical-logo" src="/assets/partners/carvertical-logo-blue.png" alt="carVertical">
+          <span class="emq-pill">Partener oficial</span>
+        </div>
+        <h3>${escapeHtml(service.name || "Raport istoric auto")}</h3>
+        <span>${escapeHtml(service.description || "Verifică istoricul mașinii înainte de cumpărare.")}</span>
+      </div>
+      <div class="emq-service-form">
+        <div class="emq-coupon-box">
+          <span>20% reducere</span>
+          <span class="emq-coupon-code">EMARQET20</span>
+        </div>
+        <a class="emq-btn" href="${escapeHtml(carVerticalTrackingHref(listing))}" target="_blank" rel="sponsored noopener noreferrer">${escapeHtml(service.cta_label || "Verifică pe carVertical")}</a>
+        <a class="emq-btn-secondary" href="/verificare-istoric-auto-carvertical">Cum funcționează raportul</a>
+        <span class="emq-affiliate-note">Link afiliat. e-Marqet poate primi un comision, fără cost suplimentar pentru tine.</span>
+      </div>
+    </article>
+  `;
+}
+
+function carVerticalPartnerBanner({ listing = {}, placement = "partner_banner" } = {}) {
+  return `
+    <section class="emq-carvertical-partner-banner" aria-label="Parteneriat e-Marqet și carVertical">
+      <div>
+        <span class="emq-carvertical-partner-kicker">e-Marqet × carVertical · parteneriat activ</span>
+        <img class="emq-carvertical-logo" src="/assets/partners/carvertical-logo-white.png" alt="carVertical">
+        <h2>Verifică istoricul mașinii înainte să o cumperi</h2>
+        <p>Accesează raportul carVertical prin e-Marqet și folosește codul <strong>EMARQET20</strong> pentru 20% reducere.</p>
+      </div>
+      <div class="emq-carvertical-partner-action">
+        <div class="emq-coupon-box">
+          <span>Cod reducere</span>
+          <span class="emq-coupon-code">EMARQET20</span>
+        </div>
+        <a class="emq-btn" href="/verificare-istoric-auto-carvertical">Verifică istoricul auto</a>
+        <span class="emq-affiliate-note">Link afiliat. Fără cost suplimentar pentru tine.</span>
+      </div>
+    </section>
+  `;
+}
+
 function servicesSection(services = [], listing = {}) {
   if (!services.length) return "";
   const cards = services.map((service) => {
     if (service.code === "vin_decode_basic") return vinDecodeServiceCard(service, listing);
+    if (service.code === "vehicle_history_report") return carVerticalServiceCard(service, listing);
     return requestServiceCard(service, listing);
   }).join("");
   return `
@@ -2048,6 +3087,10 @@ function partnerListingBox(listing = {}) {
   const partnerUrl = partnerPublicPath(listing);
   const partnerName = listing.partner_display_name || "";
   if (!partnerUrl || !partnerName) return "";
+  const partnerEmail = cleanText(listing.partner_email || listing.owner_email);
+  const partnerPhone = cleanText(listing.partner_phone || listing.contact_phone);
+  const partnerPhoneHref = phoneHref(partnerPhone);
+  const mailSubject = encodeURIComponent(`Cerere e-Marqet: ${listing.title || listing.listing_code || "anunt"}`);
   return `
     <article class="emq-business-card">
       <div class="emq-card-top">
@@ -2058,12 +3101,30 @@ function partnerListingBox(listing = {}) {
         <h3>${escapeHtml(partnerName)}</h3>
         <span class="emq-muted">${escapeHtml([listing.partner_city, listing.partner_county].filter(Boolean).join(", ") || "e-Marqet")}</span>
       </div>
+      ${partnerPhone || partnerEmail ? `
+        <div class="emq-business-contact">
+          ${partnerPhone ? `<span>Telefon: ${partnerPhoneHref ? `<a href="${escapeHtml(partnerPhoneHref)}">${escapeHtml(partnerPhone)}</a>` : escapeHtml(partnerPhone)}</span>` : ""}
+          ${partnerEmail ? `<span>Email: <a href="mailto:${escapeHtml(partnerEmail)}?subject=${escapeHtml(mailSubject)}">${escapeHtml(partnerEmail)}</a></span>` : ""}
+        </div>
+      ` : ""}
       <div class="emq-business-meta">
         <a class="emq-btn-secondary" href="${escapeHtml(partnerUrl)}">Toate anunțurile</a>
         ${listing.partner_website ? `<a class="emq-btn-secondary" href="${escapeHtml(listing.partner_website)}" target="_blank" rel="noopener noreferrer">Website</a>` : ""}
+        ${partnerPhoneHref ? `<a class="emq-btn-secondary" href="${escapeHtml(partnerPhoneHref)}">Telefon</a>` : ""}
+        ${partnerEmail ? `<a class="emq-btn-secondary" href="mailto:${escapeHtml(partnerEmail)}?subject=${escapeHtml(mailSubject)}">Email</a>` : ""}
       </div>
     </article>
   `;
+}
+
+function serviceIcon(service = {}) {
+  const code = String(service.code || "");
+  if (code.includes("vin")) return "🔎";
+  if (code === "vehicle_history_report") return "📋";
+  if (code.includes("leasing")) return "💶";
+  if (code.includes("price")) return "📈";
+  if (code.includes("damage")) return "🛡";
+  return "⚙";
 }
 
 function serviceBanners(services = []) {
@@ -2076,9 +3137,10 @@ function serviceBanners(services = []) {
       </div>
       <div class="emq-service-banner-grid">
         ${services.map((service) => `
-          <a class="emq-service-banner" href="/auto">
+          <a class="emq-service-banner" href="${service.code === "vehicle_history_report" ? "/verificare-istoric-auto-carvertical" : "/auto"}">
             <div>
-              <span class="emq-pill">${escapeHtml(service.requires_partner ? "Partener" : "Nexora")}</span>
+              <div class="emq-service-visual" aria-hidden="true">${escapeHtml(serviceIcon(service))}</div>
+              <span class="emq-pill">${escapeHtml(service.code === "vehicle_history_report" ? "20% reducere · EMARQET20" : service.requires_partner ? "Partener" : "e-Marqet")}</span>
               <h3>${escapeHtml(service.name || "Serviciu")}</h3>
             </div>
             <span class="emq-muted">${escapeHtml(servicePriceLabel(service))}</span>
@@ -2406,16 +3468,22 @@ function featuredListingCard(listing = {}) {
   `;
 }
 
-function featuredListingsRail(listings = []) {
+function featuredListingsRail(listings = [], options = {}) {
   if (!listings.length) return "";
+  const title = options.title || "Anunțuri promovate";
+  const description = options.description || "Galerie cu anunțurile împinse în față. Când activezi promovarea, apar automat aici.";
+  const ctaHref = options.ctaHref || "/publica";
+  const ctaLabel = options.ctaLabel || "Publică anunț";
+  const ariaLabel = options.ariaLabel || title;
+  const compactClass = options.compact ? " compact" : "";
   return `
-    <section class="emq-featured-rail" aria-label="Anunțuri promovate">
+    <section class="emq-featured-rail${compactClass}" aria-label="${escapeHtml(ariaLabel)}">
       <div class="emq-featured-head">
         <div>
-          <h1>Anunțuri promovate</h1>
-          <p>Galerie cu anunțurile împinse în față. Când activezi promovarea, apar automat aici.</p>
+          <h1>${escapeHtml(title)}</h1>
+          <p>${escapeHtml(description)}</p>
         </div>
-        <a class="emq-btn" href="/publica">Publică anunț</a>
+        <a class="emq-btn" href="${escapeHtml(ctaHref)}">${escapeHtml(ctaLabel)}</a>
       </div>
       <div class="emq-featured-track" data-emq-featured-carousel>
         ${listings.map(featuredListingCard).join("")}
@@ -2424,37 +3492,27 @@ function featuredListingsRail(listings = []) {
   `;
 }
 
-function homePromoBanners() {
+function homePromoBanners(stats = {}) {
   return `
     <section class="emq-entry-promo" aria-label="Promoții e-Marqet">
       <div class="emq-free-hero">
-        <div>
+        <div class="emq-free-hero-main">
           <span class="emq-promo-eyebrow">Start gratuit pe e-Marqet</span>
           <h1>Publică anunțuri gratuit. Ai 3 anunțuri gratuite pe utilizator.</h1>
           <p>Adaugă mașini, imobiliare, servicii sau produse și primești imediat link public pe care îl poți distribui.</p>
+          <form class="emq-hero-search" action="/anunturi" method="get">
+            <input name="q" placeholder="Caută anunț, oraș, marcă sau serviciu">
+            <button class="emq-btn" type="submit">Caută</button>
+          </form>
           <div class="emq-promo-actions">
             <a class="emq-btn" href="/cont/inregistrare?return_to=/publica">Publică gratuit</a>
             <a class="emq-btn-secondary" href="/anunturi">Vezi anunțuri</a>
           </div>
         </div>
-        <div class="emq-free-kpis" aria-label="Beneficii publicare">
-          <div class="emq-free-kpi"><b>3</b><span>anunțuri gratuite / utilizator</span></div>
-          <div class="emq-free-kpi"><b>0 lei</b><span>publicare de start</span></div>
-          <div class="emq-free-kpi"><b>Link</b><span>gata de distribuit</span></div>
-        </div>
-      </div>
-      <div class="emq-promo-card-grid">
-        <div class="emq-promo-card" style="--promo-accent:#15803d">
-          <strong>Publici în câteva minute</strong>
-          <span>Cont rapid, poze, descriere, preț și date de contact într-un singur formular.</span>
-        </div>
-        <div class="emq-promo-card" style="--promo-accent:#f59e0b">
-          <strong>Primești promovare prin distribuire</strong>
-          <span>Distribui linkul anunțului, aduci vizite și îl împingi mai sus în listă.</span>
-        </div>
-        <div class="emq-promo-card" style="--promo-accent:#0284c7">
-          <strong>Orice categorie importantă</strong>
-          <span>Auto, imobiliare, servicii, produse, turism, joburi și anunțuri locale.</span>
+        <div class="emq-free-kpis client" aria-label="Statistici e-Marqet">
+          <div class="emq-free-kpi"><b>${escapeHtml(stats.publishedListings || 0)}</b><span>anunțuri publicate</span><small>ofertă activă pe marketplace</small></div>
+          <div class="emq-free-kpi"><b>${escapeHtml(stats.openLeads || 0)}</b><span>cereri active</span><small>interes primit de la clienți</small></div>
+          <div class="emq-free-kpi"><b>${escapeHtml(stats.activeVerticals || 0)}</b><span>categorii active</span><small>auto, servicii, produse și locale</small></div>
         </div>
       </div>
     </section>
@@ -2471,17 +3529,17 @@ function statusLabel(value = "") {
   return value || "Nou";
 }
 
-function accountTabUrl(status = "active") {
+function accountTabUrl(status = "all") {
   return `/cont?status=${encodeURIComponent(status)}`;
 }
 
-function accountStatusTabs(stats = {}, active = "active") {
+function accountStatusTabs(stats = {}, active = "all") {
   const tabs = [
+    ["all", `Toate (${Number(stats.total || 0)})`],
     ["active", `Active (${Number(stats.active || 0)})`],
     ["pending", `În așteptare (${Number(stats.pending || 0)})`],
     ["pay", `De plătit (${Number(stats.to_pay || 0)})`],
-    ["inactive", `Dezactivate (${Number(stats.inactive || 0)})`],
-    ["all", `Toate (${Number(stats.total || 0)})`]
+    ["inactive", `Dezactivate (${Number(stats.inactive || 0)})`]
   ];
   return `
     <nav class="emq-account-nav" aria-label="Anunțuri cont">
@@ -2498,11 +3556,13 @@ function accountListingRow(listing = {}) {
     : `<span>${escapeHtml(visual.icon)}</span>`;
   const summary = metadataSummary(listing, 5);
   const isPublic = String(listing.status || "").toUpperCase() === "PUBLICAT";
+  const isPaused = String(listing.status || "").toUpperCase() === "PAUZAT";
   const checkoutStatus = String(listing.stripe_checkout_status || "").toUpperCase();
   const needsPay = !listing.paid_at
     && !checkoutStatus.startsWith("PAID")
     && String(listing.selected_plan_code || "free").toLowerCase() !== "free"
     && listing.checkout_token;
+  const slug = listing.slug || listing.listing_code || listing.id;
   return `
     <article class="emq-account-row">
       <div class="emq-account-thumb" style="--cat-bg:${escapeHtml(visual.bg)}">${image}</div>
@@ -2522,10 +3582,25 @@ function accountListingRow(listing = {}) {
       </div>
       <div class="emq-account-actions">
         ${isPublic ? `<a class="emq-btn-secondary" href="${escapeHtml(listingUrl(listing))}">Vezi</a>` : ""}
-        ${isPublic ? `<a class="emq-btn" href="/cont/distribuie/${encodeURIComponent(listing.slug || listing.listing_code || listing.id)}">Dă-l mai departe</a>` : ""}
-        ${isPublic ? `<a class="emq-btn" href="/cont/marketplace/${encodeURIComponent(listing.slug || listing.listing_code || listing.id)}">Postează în Marketplace</a>` : ""}
+        <a class="emq-btn-secondary" href="/cont/anunt/${encodeURIComponent(slug)}/edit">Editează</a>
+        ${isPublic ? `<a class="emq-btn" href="/cont/distribuie/${encodeURIComponent(slug)}">Distribuie pe Facebook</a>` : ""}
         ${needsPay ? `<a class="emq-btn" href="/checkout/${encodeURIComponent(listing.listing_code || listing.id)}?token=${encodeURIComponent(listing.checkout_token)}">Finalizează plata</a>` : ""}
-        <a class="emq-btn-secondary" href="/preturi">Promovează</a>
+        ${isPublic ? `
+          <form method="post" action="/cont/anunt/${encodeURIComponent(slug)}/status">
+            <input type="hidden" name="action" value="deactivate">
+            <button class="emq-btn-secondary" type="submit">Dezactivează</button>
+          </form>
+        ` : ""}
+        ${isPaused ? `
+          <form method="post" action="/cont/anunt/${encodeURIComponent(slug)}/status">
+            <input type="hidden" name="action" value="reactivate">
+            <button class="emq-btn" type="submit">Reactivează</button>
+          </form>
+        ` : ""}
+        <form method="post" action="/cont/anunt/${encodeURIComponent(slug)}/delete" onsubmit="return confirm('Ștergi acest anunț din contul e-Marqet?');">
+          <button class="emq-btn-secondary emq-btn-danger" type="submit">Șterge</button>
+        </form>
+        <a class="emq-btn-secondary" href="/cont/anunt/${encodeURIComponent(slug)}/promoveaza">Promovează</a>
       </div>
     </article>
   `;
@@ -2575,7 +3650,7 @@ function renderEmarqetAccountPage(options = {}) {
   const stats = options.stats || {};
   const referralStats = options.referralStats || {};
   const filters = options.filters || {};
-  const activeStatus = filters.status || "active";
+  const activeStatus = filters.status || "all";
   const body = `
     ${alertHtml(options.ok, options.err)}
     <section class="emq-panel">
@@ -2793,10 +3868,11 @@ function renderEmarqetReferralSharePage(options = {}) {
       </section>
 
       <section class="emq-form-section">
-        <h2>Postare gata pentru Facebook</h2>
+        <h2>Distribuie linkul pe Facebook</h2>
+        <p class="emq-muted">Pe PC, Facebook poate bloca dialogul direct de share. Varianta stabilă este să copiezi linkul, să deschizi Facebook și să îl lipești într-o postare.</p>
         <div class="emq-form-grid">
           <label class="emq-field wide">
-            <span>Link referral</span>
+            <span>Link anunț</span>
             <input class="emq-input" data-copy-source="referral-link" value="${escapeHtml(shareKit.shareUrl || "")}" readonly>
           </label>
           <label class="emq-field wide">
@@ -2805,9 +3881,10 @@ function renderEmarqetReferralSharePage(options = {}) {
           </label>
         </div>
         <div class="emq-marketplace-actions">
-          <a class="emq-btn" href="${escapeHtml(shareKit.facebookShareUrl || "#")}" target="_blank" rel="noopener">Distribuie pe Facebook</a>
+          <button class="emq-btn" type="button" data-copy-target="referral-link">Copiază linkul</button>
+          <a class="emq-btn-secondary" href="https://www.facebook.com/" target="_blank" rel="noopener">Deschide Facebook</a>
           <button class="emq-btn-secondary" type="button" data-copy-target="referral-caption">Copiază textul</button>
-          <button class="emq-btn-secondary" type="button" data-copy-target="referral-link">Copiază linkul</button>
+          <a class="emq-btn-secondary" href="${escapeHtml(shareKit.facebookShareUrl || "#")}" target="_blank" rel="noopener">Share direct pe telefon</a>
           <form method="post" action="/cont/distribuie/${encodeURIComponent(slug)}/share">
             <input type="hidden" name="channel" value="facebook">
             <button class="emq-btn-secondary" type="submit">Am distribuit</button>
@@ -2835,8 +3912,8 @@ function renderEmarqetReferralSharePage(options = {}) {
     </script>
   `;
   return layout({
-    title: "Dă-l mai departe - e-Marqet",
-    description: "Share kit e-Marqet pentru Facebook.",
+    title: "Distribuie pe Facebook - e-Marqet",
+    description: "Distribuie linkul anunțului pe Facebook cu preview din prima poză.",
     canonicalPath: `/cont/distribuie/${encodeURIComponent(slug)}`,
     body,
     user: options.user
@@ -3008,8 +4085,9 @@ function renderEmarqetImportPage(options = {}) {
 function verticalCard(vertical = {}) {
   const definition = categoryByVerticalRow(vertical);
   const visual = categoryVisual({ ...vertical, code: definition?.code || vertical.code });
+  const code = vertical.code || definition?.code || "";
   return `
-    <a class="emq-category-tile" href="${escapeHtml(verticalUrl(vertical))}" style="--cat-bg:${escapeHtml(visual.bg)}">
+    <a class="emq-category-tile" href="#cautare-avansata" data-emq-home-category="${escapeHtml(code)}" style="--cat-bg:${escapeHtml(visual.bg)}">
       <div>
         <span class="emq-category-icon">${escapeHtml(visual.icon)}</span>
         <strong>${escapeHtml(vertical.name || definition?.name || vertical.code || "Categorie")}</strong>
@@ -3024,7 +4102,7 @@ function verticalCard(vertical = {}) {
 function searchForm({ verticals = [], filters = {} } = {}) {
   const activeCategory = categoryByCode(filters.vertical || "") || EMARQET_CATEGORY_DEFINITIONS[0];
   return `
-    <form class="emq-search expanded" action="/anunturi" method="get" data-emq-category-form>
+    <form class="emq-search expanded" action="/anunturi" method="get" data-emq-category-form data-emq-advanced-search>
       <label class="emq-field wide">
         <span>Caută</span>
         <input class="emq-input" name="q" value="${escapeHtml(filters.q || "")}" placeholder="${escapeHtml(activeCategory?.searchPlaceholder || "cauta anunturi")}">
@@ -3058,46 +4136,58 @@ function renderEmarqetPublicHomePage(options = {}) {
   const stats = options.stats || {};
   const promotedListings = listings.filter((listing) => listing.is_promoted);
   const regularListings = listings.filter((listing) => !listing.is_promoted);
-  const featuredListings = (promotedListings.length ? promotedListings : listings).slice(0, 8);
+  const promotedAutoListings = promotedListings.filter((listing) => String(listing.vertical_code || "").toLowerCase() === "auto").slice(0, 8);
+  const promotedOtherListings = promotedListings.filter((listing) => String(listing.vertical_code || "").toLowerCase() !== "auto").slice(0, 8);
+  const fallbackFeaturedListings = promotedListings.length ? [] : listings.slice(0, 8);
   const categoryRows = categoriesWithRows(verticals);
   const body = `
     ${alertHtml(options.ok, options.err)}
-    ${homePromoBanners()}
-    ${featuredListingsRail(featuredListings)}
+    ${homePromoBanners(stats)}
 
     <section class="emq-home-categories">
       <div class="emq-section-head">
         <div><h2>Categorii principale</h2></div>
-        <a class="emq-btn-secondary" href="/anunturi">Vezi anunțuri</a>
+        <div class="emq-actions">
+          <a class="emq-btn-secondary" href="/masini-second-hand">Mașini second-hand</a>
+          <a class="emq-btn-secondary" href="/anunturi">Vezi anunțuri</a>
+        </div>
       </div>
       <div class="emq-category-strip">${categoryRows.map(verticalCard).join("")}</div>
     </section>
 
-    <section class="emq-search-band">
+    <section class="emq-search-band collapsed" id="cautare-avansata" data-emq-home-search-band>
       ${searchForm({ verticals, filters: options.filters || {} })}
     </section>
 
-    <section>
-      <div class="emq-stats">
-        <div class="emq-stat"><b>${escapeHtml(stats.activeVerticals || 0)}</b><span>categorii active</span></div>
-        <div class="emq-stat"><b>${escapeHtml(stats.publishedListings || 0)}</b><span>anunțuri publicate</span></div>
-        <div class="emq-stat"><b>${escapeHtml(stats.openLeads || 0)}</b><span>cereri active</span></div>
-      </div>
-    </section>
-
-    <section>
-      <div class="emq-section-head">
-        <div><h2>Anunțuri</h2></div>
-        <a class="emq-btn-secondary" href="/publica">Publică anunț</a>
-      </div>
-      ${listingsGrid(promotedListings.length ? regularListings : listings)}
-    </section>
+    ${carVerticalPartnerBanner({ placement: "homepage_banner" })}
+    ${featuredListingsRail(promotedAutoListings, {
+      title: "Anunțuri auto promovate",
+      description: "Mașini și vehicule promovate, afișate separat de restul categoriilor.",
+      ctaHref: "/publica?vertical=auto",
+      ctaLabel: "Publică anunț auto",
+      ariaLabel: "Anunțuri auto promovate"
+    })}
+    ${featuredListingsRail(promotedOtherListings, {
+      title: "Promovate din alte categorii",
+      description: "Produse, servicii, imobiliare, mama și copilul și alte anunțuri promovate, fără să se amestece în zona auto.",
+      ctaHref: "/publica",
+      ctaLabel: "Publică anunț",
+      ariaLabel: "Anunțuri promovate din alte categorii",
+      compact: true
+    })}
+    ${featuredListingsRail(fallbackFeaturedListings, {
+      title: "Anunțuri recomandate",
+      description: "Anunțuri recente de pe e-Marqet, afișate până când există promovări active.",
+      ctaHref: "/publica",
+      ctaLabel: "Publică anunț",
+      ariaLabel: "Anunțuri recomandate"
+    })}
 
     ${serviceBanners(services)}
   `;
   return layout({
-    title: "e-Marqet - marketplace-uri conectate la Nexora",
-    description: "Publică și administrează anunțuri comerciale în mai multe verticale, cu lead-uri și abonamente în Nexora.",
+    title: "e-Marqet - marketplace pentru anunțuri și servicii",
+    description: "Publică și găsește anunțuri comerciale în mai multe categorii, cu parteneri verificați și contact direct.",
     canonicalPath: "/",
     body,
     user: options.user
@@ -3127,7 +4217,7 @@ function renderEmarqetPublicListingsPage(options = {}) {
   `;
   return layout({
     title: "Anunțuri e-Marqet",
-    description: "Anunțuri comerciale publicate prin e-Marqet și administrate în Nexora.",
+    description: "Anunțuri comerciale publicate prin e-Marqet, cu parteneri verificați și contact direct.",
     canonicalPath: "/anunturi",
     body,
     user: options.user
@@ -3145,11 +4235,13 @@ function renderEmarqetPublicVerticalPage(options = {}) {
       <div class="emq-section-head" style="margin-top:0">
         <div>
           <h1>${escapeHtml(vertical.name || "Vertical e-Marqet")}</h1>
+          ${vertical.code === "auto" ? `<p class="emq-muted">Cauți un autoturism? Vezi pagina dedicată <a href="/masini-second-hand"><strong>mașinilor second-hand</strong></a>, organizată și pe mărci.</p>` : ""}
         </div>
         <a class="emq-btn" href="/publica">Publică anunț</a>
       </div>
       ${searchForm({ verticals, filters })}
     </section>
+    ${vertical.code === "auto" ? carVerticalPartnerBanner({ placement: "auto_vertical_banner" }) : ""}
     <section>
       <div class="emq-section-head">
         <div><h2>Anunțuri</h2></div>
@@ -3160,10 +4252,276 @@ function renderEmarqetPublicVerticalPage(options = {}) {
   `;
   return layout({
     title: `${vertical.name || "Vertical"} - e-Marqet`,
-    description: vertical.notes || "Vertical e-Marqet conectat la Nexora.",
+    description: vertical.notes || "Categorie e-Marqet pentru anunțuri și servicii.",
     canonicalPath: verticalUrl(vertical),
     body,
     user: options.user
+  });
+}
+
+function renderEmarqetSeoAutoPage(options = {}) {
+  const listings = Array.isArray(options.listings) ? options.listings : [];
+  const brands = Array.isArray(options.brands) ? options.brands : [];
+  const brand = options.brand || null;
+  const brandName = brand?.name || "";
+  const canonicalPath = brand ? `/masini-second-hand/${brand.slug}` : "/masini-second-hand";
+  const heading = brand ? `Mașini ${brandName} second-hand` : "Mașini second-hand de vânzare";
+  const title = brand
+    ? `Mașini ${brandName} second-hand de vânzare | e-Marqet`
+    : "Mașini second-hand de vânzare în România | e-Marqet";
+  const description = brand
+    ? `Descoperă anunțuri cu mașini ${brandName} second-hand publicate pe e-Marqet. Compară prețuri, dotări și datele oferite de vânzători.`
+    : "Descoperă mașini second-hand de vânzare în România. Compară anunțuri auto, prețuri și informațiile publicate de vânzători pe e-Marqet.";
+  const itemList = listings.slice(0, 100).map((listing, index) => ({
+    "@type": "ListItem",
+    position: index + 1,
+    url: absolutePublicPath(listingUrl(listing)),
+    name: listing.title || "Anunț auto"
+  }));
+  const faq = [
+    {
+      question: "Ce trebuie să verific înainte de cumpărarea unei mașini second-hand?",
+      answer: "Verifică identitatea vânzătorului, actele, seria VIN, istoricul de service, kilometrajul, starea tehnică și eventualele daune. O inspecție realizată de un specialist independent este recomandată."
+    },
+    {
+      question: "e-Marqet vinde sau garantează mașinile din anunțuri?",
+      answer: "Nu. e-Marqet este o platformă de publicare și contact. Informațiile și tranzacția trebuie verificate direct de cumpărător și vânzător."
+    },
+    {
+      question: "Cum compar anunțurile auto?",
+      answer: "Compară prețul cu vehicule similare și urmărește anul, kilometrajul, motorizarea, transmisia, dotările, istoricul și costurile probabile de întreținere."
+    }
+  ];
+  const body = `
+    <nav class="emq-muted" aria-label="Fir de navigare" style="margin-bottom:16px">
+      <a href="/">Acasă</a> · ${brand ? `<a href="/masini-second-hand">Mașini second-hand</a> · ${escapeHtml(brandName)}` : "Mașini second-hand"}
+    </nav>
+    <section class="emq-panel">
+      <div class="emq-section-head" style="margin-top:0">
+        <div>
+          <span class="emq-pill">Anunțuri auto</span>
+          <h1>${escapeHtml(heading)}</h1>
+          <p class="emq-muted">${escapeHtml(description)}</p>
+        </div>
+        <a class="emq-btn" href="/publica?vertical=auto">Publică anunț auto</a>
+      </div>
+      <div class="emq-business-meta">
+        <span class="emq-chip">${escapeHtml(listings.length)} anunțuri disponibile</span>
+        <span class="emq-chip">contact direct cu vânzătorul</span>
+        <span class="emq-chip">filtre și date tehnice</span>
+      </div>
+    </section>
+
+    ${carVerticalPartnerBanner({ placement: brand ? "auto_brand_banner" : "auto_seo_banner" })}
+
+    ${brands.length ? `<section>
+      <div class="emq-section-head"><div><h2>Caută după marcă</h2></div></div>
+      <div class="emq-business-meta">
+        <a class="emq-chip" href="/masini-second-hand">Toate mărcile</a>
+        ${brands.map((item) => `<a class="emq-chip" href="/masini-second-hand/${escapeHtml(item.slug)}">${escapeHtml(item.name)} (${escapeHtml(item.count)})</a>`).join("")}
+      </div>
+    </section>` : ""}
+
+    <section>
+      <div class="emq-section-head">
+        <div><h2>${brand ? `Anunțuri ${escapeHtml(brandName)}` : "Anunțuri auto recente"}</h2></div>
+        <span class="emq-pill">${escapeHtml(listings.length)} rezultate</span>
+      </div>
+      ${listingsGrid(listings)}
+    </section>
+
+    <section class="emq-business-grid" style="margin-top:32px">
+      <article class="emq-business-card">
+        <h2>Cum alegi o mașină rulată</h2>
+        <p class="emq-muted">Stabilește bugetul total, inclusiv înmatriculare, asigurare și reparații. Compară vehicule cu an, motorizare și kilometraj apropiate, apoi verifică mașina într-un service independent.</p>
+      </article>
+      <article class="emq-business-card">
+        <h2>Verificări înainte de plată</h2>
+        <p class="emq-muted">Confirmă seria VIN în acte și pe vehicul, istoricul, dreptul de proprietate și identitatea vânzătorului. Nu trimite bani în avans înainte de verificări și de un document contractual clar.</p>
+      </article>
+    </section>
+
+    <section class="emq-panel" style="margin-top:32px">
+      <h2>Întrebări frecvente</h2>
+      ${faq.map((item) => `<details><summary><strong>${escapeHtml(item.question)}</strong></summary><p class="emq-muted">${escapeHtml(item.answer)}</p></details>`).join("")}
+    </section>
+  `;
+  return layout({
+    title,
+    description,
+    canonicalPath,
+    body,
+    user: options.user,
+    structuredData: [
+      {
+        "@context": "https://schema.org",
+        "@type": "CollectionPage",
+        name: heading,
+        description,
+        url: absolutePublicPath(canonicalPath),
+        mainEntity: { "@type": "ItemList", numberOfItems: listings.length, itemListElement: itemList }
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        itemListElement: [
+          { "@type": "ListItem", position: 1, name: "Acasă", item: absolutePublicPath("/") },
+          { "@type": "ListItem", position: 2, name: "Mașini second-hand", item: absolutePublicPath("/masini-second-hand") },
+          ...(brand ? [{ "@type": "ListItem", position: 3, name: brandName, item: absolutePublicPath(canonicalPath) }] : [])
+        ]
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        mainEntity: faq.map((item) => ({
+          "@type": "Question",
+          name: item.question,
+          acceptedAnswer: { "@type": "Answer", text: item.answer }
+        }))
+      }
+    ]
+  });
+}
+
+function renderEmarqetCarVerticalSeoPage(options = {}) {
+  const canonicalPath = "/verificare-istoric-auto-carvertical";
+  const title = "Verificare istoric auto carVertical | Reducere 20%";
+  const description = "Verifică istoricul unei mașini după seria VIN prin carVertical. Folosește oferta e-Marqet și primești 20% reducere cu codul EMARQET20.";
+  const faq = [
+    {
+      question: "Ce este seria VIN și unde o găsesc?",
+      answer: "VIN-ul este seria unică de identificare a vehiculului, formată în mod obișnuit din 17 caractere. O poți găsi în documentele mașinii și în zonele marcate de producător pe vehicul."
+    },
+    {
+      question: "Ce informații poate conține un raport de istoric auto?",
+      answer: "În funcție de datele disponibile pentru vehicul, raportul poate include înregistrări despre kilometraj, daune, accidente, furt, înmatriculări, inspecții, utilizări anterioare sau fotografii istorice."
+    },
+    {
+      question: "Care este diferența dintre decodarea VIN și raportul de istoric?",
+      answer: "Decodarea VIN prezintă în principal datele de identificare și configurația vehiculului. Raportul de istoric caută evenimente înregistrate pe parcursul utilizării mașinii, în limita datelor disponibile."
+    },
+    {
+      question: "Cum folosesc reducerea EMARQET20?",
+      answer: "Pornește verificarea folosind butonul de pe această pagină. Linkul de partener e-Marqet transmite automat voucherul EMARQET20 pentru reducerea de 20%."
+    },
+    {
+      question: "Raportul înlocuiește inspecția tehnică a mașinii?",
+      answer: "Nu. Raportul este o etapă utilă de documentare, dar este recomandată și verificarea documentelor, identității vânzătorului și stării mașinii într-un service independent."
+    }
+  ];
+  const body = `
+    <nav class="emq-muted" aria-label="Fir de navigare" style="margin-bottom:16px">
+      <a href="/">Acasă</a> · <a href="/masini-second-hand">Mașini second-hand</a> · Verificare istoric auto
+    </nav>
+
+    <section class="emq-detail">
+      <article class="emq-panel">
+        <span class="emq-pill">Parteneriat e-Marqet × carVertical</span>
+        <h1>Verificare istoric auto carVertical după VIN</h1>
+        <p class="emq-muted">Verifică informațiile disponibile despre trecutul unei mașini înainte de cumpărare. Introdu seria VIN, continuă pe carVertical și folosește reducerea oferită comunității e-Marqet.</p>
+        <div class="emq-business-meta">
+          <span class="emq-chip">verificare după VIN</span>
+          <span class="emq-chip">raport istoric auto</span>
+          <span class="emq-chip">20% reducere</span>
+        </div>
+        <p class="emq-affiliate-note" style="margin-top:16px">Transparență: acesta este un parteneriat afiliat. e-Marqet poate primi un comision pentru o achiziție eligibilă, fără cost suplimentar pentru tine.</p>
+      </article>
+      <aside class="emq-service-card carvertical">
+        <div>
+          <img class="emq-carvertical-logo" src="/assets/partners/carvertical-logo-blue.png" alt="carVertical">
+          <h2>Introdu seria VIN</h2>
+          <p class="emq-muted">VIN-ul trebuie să conțină 17 caractere. Literele I, O și Q nu sunt utilizate.</p>
+        </div>
+        ${options.err === "vin_invalid" ? `<div class="emq-public-alert danger">Verifică seria VIN. Trebuie să conțină exact 17 caractere valide.</div>` : ""}
+        <form class="emq-service-form" method="post" action="/partener/carvertical" target="_blank">
+          <input type="hidden" name="placement" value="seo_history_page">
+          <label class="emq-field">
+            <span>Seria de șasiu (VIN)</span>
+            <input class="emq-input" name="vin" minlength="17" maxlength="17" pattern="[A-HJ-NPR-Za-hj-npr-z0-9]{17}" required autocomplete="off" placeholder="Exemplu: WVWZZZ1JZXW000001">
+          </label>
+          <div class="emq-coupon-box">
+            <span>Reducere 20%</span>
+            <span class="emq-coupon-code">EMARQET20</span>
+          </div>
+          <button class="emq-btn" type="submit">Verifică istoricul pe carVertical</button>
+          <span class="emq-affiliate-note">Vei continua pe site-ul carVertical, într-o filă nouă.</span>
+        </form>
+      </aside>
+    </section>
+
+    <section>
+      <div class="emq-section-head"><div><h2>Ce poate indica raportul de istoric auto</h2></div></div>
+      <div class="emq-business-grid">
+        <article class="emq-business-card"><h3>Kilometraj</h3><p class="emq-muted">Citiri de kilometraj disponibile și posibile neconcordanțe între înregistrări.</p></article>
+        <article class="emq-business-card"><h3>Daune și accidente</h3><p class="emq-muted">Evenimente, estimări sau imagini istorice, atunci când acestea există în sursele consultate.</p></article>
+        <article class="emq-business-card"><h3>Furt și statut</h3><p class="emq-muted">Posibile raportări de furt, înmatriculări, inspecții sau utilizări comerciale anterioare.</p></article>
+      </div>
+      <p class="emq-affiliate-note" style="margin-top:12px">Conținutul raportului diferă în funcție de vehicul și de datele disponibile în țările și sursele consultate de furnizor.</p>
+    </section>
+
+    <section class="emq-panel">
+      <h2>Cum verifici istoricul unei mașini</h2>
+      <ol style="line-height:1.75;margin-bottom:0">
+        <li>Solicită VIN-ul și compară seria din documente cu seria înscrisă pe vehicul.</li>
+        <li>Introdu cele 17 caractere în formularul de mai sus.</li>
+        <li>Continuă pe carVertical și verifică dacă reducerea <strong>EMARQET20</strong> este aplicată.</li>
+        <li>Analizează raportul împreună cu actele și cu o inspecție tehnică independentă.</li>
+      </ol>
+    </section>
+
+    <section class="emq-business-grid">
+      <article class="emq-business-card">
+        <h2>Decodare VIN sau raport complet?</h2>
+        <p class="emq-muted">Decodarea VIN confirmă în principal identitatea și specificațiile de bază ale vehiculului. Pentru evenimente din exploatare este necesară verificarea istoricului disponibil.</p>
+      </article>
+      <article class="emq-business-card">
+        <h2>Verifică și mașina fizic</h2>
+        <p class="emq-muted">Un raport nu garantează starea actuală și nu înlocuiește verificarea tehnică, juridică sau confirmarea informațiilor direct cu vânzătorul.</p>
+        <a class="emq-btn-secondary" href="/masini-second-hand">Vezi anunțuri auto</a>
+      </article>
+    </section>
+
+    <section class="emq-panel">
+      <h2>Întrebări frecvente despre verificarea istoricului auto</h2>
+      ${faq.map((item) => `<details><summary><strong>${escapeHtml(item.question)}</strong></summary><p class="emq-muted">${escapeHtml(item.answer)}</p></details>`).join("")}
+    </section>
+  `;
+  return layout({
+    title,
+    description,
+    canonicalPath,
+    body,
+    user: options.user,
+    structuredData: [
+      {
+        "@context": "https://schema.org",
+        "@type": "WebPage",
+        name: "Verificare istoric auto carVertical după VIN",
+        description,
+        url: absolutePublicPath(canonicalPath),
+        inLanguage: "ro-RO",
+        isPartOf: { "@type": "WebSite", name: "e-Marqet", url: absolutePublicPath("/") },
+        about: ["verificare istoric auto", "verificare VIN", "raport istoric auto"]
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        itemListElement: [
+          { "@type": "ListItem", position: 1, name: "Acasă", item: absolutePublicPath("/") },
+          { "@type": "ListItem", position: 2, name: "Mașini second-hand", item: absolutePublicPath("/masini-second-hand") },
+          { "@type": "ListItem", position: 3, name: "Verificare istoric auto", item: absolutePublicPath(canonicalPath) }
+        ]
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        mainEntity: faq.map((item) => ({
+          "@type": "Question",
+          name: item.question,
+          acceptedAnswer: { "@type": "Answer", text: item.answer }
+        }))
+      }
+    ]
   });
 }
 
@@ -3210,7 +4568,7 @@ function renderEmarqetPartnersLandingPage(options = {}) {
           </article>
           <article class="emq-business-card">
             <h3>Aprobări rapide</h3>
-            <span class="emq-muted">Anunțurile plătite ajung în Nexora pentru verificare, apoi se publică după reguli.</span>
+            <span class="emq-muted">Anunțurile plătite se publică automat după confirmarea plății și verificarea tehnică.</span>
           </article>
         </div>
         <div class="emq-auth-actions">
@@ -3257,7 +4615,7 @@ function renderEmarqetDealerLandingPage(options = {}) {
       <article class="emq-panel">
         <span class="emq-pill">Dealer Fondator E-MARQET</span>
         <h1>Publicare gratuită pentru dealerii auto din perioada de lansare</h1>
-        <p class="emq-muted">E-MARQET este platforma de anunțuri și parteneri business conectată la Nexora. Pentru primii dealeri auto pregătim contul, importul stocului și publicarea fără cost în lansare.</p>
+        <p class="emq-muted">E-MARQET este platforma de anunțuri și parteneri business pentru vânzători verificați. Pentru primii dealeri auto pregătim contul, importul stocului și publicarea fără cost în lansare.</p>
         <div class="emq-detail-meta">
           <span class="emq-pill">Import gratuit stoc</span>
           <span class="emq-pill">Fără comision</span>
@@ -3278,7 +4636,7 @@ function renderEmarqetDealerLandingPage(options = {}) {
           <span class="emq-chip">import CSV / XLSX / XML / JSON</span>
           <span class="emq-chip">API sau feed</span>
           <span class="emq-chip">promovare social media</span>
-          <span class="emq-chip">Nexora CRM</span>
+          <span class="emq-chip">CRM parteneri</span>
           <span class="emq-chip">Sameday / FAN Courier unde se aplică</span>
         </div>
       </aside>
@@ -3294,7 +4652,7 @@ function renderEmarqetDealerLandingPage(options = {}) {
         <span class="emq-muted">În etapa de lansare nu percepem comision la vânzare. Scopul este să validăm primele conturi și primele anunțuri reale.</span>
       </article>
       <article class="emq-business-card">
-        <h3>Integrare cu Nexora</h3>
+        <h3>Integrare operațională</h3>
         <span class="emq-muted">Cererile intră în CRM, importurile au jurnal, iar anunțurile pot fi urmărite până la publicare și activare dealer.</span>
       </article>
     </section>
@@ -3360,7 +4718,7 @@ function renderEmarqetDealerLandingPage(options = {}) {
   `;
   return layout({
     title: "Dealeri auto - Dealer Fondator E-MARQET",
-    description: "Programul Dealer Fondator E-MARQET pentru dealeri auto: publicare gratuită, import gratuit de stoc și integrare cu Nexora CRM.",
+    description: "Programul Dealer Fondator E-MARQET pentru dealeri auto: publicare gratuită, import gratuit de stoc și profil business.",
     canonicalPath: "/dealeri-auto",
     body,
     user: options.user
@@ -3420,16 +4778,27 @@ function renderEmarqetPublicListingPage(options = {}) {
   const badges = Array.isArray(options.badges) ? options.badges : [];
   const returnTo = listingUrl(listing);
   const category = categoryByCode(listing.vertical_code || "");
-  const image = listing.primary_image_url
-    ? `<img src="${escapeHtml(listing.primary_image_url)}" alt="${escapeHtml(listing.title || "Anunț e-Marqet")}">`
+  const isAutoListing = category?.code === "auto";
+  const images = listingImageUrls(listing);
+  const image = images[0]
+    ? `<img src="${escapeHtml(images[0])}" alt="${escapeHtml(listing.title || "Anunț e-Marqet")}">`
     : `<span>${escapeHtml(category?.icon || "EM")}</span>`;
+  const gallery = images.length > 1
+    ? `<div class="emq-detail-gallery">${images.map((url, index) => `
+        <a href="${escapeHtml(url)}" target="_blank" rel="noopener" aria-label="Poza ${index + 1} pentru ${escapeHtml(listing.title || "anunț")}">
+          <img src="${escapeHtml(url)}" alt="${escapeHtml(`${listing.title || "Anunț"} - poza ${index + 1}`)}" loading="lazy">
+        </a>
+      `).join("")}</div>`
+    : "";
   const summary = metadataSummary(listing, 10);
   const promoted = Boolean(listing.is_promoted);
+  const description = publicDescriptionText(listing);
   const body = `
     ${alertHtml(options.ok, options.err)}
     <section class="emq-detail">
       <article class="emq-panel">
         <div class="emq-detail-media">${image}${promoted ? `<span class="emq-promo-badge">Promovat</span>` : ""}</div>
+        ${gallery}
         <span class="emq-pill">${escapeHtml(listing.vertical_name || "e-Marqet")}</span>
         <h1>${escapeHtml(listing.title || "Anunț e-Marqet")}</h1>
         <div class="emq-detail-meta">
@@ -3439,7 +4808,7 @@ function renderEmarqetPublicListingPage(options = {}) {
         </div>
         ${summary.length ? `<div class="emq-chip-row">${summary.map((item) => `<span class="emq-chip">${escapeHtml(item.label)}: ${escapeHtml(item.value)}</span>`).join("")}</div>` : ""}
         ${trustBadges(badges)}
-        <p>${escapeHtml(listing.notes || "")}</p>
+        ${listingDescriptionHtml(listing)}
         <p class="emq-muted">Cod anunț: ${escapeHtml(listing.listing_code || "-")} · Publicat: ${escapeHtml(dateValue(listing.published_at || listing.created_at) || "-")}</p>
       </article>
       <aside class="emq-panel">
@@ -3454,16 +4823,20 @@ function renderEmarqetPublicListingPage(options = {}) {
           <label class="emq-field wide"><span>Mesaj</span><textarea class="emq-textarea" name="message" required>Vreau detalii despre acest anunț.</textarea></label>
           <button class="emq-btn wide" type="submit">Trimite mesaj</button>
         </form>
+        ${isAutoListing ? carVerticalContactButton(listing) : ""}
       </aside>
     </section>
     ${servicesSection(services, listing)}
+    ${isAutoListing ? carVerticalOfficialBanner() : ""}
   `;
   return layout({
     title: `${listing.title || "Anunț"} - e-Marqet`,
-    description: listing.notes || "Anunț publicat prin e-Marqet.",
+    description,
     canonicalPath: returnTo,
     body,
-    user: options.user
+    user: options.user,
+    socialImage: images[0] || "",
+    headHtml: isAutoListing ? carVerticalAffiliateSdkHead() : ""
   });
 }
 
@@ -3561,18 +4934,26 @@ function renderEmarqetPublicPublishPage(options = {}) {
   const form = options.form || {};
   const user = options.user || {};
   const errors = Array.isArray(options.errors) ? options.errors : [];
+  const editMode = options.mode === "edit";
+  const actionPath = options.actionPath || (editMode ? "/cont" : "/publica");
+  const pageTitle = editMode ? "Editează anunț" : "Publică anunț";
+  const submitLabel = editMode ? "Salvează modificările" : "Publică anunțul";
   const ownerName = form.owner_name ?? user.display_name ?? "";
   const ownerEmail = form.owner_email ?? user.email ?? "";
   const ownerPhone = form.owner_phone ?? user.phone ?? "";
+  const existingImages = Array.isArray(form.existing_image_urls)
+    ? form.existing_image_urls.filter(Boolean).slice(0, 12)
+    : [];
   const body = `
     ${alertHtml(options.ok, options.err)}
     ${errors.length ? `<div class="emq-public-alert danger">${errors.map(escapeHtml).join("<br>")}</div>` : ""}
     <section class="emq-publish-shell">
       <div class="emq-publish-head">
-        <h1>Publică anunț</h1>
+        <h1>${escapeHtml(pageTitle)}</h1>
         <a class="emq-btn-secondary" href="/cont">Contul meu</a>
       </div>
-      <form method="post" action="/publica" class="emq-publish-form" enctype="multipart/form-data" data-emq-category-form>
+      <form method="post" action="${escapeHtml(actionPath)}" class="emq-publish-form" enctype="multipart/form-data" data-emq-category-form>
+        <div class="emq-public-alert danger" data-emq-form-error hidden></div>
         <section class="emq-form-section">
           <h2>Date anunț</h2>
           <div class="emq-form-grid">
@@ -3584,6 +4965,10 @@ function renderEmarqetPublicPublishPage(options = {}) {
               <span>Titlu</span>
               <input class="emq-input" name="title" value="${escapeHtml(form.title || "")}" required>
             </label>
+            <div class="emq-category-suggestion wide" data-emq-category-suggestion hidden>
+              <span data-emq-category-suggestion-text></span>
+              <button type="button" data-emq-apply-category-suggestion>Folosește categoria sugerată</button>
+            </div>
             <label class="emq-field">
               <span>Locație</span>
               <input class="emq-input" name="location" value="${escapeHtml(form.location || "")}">
@@ -3615,12 +5000,18 @@ function renderEmarqetPublicPublishPage(options = {}) {
 
         <section class="emq-form-section">
           <h2>Imagini</h2>
+          ${existingImages.length ? `
+            <div class="emq-current-gallery" aria-label="Pozele actuale">
+              ${existingImages.map((url) => `<img src="${escapeHtml(url)}" alt="Poză anunț" loading="lazy">`).join("")}
+            </div>
+          ` : ""}
           <div class="emq-upload-zone">
             <label class="emq-upload-button">
-              Adaugă poze
-              <input type="file" name="photos" accept="image/jpeg,image/png,image/webp" multiple data-emq-photo-input="#emq-photo-preview">
-            </label>
-            <div class="emq-upload-preview" id="emq-photo-preview">
+            ${editMode ? "Adaugă poze noi" : "Adaugă poze"}
+            <input type="file" name="photos" accept="image/jpeg,image/png,image/webp" multiple data-emq-photo-input="#emq-photo-preview">
+          </label>
+          <p class="emq-muted" style="margin:8px 0 0">Maximum 10 poze, 20 MB per poză, 45 MB total.</p>
+          <div class="emq-upload-preview" id="emq-photo-preview">
               <span>+</span><span>+</span><span>+</span><span>+</span><span>+</span><span>+</span>
             </div>
           </div>
@@ -3662,19 +5053,21 @@ function renderEmarqetPublicPublishPage(options = {}) {
           </div>
         </section>
 
-        <section class="emq-form-section">
-          <h2>Abonament</h2>
-          <div class="emq-plan-grid">${planRadioOptions(pricingPlans, form.plan_code)}</div>
-        </section>
+        ${editMode ? "" : `
+          <section class="emq-form-section">
+            <h2>Abonament</h2>
+            <div class="emq-plan-grid">${planRadioOptions(pricingPlans, form.plan_code)}</div>
+          </section>
+        `}
 
-        <button class="emq-btn" type="submit">Publică anunțul</button>
+        <button class="emq-btn" type="submit">${escapeHtml(submitLabel)}</button>
       </form>
     </section>
   `;
   return layout({
-    title: "Publică anunț - e-Marqet",
-    description: "Trimite un anunț spre verificare în Nexora e-Marqet.",
-    canonicalPath: "/publica",
+    title: `${pageTitle} - e-Marqet`,
+    description: editMode ? "Actualizează anunțul din contul e-Marqet." : "Trimite un anunț spre verificare în e-Marqet.",
+    canonicalPath: editMode ? actionPath.replace(/\/edit$/, "/edit") : "/publica",
     body,
     user
   });
@@ -3697,6 +5090,71 @@ function renderEmarqetPublicPricingPage(options = {}) {
     title: "Prețuri - e-Marqet",
     description: "Abonamente si servicii e-Marqet.",
     canonicalPath: "/preturi",
+    body,
+    user: options.user
+  });
+}
+
+function promotionAddonCard(addon = {}, listing = {}, stripeAvailable = false) {
+  const slug = listing.slug || listing.listing_code || listing.id;
+  return `
+    <article class="emq-addon-card">
+      <div class="emq-card-top">
+        <span class="emq-pill">${escapeHtml(addon.category || "promovare")}</span>
+        <span class="emq-muted">${escapeHtml(addon.billing_unit || "campanie")}</span>
+      </div>
+      <b>${escapeHtml(addon.name || addon.code || "Promovare e-Marqet")}</b>
+      <span class="emq-muted">${escapeHtml(addon.description || "Pachet de promovare pentru anunț.")}</span>
+      <div class="emq-price" style="margin-top:10px">${fmtCatalogPrice(addon.price_amount, addon.currency)}</div>
+      <form method="post" action="/cont/anunt/${encodeURIComponent(slug)}/promoveaza/${encodeURIComponent(addon.code || "")}/stripe" style="margin-top:12px">
+        <button class="emq-btn" type="submit" ${stripeAvailable ? "" : "disabled"}>Alege și plătește</button>
+      </form>
+    </article>
+  `;
+}
+
+function renderEmarqetPromotionPage(options = {}) {
+  const listing = options.listing || {};
+  const addons = Array.isArray(options.addons) ? options.addons : [];
+  const stripeAvailable = Boolean(options.stripeAvailable);
+  const slug = listing.slug || listing.listing_code || listing.id;
+  const promotedUntil = listing.is_promoted
+    ? `<span class="emq-promo-badge" style="position:static">Promovat${listing.promotion_until ? ` până la ${escapeHtml(dateValue(listing.promotion_until))}` : ""}</span>`
+    : `<span class="emq-pill">Disponibil pentru promovare</span>`;
+  const body = `
+    ${alertHtml(options.ok, options.err)}
+    ${!stripeAvailable ? `<div class="emq-public-alert danger">Plata Stripe nu este activă momentan.</div>` : ""}
+    <section class="emq-panel">
+      <div class="emq-section-head" style="margin-top:0">
+        <div>
+          <span class="emq-pill">${escapeHtml(listing.listing_code || "e-Marqet")}</span>
+          <h1>Promovează anunțul</h1>
+          <p class="emq-muted">${escapeHtml(listing.title || "Anunț e-Marqet")}</p>
+        </div>
+        <div class="emq-actions">
+          ${promotedUntil}
+          <a class="emq-btn-secondary" href="/cont">Înapoi în cont</a>
+        </div>
+      </div>
+      <div class="emq-chip-row">
+        <span class="emq-chip">${escapeHtml(listing.vertical_name || "Categorie")}</span>
+        <span class="emq-chip">${escapeHtml(listing.location || "Locație")}</span>
+        <span class="emq-chip">${fmtAmount(listing.price_amount, listing.price_currency)}</span>
+      </div>
+    </section>
+    <section>
+      <div class="emq-section-head">
+        <div><h2>Pachete disponibile</h2></div>
+      </div>
+      ${addons.length
+        ? `<div class="emq-addon-grid compact">${addons.map((addon) => promotionAddonCard(addon, listing, stripeAvailable)).join("")}</div>`
+        : `<div class="emq-empty">Nu există pachete de promovare active.</div>`}
+    </section>
+  `;
+  return layout({
+    title: "Promovează anunțul - e-Marqet",
+    description: "Alege un pachet de promovare e-Marqet pentru anunț.",
+    canonicalPath: `/cont/anunt/${slug}/promoveaza`,
     body,
     user: options.user
   });
@@ -3735,12 +5193,12 @@ function renderEmarqetLegalInfoPage(options = {}) {
   return renderEmarqetInfoPage({
     title: "Despre e-Marqet",
     eyebrow: "Platformă",
-    description: "e-Marqet este un marketplace conectat la Nexora pentru anunțuri, abonamente, parteneri și servicii integrate.",
+    description: "e-Marqet este un marketplace pentru anunțuri, abonamente, parteneri și servicii integrate.",
     canonicalPath: "/despre",
     user: options.user,
     sections: [
       { title: "Marketplace", text: "Platforma permite publicarea de anunțuri pe categorii precum auto, imobiliare, servicii, produse, joburi și turism." },
-      { title: "Nexora", text: "Aprobarea anunțurilor, lead-urile, plățile, facturile și partenerii sunt administrate centralizat în Nexora." },
+      { title: "Administrare", text: "Aprobarea anunțurilor, cererile, plățile, facturile și partenerii sunt administrate centralizat de echipa e-Marqet." },
       { title: "Suport", text: `Pentru solicitări curente, suportul este disponibil la ${EMARQET_SUPPORT_EMAIL}.` }
     ]
   });
@@ -3771,7 +5229,7 @@ function renderEmarqetTermsPage(options = {}) {
     user: options.user,
     sections: [
       { title: "Conturi", items: ["Datele de cont trebuie să fie reale.", "Un utilizator poate avea un singur cont activ pentru aceeași identitate.", "Conturile business pot intra în verificare înainte de activare."] },
-      { title: "Anunțuri", items: ["Anunțurile plătite intră în revizie înainte de publicare.", "Anunțurile incomplete, duplicate sau neconforme pot fi respinse.", "Utilizatorul răspunde pentru informațiile și imaginile încărcate."] },
+      { title: "Anunțuri", items: ["Anunțurile Free se publică după verificarea tehnică automată a apariției în categorie.", "Anunțurile plătite se publică automat după confirmarea plății.", "Anunțurile incomplete, duplicate sau neconforme pot fi respinse.", "Utilizatorul răspunde pentru informațiile și imaginile încărcate."] },
       { title: "Plăți", items: ["Abonamentele și serviciile plătite sunt procesate prin Stripe.", "Factura se emite pe datele disponibile la plată.", "Publicarea poate fi amânată până la verificarea conținutului."] }
     ]
   });
@@ -3802,7 +5260,7 @@ function renderEmarqetGdprPage(options = {}) {
     sections: [
       { title: "Drepturi", items: ["Acces la date.", "Rectificare date incorecte.", "Ștergere sau restricționare, unde legea permite.", "Portabilitate și opoziție la anumite prelucrări."] },
       { title: "Cereri", text: `Cererile GDPR se trimit la ${EMARQET_SUPPORT_EMAIL} cu date suficiente pentru identificarea contului.` },
-      { title: "Securitate", text: "Accesul la datele operaționale este limitat în Nexora pe conturi și roluri interne." }
+      { title: "Securitate", text: "Accesul la datele operaționale este limitat pe conturi și roluri interne." }
     ]
   });
 }
@@ -3830,7 +5288,7 @@ function renderEmarqetSafetyPage(options = {}) {
     canonicalPath: "/siguranta",
     user: options.user,
     sections: [
-      { title: "Verificare", items: ["Anunțurile plătite sunt verificate înainte de publicare.", "Profilurile business pot primi status activ după verificare.", "Anunțurile auto pot avea servicii suplimentare de istoric, VIN sau verificare."] },
+      { title: "Verificare", items: ["Publicarea este confirmată tehnic prin apariția anunțului în categoria publică.", "Profilurile business pot primi status activ după verificare.", "Anunțurile auto pot avea servicii suplimentare de istoric, VIN sau verificare."] },
       { title: "Comunicare", items: ["Evită transferurile fără documente.", "Verifică datele vânzătorului înainte de întâlnire.", "Raportează anunțurile suspecte la suport."] },
       { title: "Suport", text: `Raportările se trimit la ${EMARQET_SUPPORT_EMAIL}.` }
     ]
@@ -3857,6 +5315,7 @@ export {
   renderEmarqetAccountPage,
   renderEmarqetAuthPage,
   renderEmarqetBusinessPage,
+  renderEmarqetCarVerticalSeoPage,
   renderEmarqetContactPage,
   renderEmarqetCookiesPage,
   renderEmarqetDealerLandingPage,
@@ -3874,7 +5333,9 @@ export {
   renderEmarqetPublicPartnerPage,
   renderEmarqetPublicPricingPage,
   renderEmarqetPublicPublishPage,
+  renderEmarqetSeoAutoPage,
   renderEmarqetPublicVerticalPage,
+  renderEmarqetPromotionPage,
   renderEmarqetReferralSharePage,
   renderEmarqetSafetyPage,
   renderEmarqetTermsPage

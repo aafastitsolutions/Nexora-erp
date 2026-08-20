@@ -71,8 +71,8 @@ function renderNexoraInvoicesPage(options = {}) {
         <td><span class="nx-status-pill ${statusClass(invoice.status)}">${escapeHtml(invoice.status || "CIORNA")}</span></td>
         <td class="nx-table-actions">
           <a class="nx-btn" href="/nexora/facturi/${escapeHtml(invoice.id)}">Deschide</a>
-          ${isDraftStatus(invoice.status) ? `
-            <form method="post" action="/factura/${escapeHtml(invoice.id)}/sterge" onsubmit="return confirm('Ștergi definitiv această factură ciornă?');">
+          ${invoice.can_delete ? `
+            <form method="post" action="/factura/${escapeHtml(invoice.id)}/sterge" onsubmit="return confirm('Ștergi definitiv această factură netrimisă în SPV? Numărul ei va putea fi alocat din nou.');">
               <input type="hidden" name="return_to" value="nexora">
               <button class="nx-btn danger" type="submit">Șterge</button>
             </form>

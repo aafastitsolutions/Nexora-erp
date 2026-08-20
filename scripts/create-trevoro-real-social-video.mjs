@@ -74,19 +74,19 @@ const scenes = [
     subtitle: "Pensiune, hotel, cabană, vilă sau apartament în regim hotelier.",
     footer: "Înscrie proprietatea pe trevoro.ro"
   },
-  {
-    image: captures.hero,
-    kicker: "Sezon de vară 2026",
-    title: "Umple sezonul fără comisioane pe rezervări.",
-    subtitle: "Alegi planul potrivit: Basic, Premium sau Business.",
-    footer: "trevoro.ro/proprietari"
-  },
-  {
-    image: captures.benefits,
-    kicker: "Pentru proprietari",
-    title: "Cost fix. 0% comision.",
-    subtitle: "Fără procent din fiecare rezervare. Știi costul dinainte.",
-    footer: "Planuri de la 99 lei/lună"
+	  {
+	    image: captures.hero,
+	    kicker: "Sezon de vară 2026",
+	    title: "Intră în programul de lansare Trevoro.",
+	    subtitle: "Înscrii proprietatea, noi validăm datele și pregătim listarea.",
+	    footer: "trevoro.ro/proprietari"
+	  },
+	  {
+	    image: captures.benefits,
+	    kicker: "Pentru proprietari",
+	    title: "Listare clară. Cereri directe.",
+	    subtitle: "Trevoro pornește cu proprietăți reale și suport pentru publicare.",
+	    footer: "Program de lansare"
   },
   {
     image: captures.steps,
@@ -95,13 +95,13 @@ const scenes = [
     subtitle: "Validăm datele și pregătim promovarea Trevoro.",
     footer: "Simplu, rapid, în limba română"
   },
-  {
-    image: captures.founders,
-    kicker: "Planuri Trevoro",
-    title: "Basic, Premium sau Business.",
-    subtitle: "Prețuri afișate, listare clară și 0% comision pe rezervări.",
-    footer: "Alege abonamentul înainte de publicare"
-  },
+	  {
+	    image: captures.founders,
+	    kicker: "Program Trevoro",
+	    title: "Proprietăți reale, pregătite frumos.",
+	    subtitle: "Validare, listare și promovare în etapele de lansare.",
+	    footer: "Înscriere proprietari"
+	  },
   {
     image: captures.form,
     kicker: "Înscriere",

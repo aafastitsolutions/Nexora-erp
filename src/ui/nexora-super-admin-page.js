@@ -117,6 +117,7 @@ function renderNexoraSuperAdminDashboardPage(options = {}) {
         <div class="nx-form-actions">
           <a class="nx-btn primary" href="/nexora/super-admin/companies">Companii</a>
           <a class="nx-btn" href="/nexora/super-admin/payments">Plăți</a>
+          <a class="nx-btn" href="/nexora/super-admin/nextpdf">NextPDF</a>
         </div>
       </div>
     </section>

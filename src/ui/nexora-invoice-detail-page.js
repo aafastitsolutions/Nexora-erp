@@ -39,7 +39,8 @@ function renderNexoraInvoiceDetailPage(options = {}) {
   const companyName = user.company_name || "Workspace";
   const lockedStatuses = new Set(["TRIMIS_EFACTURA", "RECEPTIONATA_SPV", "ANULATA"]);
   const isInvoiceLocked = lockedStatuses.has(String(invoice.status || "").toUpperCase());
-  const canDeleteInvoice = isDraftStatus(invoice.status);
+  const canDeleteInvoice = Boolean(options.canDeleteInvoice);
+  const canCreateStorno = Boolean(options.canCreateStorno);
 
   const okMessages = {
     pdf_generat: "PDF-ul a fost generat cu succes.",
@@ -52,7 +53,9 @@ function renderNexoraInvoiceDetailPage(options = {}) {
     receptionata_spv: "Factura a fost recepționată în SPV.",
     stare_actualizata: "Statusul SPV a fost actualizat.",
     stare_actualizata_cu_zip: "Factura a fost recepționată în SPV și răspunsul ANAF a fost descărcat.",
-    stare_respinsa_anaf: "ANAF a respins factura. Verifică arhiva de răspuns pentru detalii."
+    stare_respinsa_anaf: "ANAF a respins factura. Verifică arhiva de răspuns pentru detalii.",
+    storno_pregatit: "Factura de corecție/storno a fost pregătită. Verific-o, apoi apasă «Trimite e-Factura» pentru a finaliza anularea în SPV.",
+    storno_deja_pregatit: "Există deja un document storno pentru această factură."
   };
 
   const errMessages = {
@@ -68,7 +71,10 @@ function renderNexoraInvoiceDetailPage(options = {}) {
     eroare_email: "Emailul nu a putut fi trimis către client.",
     pdf_neconfigurat: "Generatorul PDF nu este configurat corect pe server.",
     pdf_generare: "PDF-ul nu a putut fi generat.",
-    stergere_permisa_doar_ciorna: "Factura poate fi ștearsă doar dacă este ciornă."
+    stergere_permisa_doar_ciorna: "Factura poate fi ștearsă doar dacă este ciornă.",
+    stergere_blocata_spv: "Factura nu poate fi ștearsă deoarece a fost deja trimisă în SPV.",
+    storno_doar_dupa_spv: "Storno-ul este disponibil doar pentru facturile deja trimise în SPV. Pentru una netrimisă folosește Șterge.",
+    factura_deja_anulata: "Factura este deja anulată."
   };
 
   const alertHtml = err
@@ -136,9 +142,14 @@ function renderNexoraInvoiceDetailPage(options = {}) {
         <div class="nx-actions">
           <a class="nx-btn" href="/nexora/facturi">Înapoi la facturi</a>
           ${canDeleteInvoice ? `
-            <form method="post" action="/factura/${escapeHtml(invoice.id)}/sterge" style="margin:0" onsubmit="return confirm('Ștergi definitiv această factură ciornă?');">
+            <form method="post" action="/factura/${escapeHtml(invoice.id)}/sterge" style="margin:0" onsubmit="return confirm('Ștergi definitiv această factură netrimisă în SPV? Numărul ei va putea fi alocat din nou.');">
               <input type="hidden" name="return_to" value="nexora">
               <button class="nx-btn danger" type="submit">Șterge factura</button>
+            </form>
+          ` : ""}
+          ${canCreateStorno ? `
+            <form method="post" action="/factura/${escapeHtml(invoice.id)}/anuleaza-prin-storno" style="margin:0" onsubmit="return confirm('Pregătești anularea integrală prin factură storno? Documentul storno trebuie apoi verificat și trimis în SPV.');">
+              <button class="nx-btn danger" type="submit">Anulează prin storno</button>
             </form>
           ` : ""}
           <form method="post" action="/factura/${escapeHtml(invoice.id)}/genereaza-pdf" style="margin:0">

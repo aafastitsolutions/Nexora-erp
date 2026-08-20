@@ -8,6 +8,15 @@ const ERP_MODULES = [
     children: []
   },
   {
+    key: "nextpdf_admin",
+    label: "NextPDF",
+    icon: "file-text",
+    path: "/nexora/super-admin/nextpdf",
+    legacyModuleKeys: [],
+    companyAdminCompanyIds: [1],
+    children: []
+  },
+  {
     key: "finance",
     label: "Financiar & Contabilitate",
     icon: "file-text",
@@ -16,6 +25,7 @@ const ERP_MODULES = [
     children: [
       { label: "Contabilitate generală", path: "/nexora/accounting" },
       { label: "Facturi", path: "/nexora/facturi" },
+      { label: "Automatizare facturi", path: "/nexora/accounting/invoice-automation" },
       { label: "Cheltuieli", path: "/nexora/accounting/expenses" },
       { label: "Declarații", path: "/nexora/accounting/declarations" },
       {
@@ -212,6 +222,20 @@ const ERP_MODULES = [
       { label: "Social", path: "/nexora/e-marqet/social" },
       { label: "Verticale", path: "/nexora/e-marqet/verticals" },
       { label: "Setări", path: "/nexora/e-marqet/settings" }
+    ]
+  },
+  {
+    key: "qrlab",
+    label: "QR-Lab",
+    icon: "qr",
+    path: "/nexora/qr-lab",
+    legacyModuleKeys: [],
+    adminOnly: true,
+    children: [
+      { label: "Dashboard", path: "/nexora/qr-lab" },
+      { label: "Utilizatori", path: "/nexora/qr-lab/users" },
+      { label: "Granturi gratuite", path: "/nexora/qr-lab/grants" },
+      { label: "Statistici", path: "/nexora/qr-lab/stats" }
     ]
   },
   {

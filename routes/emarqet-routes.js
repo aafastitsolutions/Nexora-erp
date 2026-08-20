@@ -32,6 +32,11 @@ import {
   seedEmarqetMonetizationCatalog
 } from "../lib/emarqet-monetization.js";
 import {
+  ensureEmarqetPromotionsSchema,
+  loadEmarqetPromotionOrders,
+  setAdminListingPromotion
+} from "../lib/emarqet-promotions.js";
+import {
   ensureEmarqetSocialSchema,
   generateEmarqetSocialPosts,
   importEmarqetManualGroups,
@@ -56,7 +61,7 @@ import {
   updateEmarqetSocialPostStatus,
   upsertEmarqetSocialTarget
 } from "../lib/emarqet-social-distribution.js";
-import { emarqetDefaultVerticalRows } from "../lib/emarqet-categories.js";
+import { emarqetDefaultVerticalRows, metadataFromBody } from "../lib/emarqet-categories.js";
 import {
   authenticateMarketplaceApiToken,
   createMarketplaceApiKey,
@@ -347,6 +352,7 @@ function ensureEmarqetSchema(db) {
   ensureColumn(db, "emarqet_partner_profiles", "founder_notes", "TEXT");
   ensureEmarqetAnalyticsSchema(db);
   ensureEmarqetMonetizationSchema(db);
+  ensureEmarqetPromotionsSchema(db);
   ensureMarketplaceServicesSchema(db);
   ensureEmarqetSocialSchema(db);
   ensureEmarqetIntegrationSchema(db);
@@ -967,14 +973,16 @@ export function registerEmarqetRoutes(app, { db, requireAuth }) {
     const title = safeText(req.body?.title);
     const verticalId = ensureVerticalId(db, companyId, req.body?.vertical_id);
     if (!title || !verticalId) return res.redirect("/nexora/e-marqet/listings?err=required");
+    const vertical = db.prepare("SELECT code FROM emarqet_verticals WHERE company_id=? AND id=?").get(companyId, verticalId);
+    const metadata = metadataFromBody(vertical?.code, req.body || {});
 
     const status = normalizeStatus(req.body?.status, LISTING_STATUSES, "DRAFT");
     const listingCode = nextListingCode(db, companyId);
     db.prepare(`
       INSERT INTO emarqet_listings
-        (company_id, vertical_id, listing_code, title, slug, owner_name, owner_email, location, price_amount, price_currency, status, quality_score, ai_status, published_at, notes, created_by)
+        (company_id, vertical_id, listing_code, title, slug, owner_name, owner_email, location, price_amount, price_currency, status, quality_score, ai_status, metadata_json, published_at, notes, created_by)
       VALUES
-        (@company_id, @vertical_id, @listing_code, @title, @slug, @owner_name, @owner_email, @location, @price_amount, @price_currency, @status, @quality_score, @ai_status, @published_at, @notes, @created_by)
+        (@company_id, @vertical_id, @listing_code, @title, @slug, @owner_name, @owner_email, @location, @price_amount, @price_currency, @status, @quality_score, @ai_status, @metadata_json, @published_at, @notes, @created_by)
     `).run({
       company_id: companyId,
       vertical_id: verticalId,
@@ -989,6 +997,7 @@ export function registerEmarqetRoutes(app, { db, requireAuth }) {
       status,
       quality_score: Math.max(0, Math.min(100, Number(req.body?.quality_score || 0) || 0)),
       ai_status: normalizeStatus(req.body?.ai_status, AI_STATUSES, "NEGENERAT"),
+      metadata_json: JSON.stringify(metadata),
       published_at: status === "PUBLICAT" ? new Date().toISOString().slice(0, 10) : null,
       notes: safeText(req.body?.notes),
       created_by: currentUserEmail(req)
@@ -1010,6 +1019,19 @@ export function registerEmarqetRoutes(app, { db, requireAuth }) {
     const returnTo = safeText(req.body?.return_to);
     const target = returnTo.startsWith("/nexora/e-marqet/partners") ? "/nexora/e-marqet/partners" : "/nexora/e-marqet/listings";
     return res.redirect(`${target}?${result.changes ? "ok=status" : "err=missing"}`);
+  });
+
+  app.post("/nexora/e-marqet/listings/:id/promotion", requireAuth, (req, res) => {
+    const companyId = companyIdFrom(req);
+    bootstrapWorkspace(db, companyId, currentUserEmail(req));
+    const id = Number(req.params.id || 0);
+    const action = safeText(req.body?.action || "feature").toLowerCase();
+    const result = setAdminListingPromotion(db, companyId, id, {
+      action,
+      days: Number(req.body?.days || 30),
+      actor: currentUserEmail(req)
+    });
+    return res.redirect(`/nexora/e-marqet/listings?${result.changes ? "ok=promotion" : "err=missing"}`);
   });
 
   app.get("/nexora/e-marqet/partners", requireAuth, (req, res) => {
@@ -1166,6 +1188,7 @@ export function registerEmarqetRoutes(app, { db, requireAuth }) {
       rows: loadSubscriptions(db, companyId),
       pricingPlans: loadEmarqetPricingPlans(db, companyId),
       addons: loadEmarqetAddons(db, companyId),
+      promotionOrders: loadEmarqetPromotionOrders(db, companyId),
       ok: safeText(req.query?.ok),
       err: safeText(req.query?.err)
     }));
